@@ -5,6 +5,7 @@ package i18n
 type Message struct{ ZH, EN string }
 
 var Catalog = map[string]Message{
+	"close":       {"关闭", "Close"},
 	"changes.nav": {"变更", "Changes"}, "diff.binary": {"二进制文件，无法显示文本差异", "Binary file; text comparison unavailable"},
 	"update.title": {"软件更新", "Software updates"}, "update.check": {"检查更新", "Check for updates"}, "update.current": {"当前已是最新版本", "You're up to date"}, "update.available": {"MyGittu %s 可用", "MyGittu %s is available"},
 	"clone.title": {"克隆 Git 仓库", "Clone Git repository"}, "clone.url": {"仓库地址", "Repository URL"}, "clone.destination": {"目标文件夹（绝对路径）", "Destination folder (absolute path)"}, "clone.run": {"开始克隆", "Clone"},

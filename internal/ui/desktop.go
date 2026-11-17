@@ -47,6 +47,7 @@ type Desktop struct {
 	update                             app.UpdateInfo
 	updateChecking                     bool
 	updateError                        string
+	settingsOpen                       bool
 	comparison                         *editor.DiffState
 	binary                             bool
 }
@@ -74,7 +75,7 @@ func New(client *ipc.Client, path, action string) *Desktop {
 }
 func (d *Desktop) Run() error {
 	mygo.App.WhenReady(func() {
-		d.win = mygo.NewWindow(mygo.WindowOptions{Title: "MyGittu", Width: 1280, Height: 820, Content: native.View(d.view)})
+		d.win = mygo.NewWindow(mygo.WindowOptions{Title: "MyGittu", Width: 1280, Height: 820, MinWidth: 960, MinHeight: 680, Content: native.View(d.view)})
 		_ = d.win.SetIcon(brand.PNG)
 		_ = mygo.App.Dock.SetIcon(brand.PNG)
 		updateContext, cancelUpdates := context.WithCancel(context.Background())
@@ -170,7 +171,7 @@ func (d *Desktop) task(work func(context.Context) (func(), error)) {
 }
 func (d *Desktop) refresh() {
 	id, page, query, offset := d.selected, d.page, d.query, d.offset
-	if id == "" && page != 4 {
+	if id == "" {
 		return
 	}
 	d.row = -1
@@ -181,7 +182,6 @@ func (d *Desktop) refresh() {
 		var logs []app.Commit
 		var detail string
 		var e error
-		var prefs settings.Values
 		var identity app.Identity
 		switch page {
 		case 0, 2:
@@ -193,15 +193,6 @@ func (d *Desktop) refresh() {
 			e = d.Client.Call(ctx, "git.log", ipc.Params{RepoID: id, Limit: 100, Offset: offset, Query: query}, &logs)
 		case 3:
 			e = d.Client.Call(ctx, "git.branches", ipc.Params{RepoID: id}, &detail)
-		case 4:
-			e = d.Client.Call(ctx, "settings.get", ipc.Params{}, &prefs)
-			if e == nil {
-				scope := "local"
-				if d.identityScope == 1 || id == "" {
-					scope = "global"
-				}
-				e = d.Client.Call(ctx, "identity.get", ipc.Params{RepoID: id, Scope: scope}, &identity)
-			}
 		}
 		changes := make([]git.FileStatus, 0, len(snap.Files))
 		stagedCount := 0
@@ -214,14 +205,6 @@ func (d *Desktop) refresh() {
 			}
 		}
 		return func() {
-			if page == 4 {
-				d.applyPrefs(prefs)
-				d.identity = editableIdentity(identity)
-				if id == "" {
-					d.identityScope = 1
-				}
-				d.identitySaved = false
-			}
 			if page == 0 {
 				d.identity = editableIdentity(identity)
 			}
@@ -294,11 +277,10 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			native.Row(c).Gap(8).Children(func() {
 				label := d.text("identity.edit")
 				if d.identity.EffectiveName != "" {
-					label = d.identity.EffectiveName + " <" + d.identity.EffectiveEmail + ">"
+					label = d.identity.EffectiveName
 				}
-				if iconButton(c, label, "user", false).Grow(1).Disabled(d.busy).Clicked() {
-					d.page = 4
-					d.refresh()
+				if iconButton(c, label, "user", false).Grow(1).Tooltip(d.identity.EffectiveEmail).Disabled(d.busy).Clicked() {
+					d.openSettings()
 				}
 				if iconButton(c, d.text("commit.submit"), "commit", true).Disabled(d.busy || d.stagedCount == 0 || strings.TrimSpace(d.message) == "").Clicked() {
 					d.mutate("git.commit", ipc.Params{Message: d.message})
@@ -364,7 +346,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	})
 }
 func (d *Desktop) view(c *native.Context) {
-	if c.Shortcut(native.Cmd, native.KeyO) {
+	if !d.settingsOpen && c.Shortcut(native.Cmd, native.KeyO) {
 		d.chooseRepository()
 	}
 	switch d.prefs.Theme {
@@ -393,6 +375,10 @@ func (d *Desktop) view(c *native.Context) {
 				label := d.text(item.label)
 				key := map[int]string{0: "changes", 1: "history", 3: "branch", 4: "settings"}[item.page]
 				if iconButton(c, label, key, false).FillWidth().Selected(d.page == item.page || item.page == 0 && d.page == 2).Disabled(d.busy).Clicked() {
+					if item.page == 4 {
+						d.openSettings()
+						continue
+					}
 					d.page = item.page
 					d.offset = 0
 					d.refresh()
@@ -542,67 +528,6 @@ func (d *Desktop) view(c *native.Context) {
 						}
 					}
 				})
-			case 4:
-				native.Row(c).Gap(10).Children(func() {
-					native.Text(c, d.text("update.title")).Bold()
-					if native.Button(c, d.text("update.check")).Disabled(d.updateChecking).Clicked() {
-						d.checkUpdate(true)
-					}
-					if d.updateChecking {
-						native.Text(c, d.text("busy"))
-					}
-				})
-				if d.updateError != "" {
-					native.Text(c, d.updateError)
-				}
-				if !d.updateChecking && d.update.Latest != "" && !d.update.Available {
-					native.Text(c, d.text("update.current"))
-				}
-				native.Text(c, d.text("identity.title")).Bold()
-				oldScope := d.identityScope
-				native.Segmented(c, &d.identityScope, d.text("identity.local"), d.text("identity.global")).Disabled(d.busy || d.selected == "")
-				if oldScope != d.identityScope {
-					d.loadIdentity()
-				}
-				native.Row(c).Gap(12).Children(func() {
-					native.Column(c).Grow(1).Gap(6).Children(func() {
-						native.Text(c, d.text("identity.name"))
-						native.TextInput(c, &d.identity.Name).FillWidth().Disabled(d.busy)
-					})
-					native.Column(c).Grow(1).Gap(6).Children(func() {
-						native.Text(c, d.text("identity.email"))
-						native.TextInput(c, &d.identity.Email).FillWidth().Disabled(d.busy)
-					})
-				})
-				native.Row(c).Gap(12).Children(func() {
-					if native.PrimaryButton(c, d.text("identity.save")).Disabled(d.busy || strings.TrimSpace(d.identity.Name) == "" || strings.TrimSpace(d.identity.Email) == "").Clicked() {
-						d.saveIdentity()
-					}
-					if d.identitySaved {
-						native.Text(c, d.text("identity.saved"))
-					}
-				})
-				native.Text(c, d.text("identity.future")).TextColor(t.TextMuted)
-				native.Text(c, d.text("settings.language"))
-				oldLanguage := d.languageIndex
-				native.Segmented(c, &d.languageIndex, "简体中文", "English").Disabled(d.busy)
-				if oldLanguage != d.languageIndex {
-					v := d.prefs
-					v.Language = "zh-CN"
-					if d.languageIndex == 1 {
-						v.Language = "en"
-					}
-					d.savePrefs(v)
-				}
-				native.Text(c, d.text("settings.theme"))
-				oldTheme := d.themeIndex
-				native.Segmented(c, &d.themeIndex, d.text("theme.system"), d.text("theme.light"), d.text("theme.dark")).Disabled(d.busy)
-				if oldTheme != d.themeIndex {
-					v := d.prefs
-					v.Theme = []string{"system", "light", "dark"}[d.themeIndex]
-					d.savePrefs(v)
-				}
-				native.Text(c, d.text("settings.integration"))
 			case 5:
 				native.Text(c, d.text("clone.title")).Bold()
 				native.TextInput(c, &d.cloneURL).Placeholder(d.text("clone.url")).FillWidth()
@@ -625,4 +550,5 @@ func (d *Desktop) view(c *native.Context) {
 			}
 		})
 	})
+	d.settingsDialog(c)
 }

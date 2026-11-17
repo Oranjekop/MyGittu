@@ -25,6 +25,10 @@ func TestNativePages(t *testing.T) {
 					d.selected = "demo"
 					d.repos = []repository.Info{{ID: "demo", Root: "D:\\Code\\MyGittu"}}
 					d.page = page
+					if page == 4 {
+						d.page = 0
+						d.settingsOpen = true
+					}
 					d.busy = true
 					d.snapshot = status.Snapshot{Branch: "main"}
 					d.changes = []git.FileStatus{{Path: "internal/git/status.go", Index: git.Modified, Worktree: git.Clean}, {Path: "README.md", Index: git.Clean, Worktree: git.Modified}, {Path: "中文文件.txt", Index: git.Clean, Worktree: git.Untracked}}
@@ -59,7 +63,7 @@ func TestNativePages(t *testing.T) {
 }
 func TestLanguageSwitchAndEmptySettings(t *testing.T) {
 	d := New(nil, "", "")
-	d.page = 4
+	d.settingsOpen = true
 	d.busy = true
 	tt := native.NewTester(d.view, 1160, 740)
 	if !tt.HasText("语言") {
@@ -74,5 +78,28 @@ func TestLanguageSwitchAndEmptySettings(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("打开仓库…") {
 		t.Fatal("cannot switch back")
+	}
+}
+
+func TestSettingsOverlayPreservesWorkspace(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected = "demo"
+	d.page = 1
+	d.row = 2
+	d.message = "unfinished commit"
+	d.query = "search"
+	d.busy = true
+	d.openSettings()
+	tt := native.NewTester(d.view, 1160, 740)
+	if !d.settingsOpen || !tt.HasText("语言") {
+		t.Fatal("settings dialog did not open")
+	}
+	tt.Key(0, native.KeyEscape)
+	tt.Frame()
+	if d.settingsOpen {
+		t.Fatal("Escape did not close settings")
+	}
+	if d.selected != "demo" || d.page != 1 || d.row != 2 || d.message != "unfinished commit" || d.query != "search" {
+		t.Fatal("settings changed the workspace")
 	}
 }
