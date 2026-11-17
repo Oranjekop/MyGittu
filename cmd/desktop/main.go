@@ -48,6 +48,12 @@ func main() {
 			log.Fatal("Agent did not become ready")
 		}
 	}
+	if *action == "fetch" || *action == "pull" || *action == "push" {
+		if e = runRemote(client, *path, *action); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
 	if e = ui.New(client, *path, *action).Run(); e != nil {
 		log.Fatal(e)
 	}

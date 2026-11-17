@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"mygittu/internal/app"
 	"mygittu/internal/buildinfo"
+	git "mygittu/internal/git"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
 	"mygittu/internal/status"
 	"net"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -36,8 +38,33 @@ type Params struct {
 	Scope        string          `json:"scope"`
 }
 type Server struct {
-	Service *app.Service
-	Cache   *status.Cache
+	Service   *app.Service
+	Cache     *status.Cache
+	discovery sync.Map
+}
+
+func (s *Server) ensureRepository(path string) bool {
+	if _, ok := s.Service.Registry.FindPath(path); ok {
+		return true
+	}
+	root, ok := repository.FindGitRoot(path)
+	if !ok {
+		return false
+	}
+	key := repository.Key(root)
+	if _, loaded := s.discovery.LoadOrStore(key, struct{}{}); !loaded {
+		go func() {
+			defer s.discovery.Delete(key)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			info, err := s.Service.Registry.Register(ctx, root)
+			if err != nil || s.Cache == nil {
+				return
+			}
+			_ = s.Cache.Refresh(ctx, info.ID)
+		}()
+	}
+	return true
 }
 
 func (s *Server) Handle(ctx context.Context, r Request) Response {
@@ -89,31 +116,15 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 	case "repo.register":
 		result, e = s.Service.Registry.Register(ctx, p.Path)
 	case "repo.contains":
-		_, ok := s.Service.Registry.FindPath(p.Path)
-		if !ok && filepath.IsAbs(p.Path) {
-			if _, markerFound := repository.FindGitRoot(p.Path); markerFound {
-				ok = true
-				go func(path string) {
-					discoverContext, discoverCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-					defer discoverCancel()
-					info, discoverErr := s.Service.Registry.Register(discoverContext, path)
-					if discoverErr != nil {
-						return
-					}
-					if s.Cache == nil {
-						return
-					}
-					refreshContext, refreshCancel := context.WithTimeout(context.Background(), 2*time.Minute)
-					defer refreshCancel()
-					_ = s.Cache.Refresh(refreshContext, info.ID)
-				}(p.Path)
-			}
-		}
+		ok := filepath.IsAbs(p.Path) && s.ensureRepository(p.Path)
 		result = map[string]any{"repository": ok}
 	case "repo.unregister":
 		e = s.Service.Registry.Unregister(p.RepoID)
 		s.Cache.Invalidate(p.RepoID)
 	case "overlay.lookup":
+		if s.Cache.Lookup(p.Path).State == git.Unknown && filepath.IsAbs(p.Path) {
+			s.ensureRepository(p.Path)
+		}
 		result = s.Cache.Lookup(p.Path)
 	case "ui.open":
 		e = s.Service.OpenDesktop(ctx, p.Path, p.Action)

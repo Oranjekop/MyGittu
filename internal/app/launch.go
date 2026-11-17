@@ -11,7 +11,7 @@ import (
 
 func (s *Service) OpenDesktop(ctx context.Context, path, action string) error {
 	switch action {
-	case "status", "commit", "log", "diff", "clone", "pull", "push":
+	case "status", "commit", "log", "diff", "clone", "fetch", "pull", "push":
 	default:
 		return fmt.Errorf("unsupported UI action")
 	}

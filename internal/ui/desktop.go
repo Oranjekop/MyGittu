@@ -436,7 +436,7 @@ func (d *Desktop) view(c *native.Context) {
 				if d.selected != "" && d.page != 5 {
 					for _, op := range []struct{ label, action string }{{"remote.fetch", "fetch"}, {"remote.pull", "pull"}, {"remote.push", "push"}} {
 						if iconButton(c, d.text(op.label), op.label, false).Disabled(d.busy).Clicked() {
-							d.mutate("git.remote", ipc.Params{Action: op.action})
+							d.remoteAction(op.action)
 						}
 					}
 				}

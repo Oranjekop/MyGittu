@@ -7,6 +7,7 @@ import (
 	"io"
 	"mygittu/internal/buildinfo"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +27,36 @@ type releaseInfo struct {
 }
 
 func (s *Service) CheckUpdate(ctx context.Context) (UpdateInfo, error) {
-	return checkUpdate(ctx, &http.Client{Timeout: 5 * time.Second}, "https://api.github.com/repos/Oranjekop/MyGittu/releases/latest", buildinfo.Version)
+	client := &http.Client{Timeout: 5 * time.Second}
+	info, err := checkUpdate(ctx, client, "https://api.github.com/repos/Oranjekop/MyGittu/releases/latest", buildinfo.Version)
+	if err == nil {
+		return info, nil
+	}
+	if fallback, fallbackErr := checkUpdateRedirect(ctx, client, "https://github.com/Oranjekop/MyGittu/releases/latest", buildinfo.Version); fallbackErr == nil {
+		return fallback, nil
+	}
+	return info, err
+}
+
+func checkUpdateRedirect(ctx context.Context, client *http.Client, endpoint, current string) (UpdateInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return UpdateInfo{Current: current}, err
+	}
+	req.Header.Set("User-Agent", "MyGittu/"+current)
+	res, err := client.Do(req)
+	if err != nil {
+		return UpdateInfo{Current: current}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK || res.Request == nil {
+		return UpdateInfo{Current: current}, fmt.Errorf("release page returned HTTP %d", res.StatusCode)
+	}
+	latest := strings.TrimPrefix(path.Base(res.Request.URL.Path), "v")
+	if _, ok := stableVersion(latest); !ok {
+		return UpdateInfo{Current: current}, fmt.Errorf("release page did not contain a stable version")
+	}
+	return UpdateInfo{Current: current, Latest: latest, URL: "https://github.com/Oranjekop/MyGittu/releases/tag/v" + latest, Available: compareVersions(latest, current) > 0}, nil
 }
 func checkUpdate(ctx context.Context, client *http.Client, endpoint, current string) (UpdateInfo, error) {
 	req, e := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
