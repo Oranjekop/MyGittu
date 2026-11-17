@@ -42,6 +42,7 @@ type Desktop struct {
 	languageIndex, themeIndex          int
 	showPath                           bool
 	identity                           app.Identity
+	commitIdentity                     app.Identity
 	identityScope                      int
 	identitySaved                      bool
 	update                             app.UpdateInfo
@@ -186,7 +187,7 @@ func (d *Desktop) refresh() {
 		switch page {
 		case 0, 2:
 			e = d.Client.Call(ctx, "status.refresh", ipc.Params{RepoID: id}, &snap)
-			if e == nil && page == 0 {
+			if e == nil {
 				e = d.Client.Call(ctx, "identity.get", ipc.Params{RepoID: id, Scope: "local"}, &identity)
 			}
 		case 1:
@@ -205,8 +206,9 @@ func (d *Desktop) refresh() {
 			}
 		}
 		return func() {
-			if page == 0 {
+			if page == 0 || page == 2 {
 				d.identity = editableIdentity(identity)
+				d.commitIdentity = identity
 			}
 			d.snapshot = snap
 			d.changes = changes
@@ -276,10 +278,11 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			native.TextArea(c, &d.message).Placeholder(d.text("commit.message")).FillWidth().Height(72).Disabled(d.busy)
 			native.Row(c).Gap(8).Children(func() {
 				label := d.text("identity.edit")
-				if d.identity.EffectiveName != "" {
-					label = d.identity.EffectiveName
+				if d.commitIdentity.EffectiveName != "" {
+					label = d.commitIdentity.EffectiveName
 				}
-				if iconButton(c, label, "user", false).Grow(1).Tooltip(d.identity.EffectiveEmail).Disabled(d.busy).Clicked() {
+				if iconButton(c, label, "user", false).Grow(1).Tooltip(d.commitIdentity.EffectiveEmail).Disabled(d.busy).Clicked() {
+					d.identityScope = 0
 					d.openSettings()
 				}
 				if iconButton(c, d.text("commit.submit"), "commit", true).Disabled(d.busy || d.stagedCount == 0 || strings.TrimSpace(d.message) == "").Clicked() {

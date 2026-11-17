@@ -72,6 +72,10 @@ func (d *Desktop) saveIdentity() {
 	d.task(func(ctx context.Context) (func(), error) {
 		var saved app.Identity
 		e := d.Client.Call(ctx, "identity.update", ipc.Params{RepoID: id, Identity: v}, &saved)
-		return func() { d.identity = saved; d.identitySaved = true }, e
+		var current app.Identity
+		if e == nil && id != "" {
+			e = d.Client.Call(ctx, "identity.get", ipc.Params{RepoID: id, Scope: "local"}, &current)
+		}
+		return func() { d.identity = saved; d.identitySaved = true; d.commitIdentity = current }, e
 	})
 }

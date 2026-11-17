@@ -38,6 +38,7 @@ func TestNativePages(t *testing.T) {
 					d.row = 1
 					d.comparison = &editor.DiffState{Old: editor.NewBuffer("# MyGittu\n\nA Git desktop client.\n"), New: editor.NewBuffer("# MyGittu\n\nA multilingual Git desktop client.\n\nSupports Windows and macOS.\n"), Layout: editor.DiffSplit}
 					d.identity = app.Identity{Name: "Alex Chen", Email: "alex@example.invalid", Scope: "local", EffectiveName: "Alex Chen", EffectiveEmail: "alex@example.invalid"}
+					d.commitIdentity = d.identity
 					tt := native.NewTester(d.view, 1160, 740)
 					if !tt.HasText("MyGittu") {
 						t.Fatal("missing application title")
