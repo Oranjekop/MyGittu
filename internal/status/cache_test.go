@@ -1,0 +1,95 @@
+package status
+
+import (
+	"context"
+	"fmt"
+	"mygittu/internal/app"
+	git "mygittu/internal/git"
+	"mygittu/internal/repository"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func fixture(tb testing.TB) (*Cache, repository.Info) {
+	tb.Helper()
+	dir := tb.TempDir()
+	if out, e := exec.Command("git", "init", dir).CombinedOutput(); e != nil {
+		tb.Fatalf("git init: %s %v", out, e)
+	}
+	r, e := git.NewRunner("")
+	if e != nil {
+		tb.Fatal(e)
+	}
+	reg, e := repository.New(r, "")
+	if e != nil {
+		tb.Fatal(e)
+	}
+	info, e := reg.Register(context.Background(), dir)
+	if e != nil {
+		tb.Fatal(e)
+	}
+	return New(&app.Service{Runner: r, Registry: reg}), info
+}
+func TestWatcherRefreshAndStop(t *testing.T) {
+	c, repo := fixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { c.Run(ctx); close(done) }()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Error("watcher failed to stop")
+		}
+	}()
+	await := func(state git.State) {
+		t.Helper()
+		deadline := time.Now().Add(8 * time.Second)
+		for time.Now().Before(deadline) {
+			if c.Lookup(repo.Root).State == state {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Fatalf("expected %s, got %+v", state, c.Lookup(repo.Root))
+	}
+	await(git.Clean)
+	if e := os.WriteFile(filepath.Join(repo.Root, "new.txt"), []byte("new"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	await(git.Untracked)
+}
+func TestLookupBoundaries(t *testing.T) {
+	c, repo := fixture(t)
+	c.snapshots[repo.ID] = Snapshot{Generation: 1, states: map[string]git.State{".": git.Clean, repository.Key("ignored"): git.Ignored, repository.Key(filepath.Join("dir", "file")): git.Conflicted, repository.Key("dir"): git.Conflicted}}
+	for _, p := range []string{filepath.Join(repo.Root, "..", "outside"), filepath.Join(repo.Root, ".git", "config"), "relative"} {
+		if got := c.Lookup(p); got.State != git.Unknown {
+			t.Errorf("unexpected overlay for %q: %+v", p, got)
+		}
+	}
+	if c.Lookup(filepath.Join(repo.Root, "ignored", "child")).State != git.Ignored {
+		t.Fatal("ignored directory propagation")
+	}
+	if c.Lookup(filepath.Join(repo.Root, "dir")).State != git.Conflicted {
+		t.Fatal("conflict directory")
+	}
+}
+func BenchmarkLookup100K(b *testing.B) {
+	c, repo := fixture(b)
+	states := make(map[string]git.State, 100001)
+	states["."] = git.Modified
+	for i := 0; i < 100000; i++ {
+		states[repository.Key(fmt.Sprintf("file-%06d", i))] = git.Modified
+	}
+	c.snapshots[repo.ID] = Snapshot{Generation: 1, states: states}
+	path := filepath.Join(repo.Root, "file-050000")
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		c.Lookup(path)
+	}
+}

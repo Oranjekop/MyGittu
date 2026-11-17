@@ -1,0 +1,97 @@
+name: Build installers and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        shell: bash
+        run: |
+          version="$(tr -d '\r\n' < VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            [[ "$GITHUB_REF_NAME" == "v$version" ]] || { echo 'Tag must match VERSION'; exit 1; }
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+  windows:
+    needs: version
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Tests
+        run: |
+          go mod verify
+          go test ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go vet ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Install Inno Setup
+        run: choco upgrade innosetup --no-progress -y
+      - name: Build Chinese multi-architecture installer
+        run: ./packaging/windows/release.ps1 -Version '${{ needs.version.outputs.value }}'
+      - name: Native COM smoke test
+        run: |
+          & ./.work/release-amd64/Release/MyGittuShellSmoke.exe "$pwd/dist/windows/x64/MyGittuShell.dll" "$pwd" 0
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/release/*.exe
+          if-no-files-found: error
+  macos:
+    needs: version
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Tests
+        run: |
+          go mod verify
+          go test ./...
+          go vet ./...
+      - name: Build Chinese Universal installer
+        run: bash packaging/darwin/release.sh '${{ needs.version.outputs.value }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: dist/release/*.pkg
+          if-no-files-found: error
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [version, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-installer'
+          path: dist/release
+          merge-multiple: true
+      - name: Publish release with checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.value }}
+        shell: bash
+        run: |
+          python3 scripts/release_notes.py "$VERSION" > dist/release/RELEASE_NOTES.md
+          (cd dist/release && sha256sum *.exe *.pkg > SHA256SUMS.txt)
+          gh release create "v$VERSION" --verify-tag --title "MyGittu v$VERSION" --notes-file dist/release/RELEASE_NOTES.md dist/release/*.exe dist/release/*.pkg dist/release/SHA256SUMS.txt

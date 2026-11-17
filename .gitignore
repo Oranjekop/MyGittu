@@ -1,0 +1,9 @@
+bin/
+.work/
+HANDOFF.md
+*.exe
+*.dll
+*.test
+dist/
+*.res
+node_modules/

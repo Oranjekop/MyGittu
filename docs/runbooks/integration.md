@@ -1,0 +1,30 @@
+# 原生集成验证
+
+所有注册和卸载测试优先在隔离 Windows VM 完成。生产机器的 Explorer 不作为测试进程。
+
+## Windows
+
+1. 运行 Go 测试与 `packaging/windows/build.ps1`，将 DLL 与 desktop.exe 放在 bin 同目录。
+2. 用 `extensions/windows/smoke.cpp` 构建独立测试程序；先验证 DLL 可加载、三个 Overlay 工厂和菜单工厂能创建，释放后 DllCanUnloadNow 返回 S_OK。
+3. 启动 Agent，注册临时仓库并刷新状态，再运行 `shell-smoke.exe <DLL绝对路径> <仓库路径> <预期映射>`。映射为 0=None、1=Clean、2=Modified、3=Conflict。
+4. 关闭 Agent 再重复查询，必须迅速返回 None。畸形报文、超时与缓存过期测试不能使宿主崩溃。
+5. 在 VM 注册并重新启动 Explorer，验证目录/文件/背景菜单、含空格/中文路径、多选、Commit/Log/Diff 和三个图标。多选只打开第一个路径所在仓库。
+6. 使用 `register.ps1 -Uninstall`；以管理员身份运行才会同时移除 HKLM Overlay 注册。重启 Explorer 后再替换/删除仍被加载的 DLL。
+
+可用独立 LLVM MinGW 编译源码；本机使用 20261104 版本，开启 C++17、Unicode、x64、静态 C++ 运行库和 `-Werror`。正式安装包优先 MSVC，仍需对应 CI 验证。
+
+## macOS
+
+1. 在 Apple Silicon 的 Xcode 环境先编译 Swift Finder 扩展，运行 Go race 测试。
+2. 创建与签名身份匹配的 App Group 和 provisioning profiles，设置 `MYGITTU_APP_GROUP` 与 `SIGN_IDENTITY`。主程序、Agent 和扩展必须共享相同 App Group。按分发方式将 profiles 嵌入对应 bundle；脚本不会申请 Apple 账号资源。
+3. 运行 `packaging/darwin/build.sh`。使用 codesign 和 spctl 校验，完成 `xcrun notarytool submit ... --wait` 与 stapler（需要自己的 notarytool keychain profile）。
+4. 将 App 放入 Applications，启动并注册仓库，在系统设置中启用 Finder 扩展。检查 `repo.list`、0700 共享目录、0600 socket、peer UID 和 sandbox denial 日志。
+5. 验证多个目录注册、滚动出现的徽标、变化后的更新、Agent 退出/重启、Finder 重启、扩展重载。未注册目录不要求徽标覆盖。
+
+如果 App Group POSIX socket 被当前签名/沙盒组合拒绝，不能放宽目录权限或移除沙盒交付；应接入受控 XPC helper 后重新验证。本版本尚未完成该环境验收。
+
+## 性能与恢复
+
+分别建立 1 万/10 万真实文件仓库；记录注册、全量扫描、增量刷新、IPC 缓存查询和 UI 滚动的 P50/P95、CPU、峰值内存与 OS 句柄数。独立缓存微基准不能代替端到端性能验收。
+
+Agent 重启读取注册表并重建快照；缓存缺失返回 Unknown。GUI 不需要持续运行。应用启动会恢复缺失的 Agent，但尚无 OS 登录自启或服务监控器。被取消的 Hook/SSH 子进程可能需要 OS 进程组治理，发布前应补充故障注入验证。

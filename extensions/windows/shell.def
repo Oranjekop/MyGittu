@@ -1,0 +1,4 @@
+LIBRARY MyGittuShell
+EXPORTS
+ DllGetClassObject PRIVATE
+ DllCanUnloadNow PRIVATE

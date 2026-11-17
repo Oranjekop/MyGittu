@@ -1,0 +1,167 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "MyGittu",
+      "version": "0.0.1"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "name": "github.com/Microsoft/go-winio",
+      "version": "v0.6.4",
+      "purl": "pkg:golang/github.com/Microsoft/go-winio@v0.6.4",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:kJF2pamtYCWXf0xAT8sAkwKC0pMl2HYBrRPHAqyUc+g="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "github.com/ebitengine/purego",
+      "version": "v0.11.1",
+      "purl": "pkg:golang/github.com/ebitengine/purego@v0.11.1",
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:2zpWRSQNVKN4eKsKO9eM1ILDgWfYMY9GwqRmK6XeQ/0="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "github.com/egoist/mygo",
+      "version": "v0.9.2",
+      "purl": "pkg:golang/github.com/egoist/mygo@v0.9.2",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:4Yscy6Xrr8iusJyC2rYgQWUhuDjyLRSIvgNTOv2Zc0c="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "github.com/fsnotify/fsnotify",
+      "version": "v1.10.1",
+      "purl": "pkg:golang/github.com/fsnotify/fsnotify@v1.10.1",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:b0/UzAf9yR5rhf3RPm9gf3ehBPpf0oZKIjtpKrx59Ho="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "github.com/go-text/typesetting",
+      "version": "v0.3.5",
+      "purl": "pkg:golang/github.com/go-text/typesetting@v0.3.5",
+      "licenses": [
+        {
+          "expression": "Unlicense OR BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:XZPUooClHY0Vf/rFyUyuPRNEkawARaFzLMQcXLSEyPk="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "golang.org/x/image",
+      "version": "v0.46.0",
+      "purl": "pkg:golang/golang.org/x/image@v0.46.0",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:b1+oYj0Jbp6K5MDT4i4/eZpYlk3V8SJhhDKh6LBHAyQ="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "golang.org/x/net",
+      "version": "v0.59.0",
+      "purl": "pkg:golang/golang.org/x/net@v0.59.0",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:5zfYln+w5XCxwrnMMJPufRgNoXEaGxl0wo5GqPXyues="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "golang.org/x/sys",
+      "version": "v0.49.0",
+      "purl": "pkg:golang/golang.org/x/sys@v0.49.0",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "golang.org/x/text",
+      "version": "v0.43.0",
+      "purl": "pkg:golang/golang.org/x/text@v0.43.0",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc="
+        }
+      ]
+    }
+  ]
+}

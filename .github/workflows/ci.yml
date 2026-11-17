@@ -1,0 +1,41 @@
+name: build-and-test
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  go:
+    strategy:
+      matrix:
+        os: [windows-2022, windows-11-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod verify
+      - run: go vet ./...
+      - run: go test ./...
+      - if: runner.os == 'macOS'
+        run: go test -race ./...
+      - run: go build ./cmd/agent ./cmd/desktop ./cmd/mygittu
+      - run: go test ./internal/status -run '^$' -bench BenchmarkLookup100K -benchmem
+      - if: runner.os == 'macOS'
+        run: |
+          mkdir -p .work
+          xcrun swiftc -target arm64-apple-macosx13.0 -module-name MyGittuFinder -emit-executable -application-extension -framework Cocoa -framework FinderSync -Xlinker -e -Xlinker _NSExtensionMain extensions/darwin/FinderSync.swift -o .work/MyGittuFinder
+      - if: runner.os == 'Windows' && runner.arch == 'X64'
+        run: |
+          cmake -S extensions/windows -B .work/windows -A x64
+          cmake --build .work/windows --config Release
+          & ./.work/windows/Release/MyGittuShellSmoke.exe "$pwd/.work/windows/Release/MyGittuShell.dll" "$pwd" 0
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.4'
+      - run: go test ./internal/git -fuzz FuzzStatus -fuzztime 10s
+      - run: go test ./internal/ipc -fuzz FuzzFrame -fuzztime 10s
