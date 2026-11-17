@@ -10,7 +10,7 @@ for command in desktop agent mygittu; do
     CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -trimpath -ldflags "-s -w -X mygittu/internal/buildinfo.Version=$VERSION" -o ".work/universal/$command-$arch" "./cmd/$command"
   done
   lipo -create ".work/universal/$command-amd64" ".work/universal/$command-arm64" -output "$APP/Contents/MacOS/$command"
-  lipo -verify_arch x86_64 arm64 "$APP/Contents/MacOS/$command"
+  lipo "$APP/Contents/MacOS/$command" -verify_arch x86_64 arm64
 done
 cp packaging/darwin/MyGittu.icns "$APP/Contents/Resources/"
 cp LICENSE THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"
