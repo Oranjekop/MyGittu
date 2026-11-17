@@ -1,7 +1,7 @@
 #ifndef AppVersion
   #define AppVersion "0.0.1"
 #endif
-#define RepoRoot SourcePath + "..\.."
+#define RepoRoot AddBackslash(SourcePath) + "..\.."
 
 [Setup]
 AppId={{8E775DC6-289F-4CA1-9058-985C56602F39}
@@ -33,7 +33,7 @@ ChangesAssociations=yes
 UninstallDisplayName=MyGittu
 
 [Languages]
-Name: "zh_CN"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "zh_CN"; MessagesFile: "{#RepoRoot}\packaging\windows\languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: desktopicon; Description: "创建桌面快捷方式"; Flags: unchecked

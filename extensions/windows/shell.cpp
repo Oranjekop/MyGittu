@@ -30,9 +30,12 @@ static const CLSID ids[] = {{0x29810e41,
 static HMODULE moduleHandle;
 static std::atomic<long> objects{0};
 static std::wstring modulePath() {
-  wchar_t p[32768];
-  DWORD n = GetModuleFileNameW(moduleHandle, p, 32768);
-  return n && n < 32768 ? std::wstring(p, n) : L"";
+  std::wstring p(32768, L'\0');
+  DWORD n = GetModuleFileNameW(moduleHandle, p.data(), 32768);
+  if (!n || n >= 32768)
+    return L"";
+  p.resize(n);
+  return p;
 }
 static std::wstring pipeName() {
   HANDLE token = nullptr;
@@ -279,9 +282,9 @@ public:
         }
       }
     } else if (folder) {
-      wchar_t p[32768];
-      if (SHGetPathFromIDListEx(folder, p, 32768, GPFIDL_DEFAULT))
-        path = p;
+      std::vector<wchar_t> p(32768);
+      if (SHGetPathFromIDListEx(folder, p.data(), 32768, GPFIDL_DEFAULT))
+        path = p.data();
     }
     return path.empty() ? E_FAIL : S_OK;
   } catch (...) {
@@ -306,8 +309,10 @@ public:
   }
   HRESULT STDMETHODCALLTYPE InvokeCommand(CMINVOKECOMMANDINFO *info) override
       try {
-    if (!info || HIWORD(info->lpVerb) || LOWORD(info->lpVerb) > 3 ||
-        path.empty())
+    if (!info || path.empty())
+      return E_INVALIDARG;
+    const auto command = reinterpret_cast<UINT_PTR>(info->lpVerb);
+    if (command > 3)
       return E_INVALIDARG;
     const wchar_t *actions[] = {L"status", L"commit", L"log", L"diff"};
     auto dll = modulePath();
@@ -315,8 +320,8 @@ public:
     if (slash == std::wstring::npos)
       return E_FAIL;
     auto exe = dll.substr(0, slash + 1) + L"desktop.exe";
-    auto cmd = quote(exe) + L" --action " + actions[LOWORD(info->lpVerb)] +
-               L" --path " + quote(path);
+    auto cmd = quote(exe) + L" --action " + actions[command] + L" --path " +
+               quote(path);
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
