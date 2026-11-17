@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"mygittu/internal/app"
 	"mygittu/internal/buildinfo"
+	"mygittu/internal/repository"
 	"mygittu/internal/settings"
 	"mygittu/internal/status"
 	"net"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 )
@@ -88,6 +90,25 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.Registry.Register(ctx, p.Path)
 	case "repo.contains":
 		_, ok := s.Service.Registry.FindPath(p.Path)
+		if !ok && filepath.IsAbs(p.Path) {
+			if _, markerFound := repository.FindGitRoot(p.Path); markerFound {
+				ok = true
+				go func(path string) {
+					discoverContext, discoverCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+					defer discoverCancel()
+					info, discoverErr := s.Service.Registry.Register(discoverContext, path)
+					if discoverErr != nil {
+						return
+					}
+					if s.Cache == nil {
+						return
+					}
+					refreshContext, refreshCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+					defer refreshCancel()
+					_ = s.Cache.Refresh(refreshContext, info.ID)
+				}(p.Path)
+			}
+		}
 		result = map[string]any{"repository": ok}
 	case "repo.unregister":
 		e = s.Service.Registry.Unregister(p.RepoID)

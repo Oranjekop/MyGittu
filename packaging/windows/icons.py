@@ -1,5 +1,4 @@
-"""Generate tiny deterministic overlay resources without external libraries."""
-import math
+"""Generate small deterministic Explorer overlay resources without external libraries."""
 import struct
 from pathlib import Path
 
@@ -8,14 +7,14 @@ for state, color in [("clean", (54, 154, 83)), ("modified", (224, 153, 36)), ("c
     pixels = bytearray()
     for y in reversed(range(32)):
         for x in range(32):
-            inside = (x - 16) ** 2 + (y - 16) ** 2 <= 14 ** 2
+            inside = (x - 25) ** 2 + (y - 25) ** 2 <= 6 ** 2
             mark = False
             if state == "clean":
-                mark = (7 <= x <= 14 and abs(y - (x + 8)) <= 2) or (13 <= x <= 24 and abs(y - (-x + 34)) <= 2)
+                mark = (21 <= x <= 24 and abs(y - (x - 1)) <= 1) or (24 <= x <= 29 and abs(y - (-x + 49)) <= 1)
             elif state == "modified":
-                mark = 9 <= x <= 23 and abs(y - (32 - x)) <= 2
+                mark = 22 <= x <= 28 and abs(y - (31 - x)) <= 1
             else:
-                mark = (14 <= x <= 18 and 7 <= y <= 19) or (14 <= x <= 18 and 23 <= y <= 26)
+                mark = (24 <= x <= 26 and 20 <= y <= 27) or (24 <= x <= 26 and 29 <= y <= 30)
             r, g, b = (255, 255, 255) if mark else color
             pixels.extend((b, g, r, 255 if inside else 0))
     mask = bytes(4 * 32)

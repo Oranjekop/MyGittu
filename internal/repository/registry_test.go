@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	git "mygittu/internal/git"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -43,5 +44,20 @@ func TestRegistryPersistence(t *testing.T) {
 	empty, e := New(r, file)
 	if e != nil || len(empty.List()) != 0 {
 		t.Fatal("unregister not persisted")
+	}
+}
+
+func TestFindGitRootFromUnopenedChild(t *testing.T) {
+	root := t.TempDir()
+	if out, err := exec.Command("git", "init", root).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %s %v", out, err)
+	}
+	child := filepath.Join(root, "src", "pkg")
+	if err := os.MkdirAll(child, 0700); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := FindGitRoot(filepath.Join(child, "main.go"))
+	if !ok || filepath.Clean(got) != filepath.Clean(root) {
+		t.Fatalf("FindGitRoot=%q,%v want %q,true", got, ok, root)
 	}
 }

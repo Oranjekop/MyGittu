@@ -170,6 +170,31 @@ func (r *Registry) FindPath(path string) (Info, bool) {
 	}
 	return best, found
 }
+
+// FindGitRoot checks the lightweight repository marker without invoking Git.
+// Explorer can use this path for folders that the user has never opened.
+func FindGitRoot(path string) (string, bool) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", false
+	}
+	info, err := os.Stat(absolute)
+	if err == nil && !info.IsDir() {
+		absolute = filepath.Dir(absolute)
+	}
+	for depth := 0; depth < 64; depth++ {
+		marker := filepath.Join(absolute, ".git")
+		if _, err := os.Stat(marker); err == nil {
+			return absolute, true
+		}
+		parent := filepath.Dir(absolute)
+		if parent == absolute {
+			break
+		}
+		absolute = parent
+	}
+	return "", false
+}
 func (r *Registry) List() []Info { r.mu.RLock(); defer r.mu.RUnlock(); return r.list() }
 func (r *Registry) list() []Info {
 	a := make([]Info, 0, len(r.repos))

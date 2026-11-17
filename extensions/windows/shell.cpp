@@ -227,8 +227,7 @@ static bool probeRepository(std::wstring path) {
   auto known = rpc("repo.contains", "{\"path\":\"" + jsonPath(path) + "\"}");
   if (known.find("\"repository\":true") != std::string::npos)
     return true;
-  if (path.size() < 3 || path[1] != L':' ||
-      GetDriveTypeW(path.substr(0, 3).c_str()) != DRIVE_FIXED)
+  if (path.size() < 3)
     return false;
   if (!(GetFileAttributesW(path.c_str()) & FILE_ATTRIBUTE_DIRECTORY)) {
     auto slash = path.find_last_of(L"\\/");
