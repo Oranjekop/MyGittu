@@ -40,7 +40,6 @@ type Desktop struct {
 	stagedCount                        int
 	prefs                              settings.Values
 	languageIndex, themeIndex          int
-	showPath                           bool
 	identity                           app.Identity
 	commitIdentity                     app.Identity
 	identityScope                      int
@@ -385,17 +384,6 @@ func (d *Desktop) view(c *native.Context) {
 					d.page = item.page
 					d.offset = 0
 					d.refresh()
-				}
-			}
-			if native.Button(c, d.text("repo.manual")).FillWidth().Disabled(d.busy).Clicked() {
-				d.showPath = !d.showPath
-			}
-			if d.showPath {
-				if native.TextInput(c, &d.path).Placeholder(d.text("repo.path")).FillWidth().Disabled(d.busy).Submitted() {
-					d.open(d.path)
-				}
-				if native.Button(c, d.text("repo.open")).FillWidth().Disabled(d.busy || strings.TrimSpace(d.path) == "").Clicked() {
-					d.open(d.path)
 				}
 			}
 			if len(d.repos) > 0 {

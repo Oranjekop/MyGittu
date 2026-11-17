@@ -20,7 +20,6 @@ func (d *Desktop) openWork(ctx context.Context, path string) (func(), error) {
 		d.selected = info.ID
 		d.path = info.Root
 		d.offset = 0
-		d.showPath = false
 		if d.page == 5 || d.page == 6 {
 			d.page = 0
 		}
