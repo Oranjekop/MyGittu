@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	native "github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"image/png"
 	"mygittu/internal/app"
 	git "mygittu/internal/git"
@@ -17,7 +18,7 @@ import (
 func TestNativePages(t *testing.T) {
 	for _, language := range []string{"zh-CN", "en"} {
 		t.Run(language, func(t *testing.T) {
-			for page := 0; page < 5; page++ {
+			for page := 0; page < 7; page++ {
 				t.Run(fmt.Sprint(page), func(t *testing.T) {
 					d := New(nil, "", "")
 					d.applyPrefs(settings.Values{Language: language, Theme: "light"})
@@ -30,6 +31,8 @@ func TestNativePages(t *testing.T) {
 					d.stagedCount = 1
 					d.logs = []app.Commit{{Hash: "0123456789012345678901234567890123456789", Subject: "Implement repository status", Author: "Developer", Date: "2026-11-17"}}
 					d.detail = "* main\n  feature/status"
+					d.row = 1
+					d.comparison = &editor.DiffState{Old: editor.NewBuffer("# MyGittu\n\nA Git desktop client.\n"), New: editor.NewBuffer("# MyGittu\n\nA multilingual Git desktop client.\n\nSupports Windows and macOS.\n"), Layout: editor.DiffSplit}
 					d.identity = app.Identity{Name: "Alex Chen", Email: "alex@example.invalid", Scope: "local", EffectiveName: "Alex Chen", EffectiveEmail: "alex@example.invalid"}
 					tt := native.NewTester(d.view, 1160, 740)
 					if !tt.HasText("MyGittu") {

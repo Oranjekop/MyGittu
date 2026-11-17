@@ -11,16 +11,19 @@ import (
 
 func (s *Service) OpenDesktop(ctx context.Context, path, action string) error {
 	switch action {
-	case "status", "commit", "log", "diff":
+	case "status", "commit", "log", "diff", "clone", "pull", "push":
 	default:
 		return fmt.Errorf("unsupported UI action")
 	}
 	if !filepath.IsAbs(path) {
 		return fmt.Errorf("absolute repository path required")
 	}
-	repo, e := s.Registry.Discover(ctx, path)
-	if e != nil {
-		return e
+	if action != "clone" {
+		repo, e := s.Registry.Discover(ctx, path)
+		if e != nil {
+			return e
+		}
+		path = repo.Root
 	}
 	self, e := os.Executable()
 	if e != nil {
@@ -30,7 +33,7 @@ func (s *Service) OpenDesktop(ctx context.Context, path, action string) error {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	cmd := exec.Command(filepath.Join(filepath.Dir(self), name), "--path", repo.Root, "--action", action)
+	cmd := exec.Command(filepath.Join(filepath.Dir(self), name), "--path", path, "--action", action)
 	if e = cmd.Start(); e != nil {
 		return e
 	}

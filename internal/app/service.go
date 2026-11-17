@@ -7,6 +7,8 @@ import (
 	git "mygittu/internal/git"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -195,4 +197,27 @@ func (s *Service) Remote(ctx context.Context, id, action string) error {
 	}
 	_, e := s.Write(ctx, id, args...)
 	return e
+}
+func (s *Service) Clone(ctx context.Context, url, destination string) (repository.Info, error) {
+	if strings.TrimSpace(url) == "" || strings.HasPrefix(url, "-") || strings.Contains(url, "::") {
+		return repository.Info{}, fmt.Errorf("clone URL required")
+	}
+	if filepath.IsAbs(destination) == false {
+		return repository.Info{}, fmt.Errorf("absolute destination required")
+	}
+	if _, e := os.Stat(destination); e == nil {
+		entries, err := os.ReadDir(destination)
+		if err != nil || len(entries) > 0 {
+			return repository.Info{}, fmt.Errorf("destination must be an empty folder")
+		}
+	} else if !os.IsNotExist(e) {
+		return repository.Info{}, e
+	}
+	if e := os.MkdirAll(filepath.Dir(destination), 0700); e != nil {
+		return repository.Info{}, e
+	}
+	if _, e := s.Runner.Run(ctx, "", "clone", "--", url, destination); e != nil {
+		return repository.Info{}, e
+	}
+	return s.Registry.Register(ctx, destination)
 }

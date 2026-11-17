@@ -42,6 +42,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Install Inno Setup
         run: choco upgrade innosetup --no-progress -y
+      - name: Validate sparse identity package
+        run: ./packaging/windows/build-sparse.ps1 -Version '${{ needs.version.outputs.value }}'
       - name: Build Chinese multi-architecture installer
         run: ./packaging/windows/release.ps1 -Version '${{ needs.version.outputs.value }}'
       - name: Native COM smoke test

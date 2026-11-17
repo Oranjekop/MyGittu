@@ -6,6 +6,7 @@
 #include <sddl.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <shobjidl.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -222,16 +223,129 @@ static std::wstring quote(const std::wstring &s) {
   q.append(slashes * 2, L'\\');
   return q + L"\"";
 }
+static bool probeRepository(std::wstring path) {
+  auto known = rpc("repo.contains", "{\"path\":\"" + jsonPath(path) + "\"}");
+  if (known.find("\"repository\":true") != std::string::npos)
+    return true;
+  if (path.size() < 3 || path[1] != L':' ||
+      GetDriveTypeW(path.substr(0, 3).c_str()) != DRIVE_FIXED)
+    return false;
+  if (!(GetFileAttributesW(path.c_str()) & FILE_ATTRIBUTE_DIRECTORY)) {
+    auto slash = path.find_last_of(L"\\/");
+    if (slash == std::wstring::npos)
+      return false;
+    path.resize(slash);
+  }
+  for (int depth = 0; depth < 64 && path.size() >= 3; depth++) {
+    if (GetFileAttributesW((path + L"\\.git").c_str()) !=
+        INVALID_FILE_ATTRIBUTES)
+      return true;
+    auto slash = path.find_last_of(L"\\/");
+    if (slash == std::wstring::npos || slash < 3)
+      break;
+    path.resize(slash);
+  }
+  return false;
+}
+static bool repositoryPath(const std::wstring &path) {
+  struct Entry {
+    bool repository;
+    ULONGLONG until;
+  };
+  static std::mutex mutex;
+  static std::unordered_map<std::wstring, Entry> cache;
+  auto now = GetTickCount64();
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    auto found = cache.find(path);
+    if (found != cache.end() && found->second.until > now)
+      return found->second.repository;
+  }
+  bool result = probeRepository(path);
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (cache.size() >= 1024)
+      cache.clear();
+    cache[path] = {result, now + 2000};
+  }
+  return result;
+}
+static const wchar_t *actions[] = {L"status", L"commit", L"log",  L"diff",
+                                   L"pull",   L"push",   L"clone"};
+static const wchar_t *commandTitle(int action) {
+  const wchar_t *en[] = {L"Changes", L"Commit…", L"History", L"Diff",
+                         L"Pull…",   L"Push…",   L"Clone…"};
+  const wchar_t *zh[] = {L"变更",  L"提交…", L"历史", L"差异",
+                         L"拉取…", L"推送…", L"克隆…"};
+  return english() ? en[action] : zh[action];
+}
+static HRESULT launch(const std::wstring &path, int action) {
+  if (path.empty() || action < 0 || action > 6)
+    return E_INVALIDARG;
+  auto dll = modulePath();
+  auto slash = dll.find_last_of(L"\\/");
+  if (slash == std::wstring::npos)
+    return E_FAIL;
+  auto exe = dll.substr(0, slash + 1) + L"desktop.exe";
+  auto cmd =
+      quote(exe) + L" --action " + actions[action] + L" --path " + quote(path);
+  STARTUPINFOW si{};
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi{};
+  if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0,
+                      nullptr, nullptr, &si, &pi))
+    return HRESULT_FROM_WIN32(GetLastError());
+  CloseHandle(pi.hThread);
+  CloseHandle(pi.hProcess);
+  return S_OK;
+}
+static HBITMAP menuBitmap() {
+  auto icon =
+      static_cast<HICON>(LoadImageW(moduleHandle, MAKEINTRESOURCEW(104),
+                                    IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+  if (!icon)
+    return nullptr;
+  BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  info.bmiHeader.biWidth = 16;
+  info.bmiHeader.biHeight = -16;
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+  void *bits = nullptr;
+  auto bitmap =
+      CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+  if (bitmap) {
+    ZeroMemory(bits, 16 * 16 * 4);
+    auto dc = CreateCompatibleDC(nullptr);
+    auto old = SelectObject(dc, bitmap);
+    DrawIconEx(dc, 0, 0, icon, 16, 16, 0, nullptr, DI_NORMAL);
+    SelectObject(dc, old);
+    DeleteDC(dc);
+  }
+  DestroyIcon(icon);
+  return bitmap;
+}
 class Shell final : public IShellExtInit,
                     public IContextMenu,
                     public IShellIconOverlayIdentifier {
   std::atomic<ULONG> refs{1};
   int kind;
   std::wstring path;
+  std::vector<int> commands;
+  HBITMAP bitmap = nullptr;
 
 public:
-  explicit Shell(int k) : kind(k) { objects++; }
-  ~Shell() { objects--; }
+  explicit Shell(int k) : kind(k) {
+    if (k == 0)
+      bitmap = menuBitmap();
+    objects++;
+  }
+  ~Shell() {
+    if (bitmap)
+      DeleteObject(bitmap);
+    objects--;
+  }
   HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void **pp) override {
     if (!pp)
       return E_POINTER;
@@ -293,17 +407,39 @@ public:
   HRESULT STDMETHODCALLTYPE QueryContextMenu(HMENU menu, UINT pos, UINT first,
                                              UINT last, UINT flags) override
       try {
-    if ((flags & CMF_DEFAULTONLY) || path.empty() || last - first < 3)
+    if ((flags & CMF_DEFAULTONLY) || path.empty() || last < first)
       return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
-    const wchar_t *en[] = {L"MyGittu · Status", L"MyGittu · Commit",
-                           L"MyGittu · Log", L"MyGittu · Diff"};
-    const wchar_t *zh[] = {L"MyGittu · 状态", L"MyGittu · 提交",
-                           L"MyGittu · 历史", L"MyGittu · 差异"};
-    auto labels = english() ? en : zh;
-    for (UINT i = 0; i < 4; i++)
-      InsertMenuW(menu, pos + i, MF_BYPOSITION | MF_STRING, first + i,
-                  labels[i]);
-    return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 4);
+    commands = repositoryPath(path) ? std::vector<int>{0, 4, 1, 5, 2, 3}
+                                    : std::vector<int>{6};
+    if (last - first + 1 < commands.size())
+      return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
+    auto popup = CreatePopupMenu();
+    if (!popup)
+      return E_OUTOFMEMORY;
+    for (UINT i = 0; i < commands.size(); i++) {
+      MENUITEMINFOW item{};
+      item.cbSize = sizeof(item);
+      item.fMask = MIIM_ID | MIIM_STRING | MIIM_BITMAP;
+      item.wID = first + i;
+      item.dwTypeData = const_cast<LPWSTR>(commandTitle(commands[i]));
+      item.hbmpItem = bitmap;
+      if (!InsertMenuItemW(popup, i, TRUE, &item)) {
+        DestroyMenu(popup);
+        return E_FAIL;
+      }
+    }
+    MENUITEMINFOW root{};
+    root.cbSize = sizeof(root);
+    root.fMask = MIIM_STRING | MIIM_SUBMENU | MIIM_BITMAP;
+    root.dwTypeData = const_cast<LPWSTR>(L"MyGittu");
+    root.hSubMenu = popup;
+    root.hbmpItem = bitmap;
+    if (!InsertMenuItemW(menu, pos, TRUE, &root)) {
+      DestroyMenu(popup);
+      return E_FAIL;
+    }
+    return MAKE_HRESULT(SEVERITY_SUCCESS, 0,
+                        static_cast<USHORT>(commands.size()));
   } catch (...) {
     return E_FAIL;
   }
@@ -312,25 +448,9 @@ public:
     if (!info || path.empty())
       return E_INVALIDARG;
     const auto command = reinterpret_cast<UINT_PTR>(info->lpVerb);
-    if (command > 3)
+    if (command >= commands.size())
       return E_INVALIDARG;
-    const wchar_t *actions[] = {L"status", L"commit", L"log", L"diff"};
-    auto dll = modulePath();
-    auto slash = dll.find_last_of(L"\\/");
-    if (slash == std::wstring::npos)
-      return E_FAIL;
-    auto exe = dll.substr(0, slash + 1) + L"desktop.exe";
-    auto cmd = quote(exe) + L" --action " + actions[command] + L" --path " +
-               quote(path);
-    STARTUPINFOW si{};
-    si.cb = sizeof(si);
-    PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0,
-                        nullptr, nullptr, &si, &pi))
-      return HRESULT_FROM_WIN32(GetLastError());
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    return S_OK;
+    return launch(path, commands[command]);
   } catch (...) {
     return E_FAIL;
   }
@@ -366,6 +486,7 @@ public:
     return S_OK;
   }
 };
+#include "modern.h"
 class Factory final : public IClassFactory {
   std::atomic<ULONG> refs{1};
   int kind;
@@ -394,7 +515,11 @@ public:
                                            void **pp) override {
     if (outer)
       return CLASS_E_NOAGGREGATION;
-    auto s = new (std::nothrow) Shell(kind);
+    IUnknown *s = nullptr;
+    if (kind == 4)
+      s = static_cast<IExplorerCommand *>(new (std::nothrow) Modern());
+    else
+      s = static_cast<IShellExtInit *>(new (std::nothrow) Shell(kind));
     if (!s)
       return E_OUTOFMEMORY;
     auto hr = s->QueryInterface(iid, pp);
@@ -414,6 +539,16 @@ extern "C" HRESULT __stdcall DllGetClassObject(REFCLSID clsid, REFIID iid,
   if (!pp)
     return E_POINTER;
   *pp = nullptr;
+  auto modernID = ids[0];
+  modernID.Data4[7] = 5;
+  if (clsid == modernID) {
+    auto f = new (std::nothrow) Factory(4);
+    if (!f)
+      return E_OUTOFMEMORY;
+    auto hr = f->QueryInterface(iid, pp);
+    f->Release();
+    return hr;
+  }
   for (int k = 0; k < 4; k++) {
     if (clsid == ids[k]) {
       auto f = new (std::nothrow) Factory(k);

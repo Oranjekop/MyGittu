@@ -15,20 +15,23 @@ import (
 )
 
 type Params struct {
-	RepoID   string          `json:"repo_id"`
-	Path     string          `json:"path"`
-	Paths    []string        `json:"paths"`
-	Message  string          `json:"message"`
-	Action   string          `json:"action"`
-	Name     string          `json:"name"`
-	Staged   bool            `json:"staged"`
-	Limit    int             `json:"limit"`
-	Offset   int             `json:"offset"`
-	Query    string          `json:"query"`
-	Hash     string          `json:"hash"`
-	Settings settings.Values `json:"settings"`
-	Identity app.Identity    `json:"identity"`
-	Scope    string          `json:"scope"`
+	RepoID       string          `json:"repo_id"`
+	Path         string          `json:"path"`
+	Paths        []string        `json:"paths"`
+	Message      string          `json:"message"`
+	Action       string          `json:"action"`
+	Name         string          `json:"name"`
+	Staged       bool            `json:"staged"`
+	Limit        int             `json:"limit"`
+	Offset       int             `json:"offset"`
+	Query        string          `json:"query"`
+	Hash         string          `json:"hash"`
+	URL          string          `json:"url"`
+	Destination  string          `json:"destination"`
+	OriginalPath string          `json:"original_path"`
+	Settings     settings.Values `json:"settings"`
+	Identity     app.Identity    `json:"identity"`
+	Scope        string          `json:"scope"`
 }
 type Server struct {
 	Service *app.Service
@@ -60,6 +63,8 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 	switch r.Method {
 	case "health.ping":
 		result = map[string]any{"version": Version, "app_version": buildinfo.Version}
+	case "update.check":
+		result, e = s.Service.CheckUpdate(ctx)
 	case "settings.get":
 		if s.Service.Settings == nil {
 			result = settings.Values{Language: "zh-CN", Theme: "system"}
@@ -81,6 +86,9 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.UpdateIdentity(ctx, p.RepoID, p.Identity)
 	case "repo.register":
 		result, e = s.Service.Registry.Register(ctx, p.Path)
+	case "repo.contains":
+		_, ok := s.Service.Registry.FindPath(p.Path)
+		result = map[string]any{"repository": ok}
 	case "repo.unregister":
 		e = s.Service.Registry.Unregister(p.RepoID)
 		s.Cache.Invalidate(p.RepoID)
@@ -121,12 +129,16 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.Show(ctx, p.RepoID, p.Hash)
 	case "git.diff":
 		result, e = s.Service.Diff(ctx, p.RepoID, p.Path, p.Staged)
+	case "git.comparison":
+		result, e = s.Service.Comparison(ctx, p.RepoID, p.Path, p.OriginalPath, p.Staged)
 	case "git.branches":
 		result, e = s.Service.Branches(ctx, p.RepoID)
 	case "git.branch":
 		e = s.Service.Branch(ctx, p.RepoID, p.Action, p.Name)
 	case "git.remote":
 		e = s.Service.Remote(ctx, p.RepoID, p.Action)
+	case "git.clone":
+		result, e = s.Service.Clone(ctx, p.URL, p.Destination)
 	default:
 		return fail("method", "unsupported method")
 	}

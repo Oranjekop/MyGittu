@@ -73,19 +73,80 @@ int wmain(int argc, wchar_t **argv) {
     return 14;
   auto hmenu = CreatePopupMenu();
   auto result = menu->QueryContextMenu(hmenu, 0, 100, 110, 0);
-  if (FAILED(result) || HRESULT_CODE(result) != 4 ||
-      GetMenuItemCount(hmenu) != 4)
+  auto count = HRESULT_CODE(result);
+  auto submenu = GetSubMenu(hmenu, 0);
+  if (FAILED(result) || (count != 1 && count != 6) ||
+      GetMenuItemCount(hmenu) != 1 || !submenu ||
+      GetMenuItemCount(submenu) != count)
     return 15;
+  MENUITEMINFOW item{};
+  item.cbSize = sizeof(item);
+  item.fMask = MIIM_BITMAP;
+  if (!GetMenuItemInfoW(hmenu, 0, TRUE, &item) || !item.hbmpItem)
+    return 17;
   if (argc > 4) {
     wchar_t label[128]{};
     GetMenuStringW(hmenu, 0, label, 128, MF_BYPOSITION);
-    std::wstring expected = std::wstring(argv[4]) == L"en" ? L"MyGittu · Status"
-                                                           : L"MyGittu · 状态";
+    std::wstring expected = L"MyGittu";
     if (label != expected)
       return 16;
   }
   DestroyMenu(hmenu);
   menu->Release();
+  factory->Release();
+  id.Data4[7] = 5;
+  if (FAILED(get(id, IID_IClassFactory, reinterpret_cast<void **>(&factory))))
+    return 18;
+  IExplorerCommand *modern = nullptr;
+  if (FAILED(factory->CreateInstance(nullptr, IID_IExplorerCommand,
+                                     reinterpret_cast<void **>(&modern))))
+    return 19;
+  EXPCMDFLAGS commandFlags{};
+  if (FAILED(modern->GetFlags(&commandFlags)) ||
+      commandFlags != ECF_HASSUBCOMMANDS)
+    return 20;
+  IShellItem *shellItem = nullptr;
+  IShellItemArray *items = nullptr;
+  if (FAILED(
+          SHCreateItemFromParsingName(argv[2], nullptr, IID_IShellItem,
+                                      reinterpret_cast<void **>(&shellItem))))
+    return 21;
+  if (FAILED(SHCreateShellItemArrayFromShellItem(
+          shellItem, IID_IShellItemArray, reinterpret_cast<void **>(&items))))
+    return 22;
+  shellItem->Release();
+  EXPCMDSTATE state{};
+  if (FAILED(modern->GetState(items, TRUE, &state)) || state != ECS_ENABLED)
+    return 23;
+  IEnumExplorerCommand *enumerator = nullptr;
+  if (FAILED(modern->EnumSubCommands(&enumerator)))
+    return 24;
+  int enabled = 0;
+  IExplorerCommand *child = nullptr;
+  while (enumerator->Next(1, &child, nullptr) == S_OK) {
+    LPWSTR icon = nullptr;
+    if (FAILED(child->GetIcon(items, &icon)) || !icon)
+      return 25;
+    CoTaskMemFree(icon);
+    if (FAILED(child->GetState(items, TRUE, &state)))
+      return 26;
+    if (state == ECS_ENABLED)
+      enabled++;
+    child->Release();
+  }
+  if (enabled != count)
+    return 27;
+  IEnumExplorerCommand *clone = nullptr;
+  if (FAILED(enumerator->Clone(&clone)))
+    return 28;
+  clone->Reset();
+  if (clone->Next(1, &child, nullptr) != S_OK)
+    return 29;
+  child->Release();
+  clone->Release();
+  enumerator->Release();
+  items->Release();
+  modern->Release();
   factory->Release();
   if (unload() != S_OK)
     return 11;

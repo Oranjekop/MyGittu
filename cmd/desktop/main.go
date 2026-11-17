@@ -15,7 +15,7 @@ import (
 
 func main() {
 	path := flag.String("path", "", "repository or selected file")
-	action := flag.String("action", "status", "status, commit, log, diff")
+	action := flag.String("action", "status", "status, commit, log, diff, clone, pull, push")
 	flag.Parse()
 	client := &ipc.Client{Dial: platform.Dial}
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)

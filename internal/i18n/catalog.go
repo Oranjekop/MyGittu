@@ -5,6 +5,9 @@ package i18n
 type Message struct{ ZH, EN string }
 
 var Catalog = map[string]Message{
+	"changes.nav": {"变更", "Changes"}, "diff.binary": {"二进制文件，无法显示文本差异", "Binary file; text comparison unavailable"},
+	"update.title": {"软件更新", "Software updates"}, "update.check": {"检查更新", "Check for updates"}, "update.current": {"当前已是最新版本", "You're up to date"}, "update.available": {"MyGittu %s 可用", "MyGittu %s is available"},
+	"clone.title": {"克隆 Git 仓库", "Clone Git repository"}, "clone.url": {"仓库地址", "Repository URL"}, "clone.destination": {"目标文件夹（绝对路径）", "Destination folder (absolute path)"}, "clone.run": {"开始克隆", "Clone"},
 	"identity.edit": {"设置提交人…", "Set commit identity…"},
 	"repo.drop":     {"选择或拖入 Git 仓库文件夹", "Choose or drop a Git repository folder"}, "repo.manual": {"输入路径", "Enter path"}, "repo.recent": {"最近仓库", "Recent repositories"},
 	"identity.title": {"提交人信息", "Commit identity"}, "identity.local": {"当前仓库", "This repository"}, "identity.global": {"全局默认", "Global default"}, "identity.name": {"姓名", "Name"}, "identity.email": {"邮箱", "Email"}, "identity.save": {"保存提交人信息", "Save identity"}, "identity.saved": {"已保存", "Saved"}, "identity.future": {"用于后续提交，不修改已有提交记录", "Applies to future commits; existing commits remain unchanged"},

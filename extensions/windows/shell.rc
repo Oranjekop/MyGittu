@@ -1,3 +1,4 @@
 101 ICON "clean.ico"
 102 ICON "modified.ico"
 103 ICON "conflicted.ico"
+104 ICON "../../cmd/desktop/app.ico"

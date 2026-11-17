@@ -154,6 +154,22 @@ func (r *Registry) Get(id string) (Info, error) {
 	}
 	return v, nil
 }
+func (r *Registry) FindPath(path string) (Info, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	best := Info{}
+	found := false
+	for _, v := range r.repos {
+		for _, root := range append([]string{v.Root}, v.Aliases...) {
+			rel, e := filepath.Rel(root, path)
+			if e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && (!found || len(root) > len(best.Root)) {
+				best = v
+				found = true
+			}
+		}
+	}
+	return best, found
+}
 func (r *Registry) List() []Info { r.mu.RLock(); defer r.mu.RUnlock(); return r.list() }
 func (r *Registry) list() []Info {
 	a := make([]Info, 0, len(r.repos))
