@@ -8,12 +8,12 @@
 
 ## 下载安装
 
-当前版本为 **v0.0.1 开发预览版**。每个平台只需下载一个安装包，无需判断 CPU 类型。
+每个平台只需下载一个安装包，无需判断 CPU 类型。文件名中的 `<version>` 对应发布页版本。
 
 | 系统 | 安装包 | 处理器 |
 | --- | --- | --- |
-| Windows 10/11 64 位 | `MyGittu-0.0.1-Windows-Setup.exe` | 安装时自动选择原生 x64 / ARM64 |
-| macOS 13 及以上 | `MyGittu-0.0.1-macOS.pkg` | Universal，原生支持 Intel / Apple Silicon |
+| Windows 10/11 64 位 | `MyGittu-<version>-Windows-Setup.exe` | 安装时自动选择原生 x64 / ARM64 |
+| macOS 13 及以上 | `MyGittu-<version>-macOS.pkg` | Universal，原生支持 Intel / Apple Silicon |
 
 安装程序及引导内容使用中文。macOS 系统安装器自身的按钮语言由系统决定。安装后可在应用设置中切换中文或英文。
 
@@ -51,7 +51,7 @@
 
 右键操作集中在带兔子图标的 **MyGittu** 子菜单。本地 Git 目录显示变更、拉取、提交、推送、历史、差异，其他目录显示克隆。拉取、推送先打开客户端，由用户执行。Windows 11 现代菜单已实现 `IExplorerCommand` 和 sparse package 清单，但正式启用还需要受信任的发布者签名；当前未签名安装包使用传统菜单。构建、注册和实机验收见 [现代菜单部署](docs/runbooks/modern-menu.md)。
 
-**macOS**：Finder Sync 源码已提供，但需要开发者签名、App Group 与沙盒通信验证。v0.0.1 的默认安装包仅安装桌面客户端与 Agent，暂不启用 Finder 扩展。签名开发构建见 [原生集成手册](docs/runbooks/integration.md)。
+**macOS**：Finder Sync 源码已提供，但需要开发者签名、App Group 与沙盒通信验证。默认安装包仅安装桌面客户端与 Agent，暂不启用 Finder 扩展。签名开发构建见 [原生集成手册](docs/runbooks/integration.md)。
 
 Rebase、Cherry-pick、Blame、Stash、Tag、LFS、Submodule 管理和三方合并尚未提供。真实大仓库、系统扩展、签名升级与性能验收状态见 [验收记录](docs/acceptance.md)。
 
@@ -94,8 +94,8 @@ bash packaging/darwin/release.sh
 3. 推送与 `VERSION` 一致的标签：
 
 ```bash
-git tag -a v0.0.1 -m "Release v0.0.1"
-git push origin v0.0.1
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin vX.Y.Z
 ```
 
 Actions 校验版本，构建中文 Windows 安装程序和 macOS 通用安装包，全部成功后创建 GitHub Release，上传安装包及 SHA-256 校验和。标签与 `VERSION` 不匹配时会拒绝发布。后续版本使用新标签，不移动已有版本标签。
