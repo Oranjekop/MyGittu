@@ -48,6 +48,8 @@ jobs:
         run: |
           & ./.work/release-amd64/Release/MyGittuShellSmoke.exe "$pwd/dist/windows/x64/MyGittuShell.dll" "$pwd" 0
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Install and launch on Windows x64
+        run: ./packaging/windows/smoke-install.ps1 -Installer 'dist/release/MyGittu-${{ needs.version.outputs.value }}-Windows-Setup.exe'
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
@@ -68,14 +70,38 @@ jobs:
           go vet ./...
       - name: Build Chinese Universal installer
         run: bash packaging/darwin/release.sh '${{ needs.version.outputs.value }}'
+      - name: Install and launch on Apple Silicon
+        run: bash packaging/darwin/smoke-install.sh
       - uses: actions/upload-artifact@v4
         with:
           name: macos-installer
           path: dist/release/*.pkg
           if-no-files-found: error
+  windows-arm64-install:
+    needs: [version, windows]
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/release
+      - name: Install and launch on Windows ARM64
+        run: ./packaging/windows/smoke-install.ps1 -Installer 'dist/release/MyGittu-${{ needs.version.outputs.value }}-Windows-Setup.exe'
+  macos-intel-install:
+    needs: macos
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-installer
+          path: dist/release
+      - name: Install and launch on Intel
+        run: bash packaging/darwin/smoke-install.sh
   publish:
     if: github.ref_type == 'tag'
-    needs: [version, windows, macos]
+    needs: [version, windows, macos, windows-arm64-install, macos-intel-install]
     runs-on: ubuntu-latest
     permissions:
       contents: write
