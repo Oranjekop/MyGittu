@@ -16,6 +16,7 @@ import (
 	"mygittu/internal/settings"
 	"mygittu/internal/status"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -37,6 +38,9 @@ type Desktop struct {
 	logs                               []app.Commit
 	row                                int
 	files, history                     native.ListState
+	filePane                           float32
+	sidebarCollapsed                   bool
+	captionStyled, captionDark         bool
 	staged                             bool
 	offset                             int
 	query                              string
@@ -53,6 +57,8 @@ type Desktop struct {
 	update                             app.UpdateInfo
 	updateChecking                     bool
 	updateInstalling                   bool
+	updateCancel                       context.CancelFunc
+	updateBytes, updateTotal           int64
 	updateError                        string
 	settingsOpen                       bool
 	repositoriesOpen                   bool
@@ -60,13 +66,26 @@ type Desktop struct {
 	comparison                         *editor.DiffState
 	binary                             bool
 	projectFiles                       []string
+	projectSearch                      string
+	projectTree                        []projectEntry
+	projectCollapsed                   map[string]bool
 	projectFileRow                     int
 	projectFileList                    native.ListState
 	projectPreview                     app.Comparison
+	tools                              workbench
+	references                         app.References
+	stashRow, tagRow                   int
+	stashList, tagList                 native.ListState
+	stashMessage, tagName              string
+	hunksOpen                          bool
+	hunkPath                           string
+	hunks                              []app.StageHunk
+	hunkRow                            int
+	hunkList                           native.ListState
 }
 
 func New(client *ipc.Client, path, action string) *Desktop {
-	d := &Desktop{Client: client, path: path, row: -1, logRow: -1, prefs: settings.Values{Language: "zh-CN", Theme: "system"}}
+	d := &Desktop{Client: client, path: path, row: -1, logRow: -1, filePane: 310, prefs: settings.Values{Language: "zh-CN", Theme: "system"}}
 	switch action {
 	case "log":
 		d.page = 1
@@ -95,8 +114,15 @@ func (d *Desktop) Run() error {
 		_ = d.win.SetIcon(brand.PNG)
 		_ = mygo.App.Dock.SetIcon(brand.PNG)
 		updateContext, cancelUpdates := context.WithCancel(context.Background())
-		d.win.OnClosed(func() { cancelUpdates(); d.saveDraft() })
+		d.win.OnClosed(func() {
+			cancelUpdates()
+			if d.updateCancel != nil {
+				d.updateCancel()
+			}
+			d.saveDraft()
+		})
 		go d.watchUpdates(updateContext)
+		go app.CleanupUpdates()
 		go d.watchWorkspace(updateContext)
 		d.win.OnFileDrop(func(e *mygo.FileDropEvent) {
 			if len(e.Paths) > 0 {
@@ -205,11 +231,15 @@ func (d *Desktop) refresh() {
 	d.comparison = nil
 	if page == projectFilesPage {
 		d.projectFiles, d.projectFileRow, d.projectPreview = nil, -1, app.Comparison{}
+		d.projectTree = nil
 	}
 	d.task(func(ctx context.Context) (func(), error) {
 		var snap status.Snapshot
 		var logs []app.Commit
 		var projectFiles []string
+		var references app.References
+		var branchTargets []string
+		var branches []app.BranchEntry
 		var detail string
 		var e error
 		var identity app.Identity
@@ -222,9 +252,14 @@ func (d *Desktop) refresh() {
 		case 1:
 			e = d.Client.Call(ctx, "git.log", ipc.Params{RepoID: id, Limit: 100, Offset: offset, Query: query}, &logs)
 		case 3:
-			e = d.Client.Call(ctx, "git.branches", ipc.Params{RepoID: id}, &detail)
+			e = d.Client.Call(ctx, "git.branch.entries", ipc.Params{RepoID: id}, &branches)
+			for _, branch := range branches {
+				branchTargets = append(branchTargets, branch.Name)
+			}
 		case projectFilesPage:
 			e = d.Client.Call(ctx, "git.files", ipc.Params{RepoID: id}, &projectFiles)
+		case referencesPage:
+			e = d.Client.Call(ctx, "git.references", ipc.Params{RepoID: id}, &references)
 		}
 		changes := make([]git.FileStatus, 0, len(snap.Files))
 		stagedCount := 0
@@ -237,8 +272,32 @@ func (d *Desktop) refresh() {
 			}
 		}
 		return func() {
+			if page == 3 {
+				d.tools.branches = branches
+				if !slices.Contains(branchTargets, d.tools.branchSelected) {
+					d.tools.branchSelected = ""
+					for _, branch := range branches {
+						if branch.Current {
+							d.tools.branchSelected = branch.Name
+							break
+						}
+					}
+				}
+				d.tools.branchTargets = branchTargets
+				if !slices.Contains(branchTargets, d.tools.left) && len(branchTargets) > 0 {
+					d.tools.left = branchTargets[0]
+				}
+				if !slices.Contains(branchTargets, d.tools.right) && len(branchTargets) > 1 {
+					d.tools.right = branchTargets[1]
+				}
+			}
+			if page == referencesPage {
+				d.references, d.stashRow, d.tagRow = references, -1, -1
+				return
+			}
 			if page == projectFilesPage {
 				d.projectFiles, d.projectFileRow, d.projectPreview = projectFiles, -1, app.Comparison{}
+				d.rebuildProjectTree()
 				return
 			}
 			if page == 0 || page == 2 {
@@ -267,6 +326,9 @@ func (d *Desktop) mutate(method string, p ipc.Params) {
 				d.message = ""
 				d.saveDraft()
 			}
+			if method == "git.stage" || method == "git.unstage" {
+				clear(d.tools.batch)
+			}
 			d.refresh()
 		}, e
 	})
@@ -287,21 +349,57 @@ func (d *Desktop) diff(path string) {
 		var comparison app.Comparison
 		e := d.Client.Call(ctx, "git.comparison", ipc.Params{RepoID: id, Path: path, OriginalPath: original, Staged: staged}, &comparison)
 		return func() {
-			old, next := editor.NewBuffer(comparison.Old), editor.NewBuffer(comparison.New)
-			old.SetLanguage(editor.LanguageForText(path, comparison.Old))
-			next.SetLanguage(editor.LanguageForText(path, comparison.New))
-			d.comparison = &editor.DiffState{Old: old, New: next, Layout: editor.DiffSplit}
-			d.binary = comparison.Binary
+			d.comparison = nil
+			d.applyComparison(path, comparison)
 		}, e
 	})
 }
+func (d *Desktop) applyComparison(path string, comparison app.Comparison) bool {
+	changed := d.binary != comparison.Binary
+	d.binary = comparison.Binary
+	if d.comparison == nil {
+		old, next := editor.NewBuffer(comparison.Old), editor.NewBuffer(comparison.New)
+		old.SetLanguage(editor.LanguageForText(path, comparison.Old))
+		next.SetLanguage(editor.LanguageForText(path, comparison.New))
+		d.comparison = &editor.DiffState{Old: old, New: next, Layout: editor.DiffSplit}
+		return true
+	}
+	if d.comparison.Old.String() != comparison.Old {
+		d.comparison.Old.Reset(comparison.Old)
+		changed = true
+	}
+	if d.comparison.New.String() != comparison.New {
+		d.comparison.New.Reset(comparison.New)
+		changed = true
+	}
+	return changed
+}
+
 func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	files := d.visible()
-	native.Row(c).Grow(1).FillWidth().Gap(6).AlignItems(native.Stretch).Children(func() {
-		native.Column(c).Width(342).FillHeight().Padding(10).Gap(8).Background(t.Background).Radius(8).Children(func() {
-			native.Row(c).Gap(8).AlignItems(native.Center).Children(func() {
+	width, _ := c.Size()
+	available := width - 2*panelSpacing
+	if !d.sidebarCollapsed {
+		available -= sidebarWidth + panelSpacing
+	}
+	fileWidth := min(max(d.filePane, 284), max(284, available-320))
+	dividerTheme := *t
+	dividerTheme.Border = t.Surface
+	dividerTheme.Accent = t.Border
+	pane := func(right bool, contents func()) {
+		container := native.Themed(c, t).Fill().Background(t.Surface)
+		if right {
+			container.PaddingStart(panelSpacing / 2)
+		} else {
+			container.PaddingEnd((panelSpacing - 1) / 2)
+		}
+		container.Children(contents)
+	}
+	filesPane := func() {
+		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
+			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 				native.Textf(c, d.text("changes"), len(files)).Grow(1)
-				if iconButton(c, d.text("stage.all"), "stage", false).Disabled(d.busy || len(files) == 0).Clicked() {
+				if len(d.tools.batch) == 0 && iconButton(c, d.text("stage.all"), "stage", false).Disabled(d.busy || len(files) == 0).Clicked() {
 					paths := []string{}
 					for _, f := range files {
 						paths = append(paths, f.Path)
@@ -311,32 +409,33 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 					}
 					d.mutate("git.stage", ipc.Params{Paths: paths})
 				}
-				if iconButton(c, "", "refresh", false).Tooltip(d.text("refresh")).Label(d.text("refresh")).Disabled(d.busy).Clicked() {
-					d.refresh()
-				}
 			})
-			native.TextArea(c, &d.message).Placeholder(d.text("commit.message")).FillWidth().Height(72).Disabled(d.busy)
-			native.Row(c).Gap(8).Children(func() {
-				label := d.text("identity.edit")
-				if d.commitIdentity.EffectiveName != "" {
-					label = d.commitIdentity.EffectiveName
+			if d.snapshot.Merging && !slices.ContainsFunc(files, func(file git.FileStatus) bool { return file.State == git.Conflicted }) {
+				if native.Button(c, d.text("recover.merge.continue")).Disabled(d.busy).Clicked() {
+					d.confirmRecovery("merge.continue", "")
 				}
-				if iconButton(c, label, "user", false).Grow(1).Tooltip(d.commitIdentity.EffectiveEmail).Disabled(d.busy).Clicked() {
-					d.identityScope = 0
-					d.openSettings()
-				}
-				if iconButton(c, d.text("commit.submit"), "commit", true).Disabled(d.busy || d.stagedCount == 0 || strings.TrimSpace(d.message) == "").Clicked() {
-					d.mutate("git.commit", ipc.Params{Message: d.message})
-				}
-			})
+			}
 			d.files.Selected = &d.row
 			previous := d.row
-			native.Table(c, &d.files, []native.TableColumn{{Title: d.text("file")}, {Title: d.text("index"), Width: 88}, {Title: d.text("worktree"), Width: 88}}, len(files), func(row, col int) {
+			d.showBatchActions(c, files)
+			native.Table(c, &d.files, []native.TableColumn{{Title: d.text("file")}, {Title: d.text("index"), Width: 68}, {Title: d.text("worktree"), Width: 68}}, len(files), func(row, col int) {
 				f := files[row]
 				if col == 0 {
-					native.Row(c).Gap(6).AlignItems(native.Center).Children(func() {
+					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+						checked := d.tools.batch[f.Path]
+						native.Checkbox(c, &checked, "").Label(f.Path)
+						if checked != d.tools.batch[f.Path] {
+							if checked {
+								if d.tools.batch == nil {
+									d.tools.batch = map[string]bool{}
+								}
+								d.tools.batch[f.Path] = true
+							} else {
+								delete(d.tools.batch, f.Path)
+							}
+						}
 						native.Icon(c, icons["file"]).Width(14).Height(14).TextColor(t.TextMuted)
-						native.Text(c, f.Path)
+						native.Text(c, f.Path).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(f.Path)
 					})
 				} else if col == 1 {
 					native.Text(c, d.text("state."+string(f.Index)))
@@ -348,37 +447,67 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				d.staged = files[d.row].Worktree == git.Clean
 				d.diff(files[d.row].Path)
 			}
-			native.Row(c).Gap(8).Children(func() {
+			native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
 				wasStaged := d.staged
 				native.Checkbox(c, &d.staged, d.text("diff.staged"))
 				valid := d.row >= 0 && d.row < len(files)
 				if wasStaged != d.staged && valid && !d.busy {
 					d.diff(files[d.row].Path)
 				}
+				var paths []string
+				if len(d.tools.batch) == 0 {
+					paths = d.batchPaths(files)
+				}
 				for _, op := range []struct{ label, method string }{{"stage", "git.stage"}, {"unstage", "git.unstage"}} {
-					if iconButton(c, d.text(op.label), op.label, false).Disabled(d.busy || !valid).Clicked() {
-						f := files[d.row]
-						paths := []string{f.Path}
-						if f.OriginalPath != "" {
-							paths = append(paths, f.OriginalPath)
-						}
+					if len(d.tools.batch) == 0 && iconButton(c, d.text(op.label), op.label, false).Disabled(d.busy || len(paths) == 0).Clicked() {
 						d.mutate(op.method, ipc.Params{Paths: paths})
 					}
 				}
 			})
+			native.TextArea(c, &d.message).Placeholder(d.text("commit.message")).FillWidth().MinHeight(46).Height(46).Disabled(d.busy)
+			native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
+				label := d.text("identity.edit")
+				if d.commitIdentity.EffectiveName != "" {
+					label = d.commitIdentity.EffectiveName
+				}
+				if iconButton(c, label, "user", false).Grow(1).MinWidth(0).Tooltip(d.commitIdentity.EffectiveEmail).Disabled(d.busy).Clicked() {
+					d.identityScope = 0
+					d.openSettings()
+				}
+				if iconButton(c, d.text("commit.submit"), "commit", true).Disabled(d.busy || d.stagedCount == 0 || strings.TrimSpace(d.message) == "").Clicked() {
+					d.mutate("git.commit", ipc.Params{Message: d.message})
+				}
+			})
 		})
-		native.Column(c).Grow(1).FillHeight().Padding(12).Gap(8).Background(t.Background).Radius(8).Children(func() {
-			native.Row(c).Gap(8).AlignItems(native.Center).Children(func() {
+	}
+	diffPane := func() {
+		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
+			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 				native.Text(c, func() string {
 					if d.row >= 0 && d.row < len(files) {
 						return files[d.row].Path
 					}
 					return d.text("diff.all")
 				}()).Grow(1)
+				if d.row >= 0 && d.row < len(files) && files[d.row].State == git.Conflicted {
+					if native.Button(c, d.text("conflict.open")).Disabled(d.busy).Clicked() {
+						d.loadConflict(files[d.row].Path)
+					}
+				}
+				if d.row >= 0 && d.row < len(files) && !d.staged && files[d.row].Worktree == git.Modified {
+					if native.Button(c, d.text("hunk.stage")).Disabled(d.busy).Clicked() {
+						d.loadHunks(files[d.row].Path)
+					}
+				}
 			})
 			if d.binary {
 				native.Text(c, d.text("diff.binary")).TextColor(t.TextMuted)
 			} else if d.comparison != nil {
+				d.comparison.Font.Size = 12
+				d.comparison.Layout = editor.DiffSplit
+				if available-fileWidth < 550 {
+					d.comparison.Layout = editor.DiffUnified
+				}
 				editor.DiffView(c, d.comparison).Grow(1).FillWidth()
 			} else if d.detail == "" {
 				native.Column(c).Grow(1).FillWidth().Center().Children(func() { native.Text(c, d.text("diff.empty")).TextColor(t.TextMuted) })
@@ -386,6 +515,13 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				native.TextArea(c, &d.detail).Grow(1).FillWidth().ReadOnly(true)
 			}
 		})
+	}
+	native.Themed(c, &dividerTheme).Grow(1).FillWidth().Background(t.Surface).Children(func() {
+		split := native.Split(c, &fileWidth, func() { pane(false, filesPane) }, func() { pane(true, diffPane) }).
+			Grow(1).FillWidth().SplitReset(310)
+		if split.Changed() {
+			d.filePane = fileWidth
+		}
 	})
 }
 func (d *Desktop) view(c *native.Context) {
@@ -402,24 +538,29 @@ func (d *Desktop) view(c *native.Context) {
 	case "light":
 		c.SetTheme(native.LightTheme())
 	}
-	t := desktopTheme(c)
-	native.Column(c).Fill().Padding(10).Gap(10).Background(t.Surface).Children(func() {
-		native.Row(c).FillWidth().Padding(10).Gap(8).AlignItems(native.Center).Background(t.Background).Radius(10).Children(func() {
-			native.Image(c, brandBitmap).Width(22).Height(22)
-			native.Text(c, "MyGittu").Bold()
-			repoLabel := d.text("repo.recent")
-			for _, r := range d.repos {
-				if r.ID == d.selected {
-					repoLabel = filepath.Base(r.Root)
-					break
-				}
+	t := ApplyTheme(c)
+	if d.win != nil && (!d.captionStyled || d.captionDark != t.Dark) {
+		if handle := d.win.NativeHandle(); handle != 0 {
+			styleCaption(handle, t.Surface, t.Text)
+			d.captionStyled, d.captionDark = true, t.Dark
+		}
+	}
+	native.Column(c).Fill().Padding(panelSpacing).Gap(panelSpacing).Background(t.Surface).Children(func() {
+		native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+			if iconButton(c, "", "diff", false).Label(d.text("nav.toggle")).Tooltip(d.text("nav.toggle")).Clicked() {
+				d.sidebarCollapsed = !d.sidebarCollapsed
 			}
-			if iconButton(c, repoLabel, "open", false).Tooltip(d.text("repo.recent")).Disabled(d.busy).Clicked() {
-				d.repositorySearch = ""
-				d.repositoriesOpen = true
-			}
+			d.repositoryMenu(c)
 			if d.snapshot.Branch != "" && (d.page == 0 || d.page == 2) {
 				native.Text(c, d.snapshot.Branch).TextColor(t.TextMuted)
+				tracking := d.snapshot.Tracking
+				if tracking.Upstream == "" {
+					native.Text(c, d.text("branch.noUpstream")).TextColor(t.TextMuted)
+				} else if !tracking.Compared {
+					native.Text(c, d.text("branch.upstreamUnavailable")).Tooltip(tracking.Upstream).TextColor(t.TextMuted)
+				} else {
+					native.Textf(c, "↑ %d  ↓ %d", tracking.Ahead, tracking.Behind).Tooltip(tracking.Upstream).TextColor(t.TextMuted)
+				}
 			}
 			native.Box(c).Grow(1)
 			if d.selected != "" && d.page != 5 {
@@ -436,48 +577,39 @@ func (d *Desktop) view(c *native.Context) {
 				d.openSettings()
 			}
 		})
-		native.Row(c).Grow(1).FillWidth().Gap(10).Children(func() {
-			native.Column(c).Width(178).FillHeight().Padding(10).Gap(6).Background(t.Background).Radius(10).Children(func() {
-				native.Text(c, d.text("nav.workspace")).FontSize(12).Bold().TextColor(t.TextMuted).Padding(4)
-				items := []struct {
-					page        int
-					label, icon string
-				}{
-					{0, "changes.nav", "changes"},
-					{projectFilesPage, "nav.files", "file"},
-					{1, "nav.history", "history"},
-					{3, "nav.branches", "branch"},
-				}
-				choice := ""
-				for _, item := range items {
-					if d.page == item.page || item.page == 0 && d.page == 2 {
-						choice = item.label
-					}
-				}
-				native.Sidebar(c, &choice, func() {
-					for _, item := range items {
-						native.SidebarItem(c, item.label, icons[item.icon], d.text(item.label))
-					}
-				}).Grow(1).Disabled(d.busy).OnChange(func() {
-					for _, item := range items {
-						if item.label == choice {
+		native.Row(c).Grow(1).FillWidth().Gap(panelSpacing).Children(func() {
+			if !d.sidebarCollapsed {
+				native.Column(c).Width(sidebarWidth).FillHeight().Padding(controlSpacing).Gap(detailSpacing).Background(t.Background).Radius(8).Children(func() {
+					for _, item := range []struct {
+						page        int
+						label, icon string
+					}{
+						{0, "changes.nav", "changes"},
+						{projectFilesPage, "nav.files", "file"},
+						{1, "nav.history", "history"},
+						{3, "nav.branches", "branch"},
+						{referencesPage, "nav.references", "stash"},
+					} {
+						label := d.text(item.label)
+						active := d.page == item.page || item.page == 0 && d.page == 2
+						if iconButton(c, "", item.icon, active).Label(label).Tooltip(label).FillWidth().Disabled(d.busy).Clicked() {
 							d.page, d.offset = item.page, 0
 							d.refresh()
-							break
 						}
 					}
+					native.Box(c).Grow(1)
+					if iconButton(c, "", "open", false).Label(d.text("repo.open")).Tooltip(d.text("repo.open")).FillWidth().Disabled(d.busy).Clicked() {
+						d.chooseRepository()
+					}
+					if iconButton(c, "", "clone", d.page == 5).Label(d.text("clone.run")).Tooltip(d.text("clone.run")).FillWidth().Disabled(d.busy).Clicked() {
+						d.page = 5
+					}
 				})
-				if iconButton(c, d.text("repo.open")+"…", "open", true).FillWidth().Disabled(d.busy).Clicked() {
-					d.chooseRepository()
-				}
-				if iconButton(c, d.text("clone.run")+"…", "clone", false).FillWidth().Disabled(d.busy).Clicked() {
-					d.page = 5
-				}
-			})
-			native.Column(c).Grow(1).FillHeight().Gap(6).Children(func() {
+			}
+			native.Column(c).Grow(1).FillHeight().Gap(controlSpacing).Children(func() {
 
 				if d.busy {
-					native.Row(c).Gap(8).AlignItems(native.Center).Children(func() {
+					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 						if d.operation == "" {
 							native.Text(c, d.text("busy")).TextColor(t.TextMuted)
 						} else {
@@ -501,7 +633,7 @@ func (d *Desktop) view(c *native.Context) {
 				}
 				if d.selected == "" && d.page != 4 && d.page != 5 {
 					native.Column(c).Grow(1).FillWidth().Center().Gap(16).Children(func() {
-						native.Text(c, "MyGittu").FontSize(32).Bold()
+						native.Text(c, "MyGittu").FontSize(28).Bold()
 						native.Text(c, d.text("repo.drop")).TextColor(t.TextMuted)
 						if iconButton(c, d.text("repo.open")+"…", "open", true).Disabled(d.busy).Clicked() {
 							d.chooseRepository()
@@ -510,12 +642,14 @@ func (d *Desktop) view(c *native.Context) {
 					return
 				}
 				switch d.page {
+				case referencesPage:
+					d.showReferences(c, t)
 				case projectFilesPage:
 					d.showProjectFiles(c, t)
 				case 0, 2:
 					d.workspace(c, t)
 				case 1:
-					native.Row(c).Gap(8).Children(func() {
+					native.Row(c).Gap(controlSpacing).Children(func() {
 						native.TextInput(c, &d.query).Placeholder(d.text("history.search")).Grow(1).Disabled(d.busy)
 						if iconButton(c, d.text("search"), "search", false).Disabled(d.busy).Clicked() {
 							d.offset = 0
@@ -536,10 +670,19 @@ func (d *Desktop) view(c *native.Context) {
 							return func() { d.detail = detail }, e
 						})
 					}
+					native.Row(c).Gap(controlSpacing).Children(func() {
+						valid := d.logRow >= 0 && d.logRow < len(d.logs)
+						if native.Button(c, d.text("recover.undo")).Disabled(d.busy || !valid || d.offset != 0 || d.query != "" || d.logRow != 0).Clicked() && valid {
+							d.confirmRecovery("undo", d.logs[d.logRow].Hash)
+						}
+						if native.Button(c, d.text("recover.revert")).Disabled(d.busy || !valid).Clicked() && valid {
+							d.confirmRecovery("revert", d.logs[d.logRow].Hash)
+						}
+					})
 					if d.detail != "" {
 						native.TextArea(c, &d.detail).Height(180).FillWidth().ReadOnly(true)
 					}
-					native.Row(c).Gap(8).Children(func() {
+					native.Row(c).Gap(controlSpacing).Children(func() {
 						if native.Button(c, d.text("previous")).Disabled(d.busy || d.offset == 0).Clicked() {
 							d.offset = max(0, d.offset-100)
 							d.refresh()
@@ -555,15 +698,7 @@ func (d *Desktop) view(c *native.Context) {
 						}
 					})
 				case 3:
-					native.TextArea(c, &d.detail).Grow(1).FillWidth().ReadOnly(true)
-					native.TextInput(c, &d.branch).Placeholder(d.text("branch.name")).FillWidth()
-					native.Row(c).Gap(8).Children(func() {
-						for _, op := range []struct{ label, action string }{{d.text("branch.create"), "create"}, {d.text("branch.switch"), "switch"}, {d.text("branch.delete"), "delete"}, {d.text("branch.merge"), "merge"}} {
-							if native.Button(c, op.label).Disabled(d.busy || d.branch == "").Clicked() {
-								d.mutate("git.branch", ipc.Params{Action: op.action, Name: d.branch})
-							}
-						}
-					})
+					d.showBranches(c)
 				case 5:
 					native.Text(c, d.text("clone.title")).Bold()
 					native.TextInput(c, &d.cloneURL).Placeholder(d.text("clone.url")).FillWidth()
@@ -594,4 +729,8 @@ func (d *Desktop) view(c *native.Context) {
 	})
 	d.settingsDialog(c)
 	d.repositoryDialog(c)
+	d.hunkDialog(c)
+	d.showConflict(c)
+	d.showFileHistory(c)
+	d.showRecovery(c)
 }

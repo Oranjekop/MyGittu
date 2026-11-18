@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ type Info struct {
 	GitDir     string   `json:"git_dir"`
 	Aliases    []string `json:"aliases,omitempty"`
 	LastOpened int64    `json:"last_opened,omitempty"`
+	discovered int64
 }
 type Registry struct {
 	mu     sync.RWMutex
@@ -40,6 +42,9 @@ func New(r *git.Runner, file string) (*Registry, error) {
 				return nil, e
 			}
 			for _, v := range list {
+				if v.LastOpened == 0 {
+					continue
+				}
 				info, e := x.Discover(context.Background(), v.Root)
 				if e == nil {
 					info.LastOpened = v.LastOpened
@@ -116,8 +121,10 @@ func (r *Registry) register(ctx context.Context, path string, opened bool) (Info
 	if opened {
 		info.LastOpened = time.Now().UnixNano()
 	}
-	if !exists && len(r.repos) >= 256 {
-		return info, fmt.Errorf("repository registration limit reached (256)")
+	if !opened && info.LastOpened == 0 {
+		info.discovered = time.Now().UnixNano()
+		r.cacheDiscovery(info)
+		return info, nil
 	}
 	r.repos[info.ID] = info
 	if e = r.save(); e != nil {
@@ -128,6 +135,25 @@ func (r *Registry) register(ctx context.Context, path string, opened bool) (Info
 		}
 	}
 	return info, e
+}
+
+// cacheDiscovery is called under mu. Recent repositories never count toward
+// this limit and are not candidates for eviction.
+func (r *Registry) cacheDiscovery(info Info) {
+	count := 0
+	var oldest Info
+	for _, candidate := range r.repos {
+		if candidate.ID != info.ID && candidate.LastOpened == 0 {
+			count++
+			if oldest.ID == "" || candidate.discovered < oldest.discovered {
+				oldest = candidate
+			}
+		}
+	}
+	if count >= 256 {
+		delete(r.repos, oldest.ID)
+	}
+	r.repos[info.ID] = info
 }
 func mergeAliases(a, b []string) []string {
 	out := []string{}
@@ -222,7 +248,9 @@ func (r *Registry) save() error {
 	if r.file == "" {
 		return nil
 	}
-	b, e := json.Marshal(r.list())
+	items := r.list()
+	items = slices.DeleteFunc(items, func(info Info) bool { return info.LastOpened == 0 })
+	b, e := json.Marshal(items)
 	if e != nil {
 		return e
 	}

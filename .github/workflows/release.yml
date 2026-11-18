@@ -52,6 +52,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Install Inno Setup
         run: choco upgrade innosetup --no-progress -y
+      - name: Test Explorer restart paths
+        run: ./packaging/windows/test-restart-explorer.ps1
       - name: Build Chinese multi-architecture installer
         env:
           MYGITTU_CERT_BASE64: ${{ secrets.MYGITTU_CERT_BASE64 }}

@@ -162,6 +162,30 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.LogSearch(ctx, p.RepoID, p.Limit, p.Offset, p.Query)
 	case "git.show":
 		result, e = s.Service.Show(ctx, p.RepoID, p.Hash)
+	case "git.hunks":
+		result, e = s.Service.StageHunks(ctx, p.RepoID, p.Path)
+	case "git.hunk.stage":
+		e = s.Service.StageSelectedHunk(ctx, p.RepoID, p.Path, p.Hash, p.Offset)
+	case "git.references":
+		result, e = s.Service.References(ctx, p.RepoID)
+	case "git.conflict":
+		result, e = s.Service.Conflict(ctx, p.RepoID, p.Path)
+	case "git.resolve":
+		e = s.Service.ResolveConflict(ctx, p.RepoID, p.Path, p.Hash, p.Message)
+	case "git.file.log":
+		result, e = s.Service.FileLog(ctx, p.RepoID, p.Path, p.Limit, p.Offset)
+	case "git.file.insight":
+		result, e = s.Service.FileInsight(ctx, p.RepoID, p.Path, p.Action, p.Hash)
+	case "git.recover":
+		e = s.Service.RecoverCommit(ctx, p.RepoID, p.Action, p.Hash)
+	case "git.compare":
+		result, e = s.Service.CompareBranches(ctx, p.RepoID, p.Name, p.Query)
+	case "git.compare.targets":
+		result, e = s.Service.CompareTargets(ctx, p.RepoID)
+	case "git.branch.entries":
+		result, e = s.Service.BranchEntries(ctx, p.RepoID)
+	case "git.reference":
+		e = s.Service.EditReference(ctx, p.RepoID, p.Action, p.Name)
 	case "git.files":
 		result, e = s.Service.Files(ctx, p.RepoID)
 	case "git.file.preview":

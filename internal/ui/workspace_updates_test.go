@@ -1,11 +1,41 @@
 package ui
 
 import (
+	"fmt"
 	"testing"
 
+	"mygittu/internal/app"
 	git "mygittu/internal/git"
 	"mygittu/internal/status"
 )
+
+func TestUpdatedDiffKeepsView(t *testing.T) {
+	d := New(nil, "", "")
+	d.applyComparison("notes.txt", app.Comparison{Old: "one", New: "two"})
+	view := d.comparison
+	view.SplitPercent = 42
+	if !d.applyComparison("notes.txt", app.Comparison{Old: "one", New: "three"}) ||
+		d.comparison != view || view.New.String() != "three" || view.SplitPercent != 42 {
+		t.Fatal("updated content replaced the diff view")
+	}
+}
+
+func TestProjectTreeSearchWithTenThousandFiles(t *testing.T) {
+	d := New(nil, "", "")
+	for i := range 10000 {
+		d.projectFiles = append(d.projectFiles, fmt.Sprintf("src/pkg-%02d/file-%04d.go", i/100, i))
+	}
+	d.projectCollapsed = map[string]bool{"src": true}
+	d.rebuildProjectTree()
+	if len(d.projectTree) != 1 || !d.projectTree[0].dir {
+		t.Fatal("collapsed tree exposed descendants")
+	}
+	d.projectSearch = "FILE-9876"
+	d.rebuildProjectTree()
+	if len(d.projectTree) != 3 || d.projectTree[2].path != "src/pkg-98/file-9876.go" {
+		t.Fatalf("incorrect filtered tree: %+v", d.projectTree)
+	}
+}
 
 func TestCommitDraftsAreIsolatedAndPersisted(t *testing.T) {
 	dir := t.TempDir()

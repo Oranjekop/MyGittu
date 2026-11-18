@@ -15,10 +15,10 @@ func (d *Desktop) openSettings() {
 }
 func (d *Desktop) settingsDialog(c *native.Context) {
 	native.Modal(c, &d.settingsOpen, func() {
-		native.Column(c).Width(540).MaxWidth(540).Gap(12).Children(func() {
-			native.Row(c).Gap(8).AlignItems(native.Center).Children(func() {
+		native.Column(c).Width(540).MaxWidth(540).Gap(panelSpacing).Children(func() {
+			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 				native.Icon(c, icons["settings"]).Width(20).Height(20)
-				native.Text(c, d.text("nav.settings")).FontSize(20).Bold().Grow(1)
+				native.Text(c, d.text("nav.settings")).FontSize(18).Bold().Grow(1)
 				if native.Button(c, d.text("close")).Clicked() {
 					d.settingsOpen = false
 				}
@@ -32,7 +32,7 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 }
 func (d *Desktop) settingsContents(c *native.Context) {
 	t := c.Theme()
-	native.Row(c).Gap(10).Children(func() {
+	native.Row(c).Gap(panelSpacing).Children(func() {
 		native.Text(c, d.text("update.title")).Bold()
 		if native.Button(c, d.text("update.check")).Disabled(d.updateChecking).Clicked() {
 			d.checkUpdate(true)
@@ -53,6 +53,16 @@ func (d *Desktop) settingsContents(c *native.Context) {
 	if d.updateError != "" {
 		native.Text(c, d.updateError)
 	}
+	if d.updateInstalling {
+		if d.updateTotal > 0 {
+			native.Progress(c, min(1, float64(d.updateBytes)/float64(d.updateTotal))).FillWidth()
+		} else if d.updateBytes > 0 {
+			native.Textf(c, "%.1f MiB", float64(d.updateBytes)/(1<<20)).TextColor(t.TextMuted)
+		}
+		if native.Button(c, d.text("update.cancel")).Clicked() && d.updateCancel != nil {
+			d.updateCancel()
+		}
+	}
 	if !d.updateChecking && d.update.Latest != "" && !d.update.Available {
 		native.Text(c, d.text("update.current"))
 	}
@@ -62,17 +72,17 @@ func (d *Desktop) settingsContents(c *native.Context) {
 	if oldScope != d.identityScope {
 		d.loadIdentity()
 	}
-	native.Row(c).Gap(12).Children(func() {
-		native.Column(c).Grow(1).Gap(6).Children(func() {
+	native.Row(c).Gap(panelSpacing).Children(func() {
+		native.Column(c).Grow(1).Gap(controlSpacing).Children(func() {
 			native.Text(c, d.text("identity.name"))
 			native.TextInput(c, &d.identity.Name).FillWidth().Disabled(d.busy)
 		})
-		native.Column(c).Grow(1).Gap(6).Children(func() {
+		native.Column(c).Grow(1).Gap(controlSpacing).Children(func() {
 			native.Text(c, d.text("identity.email"))
 			native.TextInput(c, &d.identity.Email).FillWidth().Disabled(d.busy)
 		})
 	})
-	native.Row(c).Gap(12).Children(func() {
+	native.Row(c).Gap(panelSpacing).Children(func() {
 		if native.PrimaryButton(c, d.text("identity.save")).Disabled(d.busy || strings.TrimSpace(d.identity.Name) == "" || strings.TrimSpace(d.identity.Email) == "").Clicked() {
 			d.saveIdentity()
 		}

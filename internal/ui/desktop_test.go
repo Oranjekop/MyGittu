@@ -18,7 +18,7 @@ import (
 func TestNativePages(t *testing.T) {
 	for _, language := range []string{"zh-CN", "en"} {
 		t.Run(language, func(t *testing.T) {
-			for page := 0; page <= projectFilesPage; page++ {
+			for page := 0; page <= referencesPage; page++ {
 				t.Run(fmt.Sprint(page), func(t *testing.T) {
 					d := New(nil, "", "")
 					d.applyPrefs(settings.Values{Language: language, Theme: "light"})
@@ -27,8 +27,12 @@ func TestNativePages(t *testing.T) {
 					d.page = page
 					if page == projectFilesPage {
 						d.projectFiles = []string{"README.md", "internal/git/status.go"}
+						d.rebuildProjectTree()
 						d.projectFileRow = 0
 						d.projectPreview.New = "# MyGittu"
+					}
+					if page == referencesPage {
+						d.references = app.References{Stashes: []string{"hash\tstash@{0} Working changes"}, Tags: []string{"v1.0.0"}}
 					}
 					if page == 4 {
 						d.page = 0

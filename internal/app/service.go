@@ -30,6 +30,9 @@ func (s *Service) Read(ctx context.Context, id string, args ...string) (git.Resu
 	return s.Runner.Run(ctx, r.Root, args...)
 }
 func (s *Service) Write(ctx context.Context, id string, args ...string) (git.Result, error) {
+	return s.writeLocked(ctx, id, func() (git.Result, error) { return s.Read(ctx, id, args...) })
+}
+func (s *Service) writeLocked(ctx context.Context, id string, work func() (git.Result, error)) (git.Result, error) {
 	if _, e := s.Registry.Get(id); e != nil {
 		return git.Result{}, e
 	}
@@ -41,14 +44,52 @@ func (s *Service) Write(ctx context.Context, id string, args ...string) (git.Res
 	case <-ctx.Done():
 		return git.Result{}, ctx.Err()
 	}
-	return s.Read(ctx, id, args...)
+	return work()
 }
 func (s *Service) Status(ctx context.Context, id string) ([]git.FileStatus, error) {
-	r, e := s.Read(ctx, id, "status", "--porcelain=v2", "-z", "--untracked-files=all", "--ignored=matching")
+	files, _, e := s.WorkspaceStatus(ctx, id)
+	return files, e
+}
+
+type BranchStatus struct {
+	Name     string
+	Upstream string
+	Ahead    int
+	Behind   int
+	Compared bool
+}
+
+func (s *Service) WorkspaceStatus(ctx context.Context, id string) ([]git.FileStatus, BranchStatus, error) {
+	var branch BranchStatus
+	r, e := s.Read(ctx, id, "status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--ignored=matching")
 	if e != nil {
-		return nil, e
+		return nil, branch, e
 	}
-	return git.ParseStatus(r.Stdout)
+	for headers := r.Stdout; bytes.HasPrefix(headers, []byte("# ")); {
+		line, rest, ok := bytes.Cut(headers, []byte{0})
+		if !ok {
+			break
+		}
+		headers = rest
+		key, value, _ := strings.Cut(string(line[2:]), " ")
+		switch key {
+		case "branch.head":
+			branch.Name = value
+		case "branch.upstream":
+			branch.Upstream = value
+		case "branch.ab":
+			ahead, behind, _ := strings.Cut(value, " ")
+			var aheadErr, behindErr error
+			branch.Ahead, aheadErr = strconv.Atoi(strings.TrimPrefix(ahead, "+"))
+			branch.Behind, behindErr = strconv.Atoi(strings.TrimPrefix(behind, "-"))
+			branch.Compared = aheadErr == nil && behindErr == nil
+		}
+	}
+	if branch.Name == "(detached)" {
+		branch.Name = "detached HEAD"
+	}
+	files, e := git.ParseStatus(r.Stdout)
+	return files, branch, e
 }
 func (s *Service) Paths(ctx context.Context, id string, paths []string, stage bool) error {
 	if len(paths) == 0 {
@@ -103,6 +144,20 @@ func (s *Service) Log(ctx context.Context, id string, limit, offset int) ([]Comm
 	return s.LogSearch(ctx, id, limit, offset, "")
 }
 func (s *Service) LogSearch(ctx context.Context, id string, limit, offset int, query string) ([]Commit, error) {
+	return s.log(ctx, id, limit, offset, query, "")
+}
+func (s *Service) FileLog(ctx context.Context, id, path string, limit, offset int) ([]Commit, error) {
+	repo, err := s.Registry.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	path, err = repository.Relative(repo.Root, path)
+	if err != nil {
+		return nil, err
+	}
+	return s.log(ctx, id, limit, offset, "", path)
+}
+func (s *Service) log(ctx context.Context, id string, limit, offset int, query, path string) ([]Commit, error) {
 	if limit < 1 || limit > 500 || offset < 0 {
 		return nil, fmt.Errorf("invalid log page")
 	}
@@ -112,6 +167,9 @@ func (s *Service) LogSearch(ctx context.Context, id string, limit, offset int, q
 	args := []string{"log", "-z", "--format=%H%x00%an%x00%aI%x00%s", "--max-count=" + strconv.Itoa(limit), "--skip=" + strconv.Itoa(offset)}
 	if query != "" {
 		args = append(args, "--fixed-strings", "--regexp-ignore-case", "--grep="+query)
+	}
+	if path != "" {
+		args = append(args, "--follow", "--", path)
 	}
 	r, e := s.Read(ctx, id, args...)
 	if e != nil {

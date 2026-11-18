@@ -1,113 +1,97 @@
-<p align="center"><img src="internal/brand/icon-ui.png" width="112" height="112" alt="MyGittu 兔子图标"></p>
+<p align="center">
+  <img src="internal/brand/icon-ui.png" width="88" height="88" alt="MyGittu 兔子图标">
+</p>
 
 # MyGittu
 
-面向 Windows 和 macOS 的开源 Git 桌面客户端。使用 Go、MyGo 原生界面与系统 Git，支持简体中文和 English。
+面向 Windows 和 macOS 的原生 Git 桌面客户端。浏览文件、检查差异、整理暂存区和提交记录，都可以在同一个工作区完成。支持简体中文和 English，提供浅色、深色及跟随系统的灰阶主题。
 
 [下载安装包](https://github.com/Oranjekop/MyGittu/releases/latest) · [更新日志](CHANGELOG.md) · [反馈问题](https://github.com/Oranjekop/MyGittu/issues)
 
 ## 下载安装
 
-每个平台只需下载一个安装包，无需判断 CPU 类型。文件名中的 `<version>` 对应发布页版本。
+先安装系统 Git，并用 `git --version` 确认可用。Windows 可用 [Git for Windows](https://git-scm.com/downloads/win)，macOS 可用 Xcode Command Line Tools 或已有的 Git。
 
-| 系统 | 安装包 | 处理器 |
+| 平台 | 安装包 | 支持架构 |
 | --- | --- | --- |
-| Windows 10/11 64 位 | `MyGittu-<version>-Windows-Setup.exe` | 安装时自动选择原生 x64 / ARM64 |
-| macOS 13 及以上 | `MyGittu-<version>-macOS.pkg` | Universal，原生支持 Intel / Apple Silicon |
+| Windows 10 或 11（64 位） | `MyGittu-<version>-Windows-Setup.exe` | 自动选择 x64 或 ARM64 |
+| macOS 13 及以上 | `MyGittu-<version>-macOS.pkg` | Intel 和 Apple Silicon 通用包 |
 
-安装程序及引导内容使用中文。macOS 系统安装器自身的按钮语言由系统决定。安装后可在应用设置中切换中文或英文。
+发布页附有 `SHA256SUMS.txt`。安装引导使用中文，应用显示语言可在设置中切换。Windows 安装程序尚无 Authenticode 签名，macOS 安装包尚未公证，系统可能显示来源提示。
 
-先安装系统 Git：[Git for Windows](https://git-scm.com/downloads/win)；macOS 可使用 Xcode Command Line Tools 或已有 Git。执行 `git --version` 可确认是否就绪。
+本文描述当前源码中的功能。已发布安装包包含的变更请查阅对应的[更新日志](CHANGELOG.md)。
 
-发布页提供 `SHA256SUMS.txt`。安装包尚未进行 Windows 开发者签名、Apple Developer ID 签名或公证，系统可能提示来源未验证；请核对下载来源和校验和。
+## 开始使用
 
-## 使用
+1. 点击「打开仓库」，也可以拖入仓库目录，或按 `Ctrl+O`（macOS 为 `⌘O`）。
+2. 点击顶部仓库名，从下拉菜单直接切换项目。同名仓库显示路径。按 `Ctrl+K` 或 `⌘K` 可按名称和路径搜索最近仓库。
+3. 在「变更」页点选文件查看差异，勾选多项可批量暂存或取消暂存。拖动文件列表与差异区之间的分隔线调整宽度，窄窗会自动改用统一差异。
+4. 在底部输入提交信息并提交暂存内容。草稿按仓库保存。点击提交人可修改仓库或全局 Git 身份。
 
-1. 启动 MyGittu，点击“打开仓库…”选择目录，选择后直接进入仓库。
-2. 也可以拖入仓库文件夹，或按 Ctrl+O / macOS ⌘O；最近仓库按打开时间排列。
-3. 在“变更”中选择文件，右侧并排比较暂存区或工作区内容；暂存文件、填写提交信息并提交。点击当前提交人可修改姓名、邮箱。
-4. 使用“克隆…”下载仓库，在历史和分支页查看记录与管理分支。
+## 工作区功能
 
-姓名和邮箱可以保存到当前仓库或全局 Git 默认配置，仓库配置优先。修改只影响后续提交。保存使用配置锁和候选文件整体替换，避免姓名和邮箱只更新一部分。
+| 页面 | 可以做什么 |
+| --- | --- |
+| 变更 | 自动刷新状态，比较暂存区和工作区，按文件或文本区块暂存。普通文本合并冲突可对照当前和传入版本，编辑结果后暂存，再完成合并。 |
+| 文件 | 在可折叠目录树中搜索名称或路径，预览文本，查看包含重命名记录的文件历史、提交差异及逐行 Blame。 |
+| 历史 | 搜索提交信息、查看提交详情、反做所选提交。可撤销最近一个未出现在远端跟踪分支上的单父提交，并保留修改和暂存内容。 |
+| 分支 | 点选分支后切换、合并或删除已合并的本地分支。可比较两个本地或远端跟踪分支，查看独有提交图及文件差异。 |
+| 储藏与标签 | 创建和应用 Stash，创建或删除本地标签。 |
 
-设置以弹窗打开，支持 Esc、点击遮罩或关闭按钮退出，保留当前工作区和提交草稿。
+顶部工具栏提供获取、仅快进拉取和推送，执行时在轻量窗口显示对应的兔子动画。远程认证沿用系统 Git 的凭据助手或 SSH Agent。克隆入口位于左侧导航栏底部。
 
-![设置弹窗](docs/images/settings-dialog.png)
-
-支持的操作：
-
-- Status、文件/全部暂存、取消暂存、Commit。
-- 历史分页、搜索提交信息、提交详情、暂存区与工作区 Diff。
-- 创建、切换、删除已合并分支和合并。
-- Fetch、仅快进 Pull 和 Push。
-- 中英文切换、跟随系统/浅色/深色主题、仓库注册恢复。
-- 启动后后台检查稳定版更新，此后每六小时检查一次；设置中也可手动检查。发现新版后可在应用内下载，校验 SHA256 后打开系统安装器。
-
-远程认证沿用系统 Git credential helper 或 SSH agent。后台不提供终端密码输入，请先配置 Git 认证。Commit、Merge 会执行仓库配置的 Hook，应只对可信仓库执行操作。移除最近仓库记录不会删除仓库文件。
+应用会定期检查稳定版更新，也可在设置中手动检查。发现新版后，可在应用内下载安装包，校验 SHA256 后打开系统安装器。下载支持查看进度和取消。
 
 ## 文件管理器集成
 
-**Windows**：安装时可选资源管理器右键菜单、三种状态图标。启用这些功能时，安装程序会重启当前会话的资源管理器。系统仍会限制覆盖图标槽位。多选时打开第一个所选路径所在仓库，不自动批量暂存。
+### Windows 资源管理器
 
-右键操作集中在带兔子图标的 **MyGittu** 子菜单。本地 Git 目录显示变更、拉取、提交、推送、历史、差异，其他目录显示克隆。拉取、推送在轻量窗口执行，提交和克隆在确认后显示进度动画。配置受信任的发布者证书后，安装包可在 Windows 11 上注册现代右键菜单。构建、注册和实机验收见 [现代菜单部署](docs/runbooks/modern-menu.md)。
+安装时可勾选「启用资源管理器右键菜单」或「启用 Git 文件状态图标」。右键菜单按目录状态提供操作。Git 目录可查看变更、差异和历史，也可提交、拉取或推送。普通目录提供克隆。状态徽标区分干净、有修改和冲突，显示受 Windows 覆盖图标槽位限制。
 
-**macOS**：Finder Sync 源码已提供，但需要开发者签名、App Group 与沙盒通信验证。默认安装包仅安装桌面客户端与 Agent，暂不启用 Finder 扩展。签名开发构建见 [原生集成手册](docs/runbooks/integration.md)。
+Windows 11 新版菜单使用随安装包提供的自签名组件。首次启用前，从发布页下载 `MyGittu-Windows-Publisher.cer`，核对校验值后将它导入「本地计算机 → 受信任的人」，再运行安装包并勾选右键菜单。传统入口位于「显示更多选项」。安装器会尝试重启当前会话的资源管理器以加载配置。[Windows 11 菜单部署说明](docs/runbooks/modern-menu.md)
 
-Rebase、Cherry-pick、Blame、Stash、Tag、LFS、Submodule 管理和三方合并尚未提供。真实大仓库、系统扩展、签名升级与性能验收状态见 [验收记录](docs/acceptance.md)。
+### macOS Finder
+
+默认安装包包含桌面客户端与后台服务。Finder Sync 扩展源码可用于签名开发构建。[原生集成指南](docs/runbooks/integration.md)
 
 ## 从源码构建
 
-需要 Go 1.27.4、Git。Windows 安装包还需 Visual Studio C++ x64/ARM64 工具链、CMake 和 Inno Setup 6.5+；macOS 安装包需 Xcode Command Line Tools。
+克隆本仓库，使用 `go.mod` 指定的 Go 工具链和系统 Git。
 
-```powershell
-git clone https://github.com/Oranjekop/MyGittu.git
-cd MyGittu
+```sh
 go test ./...
 go vet ./...
+```
+
+Windows 本地运行：
+
+```powershell
 go build -o bin/agent.exe ./cmd/agent
 go build -ldflags=-H=windowsgui -o bin/desktop.exe ./cmd/desktop
 .\bin\desktop.exe
 ```
 
-macOS 开发时在同一目录构建 `agent` 和 `desktop`（不带 `.exe`），再启动 `desktop`。桌面端自动启动同目录 Agent，界面关闭后 Agent 继续维护缓存。
+macOS 本地运行：
 
-构建通用安装包：
-
-```powershell
-# Windows：同一个安装程序包含两个架构
-.\packaging\windows\release.ps1
+```sh
+go build -o bin/agent ./cmd/agent
+go build -o bin/desktop ./cmd/desktop
+./bin/desktop
 ```
 
-```bash
-# macOS：lipo 合并 Intel 与 Apple Silicon 二进制
-bash packaging/darwin/release.sh
-```
+桌面端会启动同目录的 Agent。Agent 负责执行 Git 命令、监听仓库变化并维护状态缓存。[架构记录](docs/adr/001-architecture.md) · [IPC 协议](docs/protocol/v1.md) · [平台验收记录](docs/acceptance.md)
 
-产物位于 `dist/release`。构建使用 `VERSION`，可执行文件资源和图标已包含在源码中。图标重新生成说明见 [图标来源](docs/branding.md)。
+打包输出至 `dist/release`。
 
-## 标签发布
+| 平台 | 命令 | 额外依赖 |
+| --- | --- | --- |
+| Windows | `./packaging/windows/release.ps1` | Visual Studio C++ x64 和 ARM64 工具链、CMake、Inno Setup。签名右键组件还需 Windows SDK 与签名证书。 |
+| macOS | `bash packaging/darwin/release.sh` | Xcode Command Line Tools |
 
-普通分支推送运行测试。版本标签触发安装包构建，产物直接上传到 GitHub Release 草稿，四种架构的安装检查通过后公开发布。发布新版本时：
+## 发布
 
-1. 修改 `VERSION`，在 `CHANGELOG.md` 添加同版本条目。
-2. 提交并推送代码，等待检查通过。
-3. 推送与 `VERSION` 一致的标签：
+更新 `VERSION` 和 [CHANGELOG.md](CHANGELOG.md)，提交并推送代码，再推送与版本文件一致的 `vX.Y.Z` 标签。GitHub Actions 将安装包上传到 Release 草稿，四种架构的安装检查通过后公开发布，并生成校验文件。
 
-```bash
-git tag -a vX.Y.Z -m "Release vX.Y.Z"
-git push origin vX.Y.Z
-```
+## 许可证
 
-Actions 校验版本，构建中文 Windows 安装程序和 macOS 通用安装包，全部成功后创建 GitHub Release，上传安装包及 SHA-256 校验和。标签与 `VERSION` 不匹配时会拒绝发布。后续版本使用新标签，不移动已有版本标签。
-
-## 架构与性能
-
-`cmd/desktop` 为原生界面，`cmd/agent` 提供 Git 服务、仓库注册、监听和内存快照。覆盖图标通过有界 IPC 查询缓存；菜单只检查路径上最多 64 层的 `.git` 标记，不遍历文件、不在 Explorer 中执行 Git。发现未打开的 Git 文件夹后，Agent 在后台建立状态缓存。Git 写操作逐仓库串行。
-
-文本对比每侧最多 256 KiB、8000 行；二进制文件不进入文本编辑器。检查更新的单次请求最长 5 秒，API 响应最多 256 KiB。用户选择下载安装后，安装包在后台流式下载。
-
-文件事件去抖 250ms，周期校验 30 秒，最多监听 2048 个目录、注册 256 个仓库。超出监听范围的目录由周期校验更新。Git 输出与 IPC 报文有大小上限。协议见 [IPC v1](docs/protocol/v1.md)。
-
-## 开源许可
-
-项目原创代码使用 [MIT License](LICENSE)，没有复制 TortoiseGit 源码。MyGo 和其他依赖保留各自许可证，见 [第三方声明](THIRD_PARTY_NOTICES.md) 和 [SBOM](docs/sbom.cdx.json)。图标由图像生成工具生成并保留生成说明。系统 Git 为外部依赖，不随安装包捆绑。
+MyGittu 使用 [MIT License](LICENSE)。依赖及素材来源见 [第三方声明](THIRD_PARTY_NOTICES.md)、[SBOM](docs/sbom.cdx.json) 和[图标说明](docs/branding.md)。

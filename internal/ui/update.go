@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"github.com/egoist/mygo"
 	"mygittu/internal/app"
 	"mygittu/internal/ipc"
@@ -64,13 +65,23 @@ func (d *Desktop) installUpdate() {
 	d.updateInstalling = true
 	d.updateError = ""
 	version := d.update.Latest
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	d.updateCancel = cancel
+	d.updateBytes, d.updateTotal = 0, 0
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		err := app.InstallUpdate(ctx, version)
+		err := app.InstallUpdate(ctx, version, func(done, total int64) {
+			mygo.RunOnMain(func() {
+				d.updateBytes, d.updateTotal = done, total
+				if d.win != nil && !d.win.IsDestroyed() {
+					d.win.Invalidate()
+				}
+			})
+		})
 		mygo.RunOnMain(func() {
 			d.updateInstalling = false
-			if err != nil {
+			d.updateCancel = nil
+			if err != nil && !errors.Is(err, context.Canceled) {
 				d.updateError = err.Error()
 			}
 			if d.win != nil && !d.win.IsDestroyed() {

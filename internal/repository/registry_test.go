@@ -2,12 +2,30 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	git "mygittu/internal/git"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 )
+
+func TestDiscoveryEvictionPreservesRecentRepositories(t *testing.T) {
+	r, err := New(nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.repos["recent"] = Info{ID: "recent", LastOpened: 1}
+	for i := range 257 {
+		r.cacheDiscovery(Info{ID: fmt.Sprint(i), discovered: int64(i)})
+	}
+	if _, ok := r.repos["recent"]; !ok || len(r.repos) != 257 {
+		t.Fatal("recent repository lost or cache limit exceeded")
+	}
+	if _, ok := r.repos["0"]; ok {
+		t.Fatal("oldest discovery was not evicted")
+	}
+}
 
 func TestRegistryPersistence(t *testing.T) {
 	root := t.TempDir()

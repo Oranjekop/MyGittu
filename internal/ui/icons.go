@@ -8,6 +8,7 @@ import (
 // Original 20px line icons: one stroke weight and round ends throughout.
 // SVGs are parsed once; rendering follows the current theme and scale factor.
 var iconShapes = map[string]string{
+	"stash":    `<path d="M3 5h14v4H3zM4 9v7h12V9M8 12h4"/>`,
 	"open":     `<path d="M2.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h4l2 2h6A1.5 1.5 0 0 1 17.5 7v1M2.5 8.5h15l-2 8h-12z"/>`,
 	"clone":    `<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M12 3H5a2 2 0 0 0-2 2v7M9.5 12h5M12 9.5v5"/>`,
 	"changes":  `<path d="M11 3H5a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 5 17h10a1.5 1.5 0 0 0 1.5-1.5V8zM11 3v5h5.5M6.5 11h5M6.5 14h3"/>`,
@@ -43,12 +44,12 @@ func iconButton(c *native.Context, label, icon string, primary bool) native.Elem
 	} else {
 		button = native.Button(c, "")
 	}
-	return button.Label(label).Gap(7).Children(func() {
+	return button.Label(label).Height(27).Padding(0, 8).Gap(6).AlignItems(native.Center).Children(func() {
 		if vector := icons[strings.TrimPrefix(icon, "remote.")]; vector != nil {
-			native.Icon(c, vector).Width(16).Height(16)
+			native.Icon(c, vector).Width(14).Height(14)
 		}
 		if label != "" {
-			native.Text(c, label)
+			native.Text(c, label).SingleLine()
 		}
 	})
 }

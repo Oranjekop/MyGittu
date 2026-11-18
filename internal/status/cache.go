@@ -8,6 +8,7 @@ import (
 	git "mygittu/internal/git"
 	"mygittu/internal/platform"
 	"mygittu/internal/repository"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -27,6 +28,8 @@ type Snapshot struct {
 	Generation uint64           `json:"generation"`
 	Updated    time.Time        `json:"updated"`
 	Branch     string           `json:"branch"`
+	Merging    bool             `json:"merging"`
+	Tracking   app.BranchStatus `json:"tracking"`
 	states     map[string]git.State
 }
 type Cache struct {
@@ -57,15 +60,10 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 	c.mu.RLock()
 	epoch := c.epochs[id]
 	c.mu.RUnlock()
-	files, e := c.Service.Status(ctx, id)
+	files, branch, e := c.Service.WorkspaceStatus(ctx, id)
 	if e != nil {
 		c.Invalidate(id)
 		return e
-	}
-	branchResult, _ := c.Service.Read(ctx, id, "symbolic-ref", "--quiet", "--short", "HEAD")
-	branch := strings.TrimSpace(string(branchResult.Stdout))
-	if branch == "" {
-		branch = "detached HEAD"
 	}
 	states := map[string]git.State{".": git.Clean}
 	for _, f := range files {
@@ -88,7 +86,8 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 	}
 	changed := !maps.Equal(c.snapshots[id].states, states)
 	c.generation++
-	c.snapshots[id] = Snapshot{Files: files, Generation: c.generation, Updated: time.Now(), Branch: branch, states: states}
+	_, mergeErr := os.Stat(filepath.Join(repo.GitDir, "MERGE_HEAD"))
+	c.snapshots[id] = Snapshot{Files: files, Generation: c.generation, Updated: time.Now(), Branch: branch.Name, Merging: mergeErr == nil, Tracking: branch, states: states}
 	c.mu.Unlock()
 	if changed {
 		// Let Explorer's 500 ms native lookup cache expire before repainting.

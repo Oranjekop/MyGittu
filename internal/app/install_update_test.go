@@ -28,8 +28,14 @@ func TestDownloadInstallerChecksum(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	if err := downloadInstaller(context.Background(), server.Client(), server.URL+"/", name, filepath.Join(t.TempDir(), name)); err != nil {
+	var downloaded, expected int64
+	if err := downloadInstaller(context.Background(), server.Client(), server.URL+"/", name, filepath.Join(t.TempDir(), name), func(done, total int64) {
+		downloaded, expected = done, total
+	}); err != nil {
 		t.Fatal(err)
+	}
+	if downloaded != int64(len(contents)) || expected != downloaded {
+		t.Fatalf("incorrect progress: %d / %d", downloaded, expected)
 	}
 	if err := downloadInstaller(context.Background(), server.Client(), server.URL+"/tampered/", name, filepath.Join(t.TempDir(), name)); err == nil || err.Error() != "installer checksum verification failed" {
 		t.Fatalf("expected checksum failure, got %v", err)

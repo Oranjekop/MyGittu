@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"mygittu/internal/status"
 )
 
 func (d *Desktop) selectRepository(id, root string) {
@@ -12,7 +14,10 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.saveDraft()
 		d.message = d.loadDraft(id)
 		d.savedMessage = d.message
-		d.snapshot.Generation = 0
+		d.snapshot = status.Snapshot{}
+		d.projectSearch, d.projectCollapsed = "", nil
+		d.hunksOpen = false
+		d.tools = workbench{}
 	}
 	d.selected, d.path = id, root
 }

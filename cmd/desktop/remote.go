@@ -54,22 +54,20 @@ func (d *remoteWindow) text(zh, en string) string {
 }
 
 func (d *remoteWindow) view(c *native.Context) {
-	t := c.Theme()
+	t := ui.ApplyTheme(c)
 	native.Column(c).Fill().Padding(18).Gap(12).Background(t.Background).Children(func() {
 		if d.err == "" {
 			native.Column(c).Grow(1).FillWidth().Center().Gap(14).Children(func() {
-				native.Column(c).Width(106).Height(90).Center().Radius(20).Background(t.Surface).Children(func() {
-					ui.OperationIcon(c, 76, d.frame, d.action)
-				})
+				native.Image(c, d.rabbitFrame()).Width(164).Height(123)
 				message := d.status
 				if message == "" {
 					message = d.runningStatus()
 				}
-				native.Text(c, message).FontSize(19).Bold()
+				native.Text(c, message).FontSize(17).Bold()
 			})
 			return
 		}
-		native.Text(c, d.status).FontSize(19).Bold().TextColor(t.Danger)
+		native.Text(c, d.status).FontSize(17).Bold().TextColor(t.Danger)
 		native.Scroll(c).Grow(1).FillWidth().Background(t.Surface).Radius(8).Children(func() {
 			native.Text(c, d.err).FillWidth().Padding(10)
 		})
@@ -94,7 +92,7 @@ func (d *remoteWindow) runningStatus() string {
 }
 
 func (d *remoteWindow) animate(ctx context.Context) {
-	ticker := time.NewTicker(time.Second / 24)
+	ticker := time.NewTicker(remoteFrameInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -103,7 +101,7 @@ func (d *remoteWindow) animate(ctx context.Context) {
 		case <-ticker.C:
 			mygo.RunOnMain(func() {
 				if !d.finished && !d.win.IsDestroyed() {
-					d.frame = (d.frame + 1) % 24
+					d.frame = (d.frame + 1) % 5
 					d.win.Invalidate()
 				}
 			})
@@ -130,7 +128,7 @@ func (d *remoteWindow) execute(ctx context.Context) {
 		return
 	}
 	d.win.Update(func() {
-		d.finished, d.frame = true, 0
+		d.finished, d.frame = true, 3
 		d.status = d.text("已完成", "Completed")
 	})
 	time.AfterFunc(900*time.Millisecond, func() {

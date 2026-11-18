@@ -30,7 +30,9 @@ ShowLanguageDialog=no
 LanguageDetectionMethod=none
 LicenseFile=LICENSE
 CloseApplications=yes
+CloseApplicationsFilter=desktop.exe,agent.exe,mygittu.exe
 RestartApplications=no
+SetupLogging=yes
 ChangesAssociations=yes
 UninstallDisplayName=MyGittu
 
@@ -45,9 +47,10 @@ Name: overlays; Description: "启用 Git 文件状态图标"; Flags: unchecked
 [Files]
 Source: "dist\windows\x64\*"; DestDir: "{app}"; Excludes: "MyGittuShell.dll"; Flags: ignoreversion; Check: UseX64
 Source: "dist\windows\arm64\*"; DestDir: "{app}"; Excludes: "MyGittuShell.dll"; Flags: ignoreversion; Check: UseArm64
-Source: "dist\windows\x64\MyGittuShell.dll"; DestDir: "{app}"; DestName: "{#ShellFilename}"; Flags: ignoreversion; Check: UseX64
-Source: "dist\windows\arm64\MyGittuShell.dll"; DestDir: "{app}"; DestName: "{#ShellFilename}"; Flags: ignoreversion; Check: UseArm64
+Source: "dist\windows\x64\MyGittuShell.dll"; DestDir: "{app}"; DestName: "{#ShellFilename}"; Flags: ignoreversion restartreplace; Check: UseX64
+Source: "dist\windows\arm64\MyGittuShell.dll"; DestDir: "{app}"; DestName: "{#ShellFilename}"; Flags: ignoreversion restartreplace; Check: UseArm64
 Source: "packaging\windows\prepare-upgrade.ps1"; Flags: dontcopy
+Source: "packaging\windows\restart-explorer.ps1"; Flags: dontcopy
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 #ifdef ModernShellPackage
@@ -68,11 +71,6 @@ Root: HKLM; Subkey: "Software\Classes\Directory\shellex\ContextMenuHandlers\MyGi
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shellex\ContextMenuHandlers\MyGittu"; ValueType: string; ValueData: "{{29810E41-632A-4A9B-A190-4D6593668101}"; Flags: uninsdeletekey; Tasks: shell
 
 [Run]
-Filename: "{app}\agent.exe"; Flags: nowait runhidden runasoriginaluser; Check: RestartExplorer
-#ifdef ModernShellPackage
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\register-modern.ps1"" -PackagePath ""{app}\MyGittuShell.msix"" -InstallPath ""{app}"""; Flags: runhidden runasoriginaluser; Tasks: shell; MinVersion: 10.0.22000
-#endif
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -Command ""$session = (Get-Process -Id $PID).SessionId; $shell = @(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session); if ($shell.Count) {{ $shell | Stop-Process -Force -ErrorAction Stop; $shell | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue; if (-not (Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session)) {{ Start-Process (Join-Path $env:WINDIR 'explorer.exe') } }"""; StatusMsg: "正在重新启动资源管理器…"; Flags: runhidden runasoriginaluser; Check: RestartExplorer
 Filename: "{app}\desktop.exe"; Description: "启动 MyGittu"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 #ifdef ModernShellPackage
@@ -86,11 +84,24 @@ begin Result := IsArm64; end;
 function UseX64: Boolean;
 begin Result := not IsArm64; end;
 
+function ExistingIntegration: Boolean;
+var I: Integer; Value, Prefix: String;
+begin
+  Result := False;
+  Prefix := AddBackslash(ExpandConstant('{app}'));
+  for I := 1 to 4 do
+    if RegQueryStringValue(HKLM, 'Software\Classes\CLSID\{29810E41-632A-4A9B-A190-4D659366810' +
+      IntToStr(I) + '}\InprocServer32', '', Value) and
+      (CompareText(Copy(Value, 1, Length(Prefix)), Prefix) = 0) then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
 function RestartExplorer: Boolean;
 begin
-  Result := WizardIsTaskSelected('shell') or WizardIsTaskSelected('overlays') or
-    RegKeyExists(HKLM, 'Software\Classes\Directory\shellex\ContextMenuHandlers\MyGittu') or
-    RegKeyExists(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers\MyGittu Clean');
+  Result := WizardIsTaskSelected('shell') or WizardIsTaskSelected('overlays') or ExistingIntegration;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -109,18 +120,66 @@ begin
     Result := '旧版 MyGittu 后台服务仍在运行。请关闭后重试。';
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
+procedure RegisterOverlays;
 var I: Integer; Key, Id, LabelText: String;
 begin
-  if (CurStep = ssPostInstall) and WizardIsTaskSelected('overlays') then
+  if WizardIsTaskSelected('overlays') then
     for I := 2 to 4 do begin
       Id := '{29810E41-632A-4A9B-A190-4D659366810' + IntToStr(I) + '}';
       Key := 'Software\Classes\CLSID\' + Id + '\InprocServer32';
-      RegWriteStringValue(HKLM, Key, '', ExpandConstant('{app}\{#ShellFilename}'));
-      RegWriteStringValue(HKLM, Key, 'ThreadingModel', 'Apartment');
+      if not RegWriteStringValue(HKLM, Key, '', ExpandConstant('{app}\{#ShellFilename}')) then
+        Log('MyGittu could not register overlay DLL: ' + Id);
+      if not RegWriteStringValue(HKLM, Key, 'ThreadingModel', 'Apartment') then
+        Log('MyGittu could not register overlay threading model: ' + Id);
       case I of 2: LabelText := 'MyGittu Clean'; 3: LabelText := 'MyGittu Modified'; 4: LabelText := 'MyGittu Conflict'; end;
-      RegWriteStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers\' + LabelText, '', Id);
+      if not RegWriteStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers\' + LabelText, '', Id) then
+        Log('MyGittu could not register overlay identifier: ' + LabelText);
     end;
+end;
+
+function RunUserPowerShell(const Arguments, StepName: String): Boolean;
+var ExitCode: Integer; Started: Boolean;
+begin
+  ExitCode := -1;
+  Started := ExecAsOriginalUser(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + Arguments,
+    '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  Log(Format('MyGittu %s: started=%d, exit=%d', [StepName, Ord(Started), ExitCode]));
+  Result := Started and (ExitCode = 0);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var ExitCode: Integer;
+#ifdef ModernShellPackage
+    Version: TWindowsVersion;
+#endif
+begin
+  if CurStep <> ssPostInstall then
+    Exit;
+  RegisterOverlays;
+  if not RestartExplorer then
+    Exit;
+  if not ExecAsOriginalUser(ExpandConstant('{app}\agent.exe'), '', '',
+    SW_HIDE, ewNoWait, ExitCode) then
+    Log(Format('MyGittu Agent launch failed: %d', [ExitCode]))
+  else
+    Log('MyGittu Agent launch requested');
+#ifdef ModernShellPackage
+  GetWindowsVersionEx(Version);
+  if (Version.Build >= 22000) and WizardIsTaskSelected('shell') then
+    if not RunUserPowerShell('"' + ExpandConstant('{app}\register-modern.ps1') +
+      '" -PackagePath "' + ExpandConstant('{app}\MyGittuShell.msix') +
+      '" -InstallPath "' + ExpandConstant('{app}') + '\."', 'modern menu registration') then
+      if not WizardSilent then
+        SuppressibleMsgBox('Windows 11 新版右键菜单注册失败。传统入口仍可从“显示更多选项”打开。',
+          mbInformation, MB_OK, IDOK);
+#endif
+  ExtractTemporaryFile('restart-explorer.ps1');
+  WizardForm.StatusLabel.Caption := '正在重启 Windows 资源管理器…';
+  if not RunUserPowerShell('"' + ExpandConstant('{tmp}\restart-explorer.ps1') + '"', 'Explorer refresh') then
+    if not WizardSilent then
+      SuppressibleMsgBox('MyGittu 已安装。Windows 资源管理器未能自动重启，请注销并重新登录，以加载新版右键菜单和状态图标。',
+        mbInformation, MB_OK, IDOK);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
