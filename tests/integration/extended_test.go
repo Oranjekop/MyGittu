@@ -128,6 +128,7 @@ func TestCherryPickConflictContinueAndAbort(t *testing.T) {
 func TestRestoreFileAndHunk(t *testing.T) {
 	s, id, dir := setup(t)
 	ctx := context.Background()
+	command(t, dir, "config", "core.autocrlf", "false")
 	file := filepath.Join(dir, "lines.txt")
 	var lines []string
 	for i := range 32 {
@@ -163,8 +164,13 @@ func TestRestoreFileAndHunk(t *testing.T) {
 	if err := s.RestoreFile(ctx, id, "lines.txt", token, false); err != nil {
 		t.Fatal(err)
 	}
-	if command(t, dir, "diff") != "" || !strings.Contains(command(t, dir, "diff", "--cached"), "+staged") {
-		t.Fatal("index changed")
+	worktree, err := s.Read(ctx, id, "diff")
+	if err != nil || len(worktree.Stdout) != 0 {
+		t.Fatalf("remaining worktree diff: %s (%v)", worktree.Stdout, err)
+	}
+	index, err := s.Read(ctx, id, "diff", "--cached")
+	if err != nil || !strings.Contains(string(index.Stdout), "+staged") {
+		t.Fatalf("staged content was not preserved: %s (%v)", index.Stdout, err)
 	}
 	loose := filepath.Join(dir, "new.txt")
 	write(t, loose, "untracked\n")
