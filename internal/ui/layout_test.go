@@ -164,3 +164,52 @@ func saveLayoutPreview(t *testing.T, tt *native.Tester, name string) {
 		t.Fatal(err)
 	}
 }
+
+func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected = "demo"
+	d.repos = []repository.Info{{ID: "demo", Root: "D:/Projects/MyGittu"}}
+	d.changes = []git.FileStatus{{Path: "cmd/desktop/main.go", Index: git.Modified, Worktree: git.Clean, State: git.Modified}}
+	d.row, d.stagedCount, d.staged = 0, 1, true
+	d.openSettings()
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if !tt.HasText("字体大小") {
+		t.Fatal("appearance settings missing")
+	}
+	saveLayoutPreview(t, tt, "settings-appearance-150.png")
+	if err := tt.Click("AI 供应商"); err != nil {
+		t.Fatal(err)
+	}
+	if d.settingsTab != 2 || !tt.HasText("供应商") {
+		t.Fatal("AI tab did not open")
+	}
+	if err := tt.Click("未启用"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click("DeepSeek"); err != nil {
+		t.Fatal(err)
+	}
+	if d.aiForm.config.Provider != "DeepSeek" || d.aiForm.config.BaseURL == "" || !tt.HasText("模型 ID") {
+		t.Fatal("provider selection did not populate its configuration")
+	}
+	saveLayoutPreview(t, tt, "settings-ai-150.png")
+	if err := tt.Click("AI 提示词"); err != nil {
+		t.Fatal(err)
+	}
+	if d.settingsTab != 3 || !tt.HasText("提交信息提示词") || d.aiPromptDraft == "" {
+		t.Fatal("AI prompt tab did not open with its default template")
+	}
+	saveLayoutPreview(t, tt, "settings-ai-prompt-150.png")
+	tt.Key(0, native.KeyEscape)
+	tt.Frame()
+	if d.settingsOpen {
+		t.Fatal("settings did not close")
+	}
+	if err := tt.Click("AI 生成提交信息"); err != nil {
+		t.Fatal(err)
+	}
+	if !d.settingsOpen || d.settingsTab != 2 {
+		t.Fatal("unconfigured AI should open provider settings")
+	}
+}

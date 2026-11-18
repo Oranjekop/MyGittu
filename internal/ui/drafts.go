@@ -17,6 +17,7 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.snapshot = status.Snapshot{}
 		d.projectSearch, d.projectCollapsed = "", nil
 		d.hunksOpen = false
+		d.aiConfirm, d.aiError = false, ""
 		d.tools = workbench{}
 	}
 	d.selected, d.path = id, root

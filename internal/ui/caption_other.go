@@ -4,4 +4,4 @@ package ui
 
 import native "github.com/egoist/mygo/ui"
 
-func styleCaption(uintptr, native.Color, native.Color) {}
+func StyleCaption(uintptr, native.Color, native.Color) {}

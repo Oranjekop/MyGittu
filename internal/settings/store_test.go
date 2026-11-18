@@ -3,6 +3,8 @@ package settings
 import (
 	"path/filepath"
 	"testing"
+
+	"mygittu/internal/commitai"
 )
 
 func TestLanguagePersistence(t *testing.T) {
@@ -15,7 +17,8 @@ func TestLanguagePersistence(t *testing.T) {
 		t.Fatal("wrong default")
 	}
 	for _, language := range []string{"en", "zh-CN"} {
-		v := Values{language, "dark"}
+		v := Values{Language: language, Theme: "dark", FontSize: 16.5, AIPrompt: "Use Conventional Commits",
+			AI: commitai.Config{Provider: "Ollama", BaseURL: "http://127.0.0.1:11434/v1", Model: "local-model"}}
 		if e = s.Update(v); e != nil {
 			t.Fatal(e)
 		}
@@ -25,7 +28,7 @@ func TestLanguagePersistence(t *testing.T) {
 		}
 	}
 	before := s.Get()
-	if s.Update(Values{"fr", "light"}) == nil || s.Get() != before {
+	if s.Update(Values{Language: "fr", Theme: "light"}) == nil || s.Get() != before {
 		t.Fatal("invalid language changed settings")
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"net"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,6 +44,13 @@ func TestFramedAgentWorkflow(t *testing.T) {
 	}
 	write(t, filepath.Join(dir, "ipc.txt"), "over IPC")
 	call("git.stage", ipc.Params{RepoID: id, Paths: []string{"ipc.txt"}}, nil)
+	write(t, filepath.Join(dir, "ipc.txt"), "unstaged content")
+	var stagedPatch string
+	call("git.diff.staged-for-message", ipc.Params{RepoID: id}, &stagedPatch)
+	if !strings.Contains(stagedPatch, "+over IPC") || strings.Contains(stagedPatch, "unstaged content") {
+		t.Fatal("incorrect content in staged AI patch")
+	}
+	write(t, filepath.Join(dir, "ipc.txt"), "over IPC")
 	var hash string
 	call("git.commit", ipc.Params{RepoID: id, Message: "IPC commit"}, &hash)
 	if len(hash) != 40 {

@@ -15,22 +15,24 @@ import (
 )
 
 type remoteWindow struct {
-	client   *ipc.Client
-	win      *mygo.Window
-	path     string
-	action   string
-	status   string
-	err      string
-	lang     string
-	frame    int
-	finished bool
+	fontSize                   float32
+	client                     *ipc.Client
+	win                        *mygo.Window
+	path                       string
+	action                     string
+	status                     string
+	err                        string
+	lang                       string
+	frame                      int
+	finished                   bool
+	captionStyled, captionDark bool
 }
 
 func runRemote(client *ipc.Client, path, action string) error {
 	if path == "" || (action != "fetch" && action != "pull" && action != "push") {
 		return fmt.Errorf("invalid remote action")
 	}
-	d := &remoteWindow{client: client, path: path, action: action, lang: "zh-CN"}
+	d := &remoteWindow{client: client, path: path, action: action, lang: "zh-CN", fontSize: 12.5}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	mygo.App.WhenReady(func() {
@@ -54,26 +56,36 @@ func (d *remoteWindow) text(zh, en string) string {
 }
 
 func (d *remoteWindow) view(c *native.Context) {
-	t := ui.ApplyTheme(c)
+	size := d.fontSize
+	if size == 0 {
+		size = 12.5
+	}
+	t := ui.ApplyTheme(c, size)
+	if d.win != nil && (!d.captionStyled || d.captionDark != t.Dark) {
+		if handle := d.win.NativeHandle(); handle != 0 {
+			ui.StyleCaption(handle, t.Background, t.Text)
+			d.captionStyled, d.captionDark = true, t.Dark
+		}
+	}
 	native.Column(c).Fill().Padding(18).Gap(12).Background(t.Background).Children(func() {
 		if d.err == "" {
 			native.Column(c).Grow(1).FillWidth().Center().Gap(14).Children(func() {
-				native.Image(c, d.rabbitFrame()).Width(164).Height(123)
+				native.Image(c, d.rabbitFrame()).Width(138).Height(138)
 				message := d.status
 				if message == "" {
 					message = d.runningStatus()
 				}
-				native.Text(c, message).FontSize(17).Bold()
+				native.Text(c, message).FontSize(17 + t.FontSize - 12.5).Bold()
 			})
 			return
 		}
-		native.Text(c, d.status).FontSize(17).Bold().TextColor(t.Danger)
+		native.Text(c, d.status).FontSize(17 + t.FontSize - 12.5).Bold().TextColor(t.Danger)
 		native.Scroll(c).Grow(1).FillWidth().Background(t.Surface).Radius(8).Children(func() {
 			native.Text(c, d.err).FillWidth().Padding(10)
 		})
 		native.Row(c).FillWidth().Children(func() {
 			native.Box(c).Grow(1)
-			if native.Button(c, d.text("关闭", "Close")).Clicked() {
+			if ui.IconButton(c, d.text("关闭", "Close"), "close", false).Clicked() {
 				d.win.Close()
 			}
 		})
@@ -113,6 +125,7 @@ func (d *remoteWindow) execute(ctx context.Context) {
 	var prefs settings.Values
 	_ = d.client.Call(ctx, "settings.get", ipc.Params{}, &prefs)
 	d.win.Update(func() {
+		d.fontSize = prefs.TextSize()
 		if prefs.Language != "" {
 			d.lang = prefs.Language
 		}

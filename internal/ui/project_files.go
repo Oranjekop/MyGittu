@@ -96,7 +96,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 				native.Text(c, d.text("files.select")).TextColor(t.TextMuted)
 			} else {
 				native.Text(c, d.projectTree[row].path).Bold()
-				if native.Button(c, d.text("file.history")).Disabled(d.busy).Clicked() {
+				if IconButton(c, d.text("file.history"), "history", false).Disabled(d.busy).Clicked() {
 					d.openFileHistory(d.projectTree[row].path)
 				}
 				if d.projectPreview.Binary {

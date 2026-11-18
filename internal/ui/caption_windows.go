@@ -9,7 +9,7 @@ import (
 
 var setWindowAttribute = windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute")
 
-func styleCaption(handle uintptr, background, foreground native.Color) {
+func StyleCaption(handle uintptr, background, foreground native.Color) {
 	const captionColor, captionText = 35, 36
 	for _, item := range []struct {
 		attribute uintptr

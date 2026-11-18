@@ -29,8 +29,7 @@ WizardStyle=modern
 ShowLanguageDialog=no
 LanguageDetectionMethod=none
 LicenseFile=LICENSE
-CloseApplications=yes
-CloseApplicationsFilter=desktop.exe,agent.exe,mygittu.exe
+CloseApplications=no
 RestartApplications=no
 SetupLogging=yes
 ChangesAssociations=yes
@@ -108,16 +107,17 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var ExitCode: Integer;
 begin
   Result := '';
-  if not FileExists(ExpandConstant('{app}\agent.exe')) then
+  if not (FileExists(ExpandConstant('{app}\agent.exe')) or FileExists(ExpandConstant('{app}\desktop.exe')) or
+    FileExists(ExpandConstant('{app}\mygittu.exe'))) then
     Exit;
   ExtractTemporaryFile('prepare-upgrade.ps1');
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
     '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' +
     ExpandConstant('{tmp}\prepare-upgrade.ps1') + '" -InstallPath "' +
     ExpandConstant('{app}') + '\."', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
-    Result := '无法停止旧版 MyGittu 后台服务。'
+    Result := '无法启动 MyGittu 进程关闭检查。'
   else if ExitCode <> 0 then
-    Result := '旧版 MyGittu 后台服务仍在运行。请关闭后重试。';
+    Result := '无法关闭旧版 MyGittu 进程。请退出 MyGittu 窗口后重试。';
 end;
 
 procedure RegisterOverlays;

@@ -96,6 +96,8 @@ func (d *Desktop) applyWorkspaceStatus(snapshot status.Snapshot) bool {
 	d.row = slices.IndexFunc(changes, func(file git.FileStatus) bool { return file.Path == selected.Path })
 	if d.row < 0 {
 		d.comparison, d.binary = nil, false
+	} else if changes[d.row].Index == git.Clean || changes[d.row].Worktree == git.Clean {
+		d.staged = changes[d.row].Worktree == git.Clean
 	}
 	return true
 }

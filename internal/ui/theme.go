@@ -9,9 +9,10 @@ const (
 	sidebarWidth   = 52
 )
 
-func ApplyTheme(c *native.Context) *native.Theme {
+func ApplyTheme(c *native.Context, fontSize float32) *native.Theme {
 	t := *c.Theme()
-	t.FontSize = 12.5
+	t.Font = appFontFamily()
+	t.FontSize = fontSize
 	t.Spacing = 3.5
 	if t.Dark {
 		t.Background = native.Hex("#242424")

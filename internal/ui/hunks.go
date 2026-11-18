@@ -34,12 +34,12 @@ func (d *Desktop) hunkDialog(c *native.Context) {
 			if d.hunkRow >= 0 && d.hunkRow < len(d.hunks) {
 				hunk := d.hunks[d.hunkRow]
 				native.TextArea(c, &hunk.Patch).Height(220).FillWidth().ReadOnly(true)
-				if native.PrimaryButton(c, d.text("hunk.stage")).Disabled(d.busy).Clicked() {
+				if IconButton(c, d.text("hunk.stage"), "stage", true).Disabled(d.busy).Clicked() {
 					d.hunksOpen = false
 					d.mutate("git.hunk.stage", ipc.Params{Path: d.hunkPath, Hash: hunk.Token, Offset: d.hunkRow})
 				}
 			}
-			if native.Button(c, d.text("close")).Clicked() {
+			if IconButton(c, d.text("close"), "close", false).Clicked() {
 				d.hunksOpen = false
 			}
 		})

@@ -3,14 +3,19 @@ package settings
 import (
 	"encoding/json"
 	"fmt"
+	"mygittu/internal/commitai"
 	"os"
 	"path/filepath"
 	"sync"
+	"unicode/utf8"
 )
 
 type Values struct {
-	Language string `json:"language"`
-	Theme    string `json:"theme"`
+	AIPrompt string          `json:"ai_prompt,omitempty"`
+	FontSize float32         `json:"font_size,omitempty"`
+	AI       commitai.Config `json:"ai,omitempty"`
+	Language string          `json:"language"`
+	Theme    string          `json:"theme"`
 }
 type Store struct {
 	mu     sync.RWMutex
@@ -35,7 +40,24 @@ func New(path string) (*Store, error) {
 	}
 	return s, nil
 }
+func (v Values) TextSize() float32 {
+	if v.FontSize == 0 {
+		return 12.5
+	}
+	return v.FontSize
+}
 func Validate(v Values) error {
+	if utf8.RuneCountInString(v.AIPrompt) > commitai.MaxPrompt {
+		return fmt.Errorf("AI prompt exceeds %d characters", commitai.MaxPrompt)
+	}
+	if v.FontSize != 0 && (v.FontSize < 11 || v.FontSize > 18) {
+		return fmt.Errorf("unsupported font size")
+	}
+	if v.AI.Provider != "" {
+		if _, err := v.AI.Endpoint(); err != nil {
+			return err
+		}
+	}
 	if v.Language != "zh-CN" && v.Language != "en" {
 		return fmt.Errorf("unsupported language")
 	}

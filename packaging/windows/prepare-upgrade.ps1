@@ -1,14 +1,23 @@
 param([Parameter(Mandatory=$true)][string]$InstallPath)
 
 $ErrorActionPreference = 'Stop'
-$agentPath = [IO.Path]::GetFullPath((Join-Path $InstallPath 'agent.exe'))
-$agents = Get-Process -Name agent -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -eq $agentPath }
-foreach ($agent in $agents) {
-    if (!$agent.HasExited) {
-        $agent.Kill()
-        if (!$agent.WaitForExit(5000)) {
-            throw "MyGittu Agent did not stop."
+$names = @('desktop', 'mygittu', 'agent')
+$paths = @($names | ForEach-Object {
+    [IO.Path]::GetFullPath((Join-Path $InstallPath "$_.exe"))
+})
+foreach ($name in $names) {
+    $running = @(Get-Process -Name $name -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -in $paths })
+    foreach ($process in $running) {
+        try {
+            if ($process.HasExited) { continue }
+            if ($process.CloseMainWindow() -and $process.WaitForExit(2000)) { continue }
+            if (!$process.HasExited) { $process.Kill() }
+        } catch {
+            if (!$process.HasExited) { throw }
+        }
+        if (!$process.WaitForExit(5000)) {
+            throw "MyGittu $name.exe did not stop."
         }
     }
 }

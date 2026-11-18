@@ -54,7 +54,7 @@ func (d *Desktop) repositoryDialog(c *native.Context) {
 		native.Column(c).Width(620).Gap(panelSpacing).Children(func() {
 			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 				native.Text(c, d.text("repo.recent")).FontSize(19).Bold().Grow(1)
-				if native.Button(c, d.text("close")).Clicked() {
+				if IconButton(c, d.text("close"), "close", false).Clicked() {
 					d.repositoriesOpen = false
 				}
 			})
@@ -77,7 +77,8 @@ func (d *Desktop) repositoryDialog(c *native.Context) {
 								open = native.Button(c, "")
 							}
 							open.Label(label).Grow(1).Padding(controlSpacing).Radius(8).Disabled(d.busy).Tooltip(repo.Root)
-							open.Children(func() {
+							open.Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+								native.Icon(c, icons["open"]).Width(14).Height(14)
 								native.Column(c).Grow(1).Gap(detailSpacing).Children(func() {
 									native.Text(c, label).Bold().Ellipsis("…")
 									native.Text(c, repo.Root).FontSize(11).Ellipsis("…")
@@ -88,7 +89,7 @@ func (d *Desktop) repositoryDialog(c *native.Context) {
 								d.open(repo.Root)
 							}
 							label = d.text("repo.forget")
-							if iconButton(c, "", "remove", false).Label(label).Tooltip(label).Disabled(d.busy).Clicked() {
+							if IconButton(c, "", "remove", false).Label(label).Tooltip(label).Disabled(d.busy).Clicked() {
 								d.forgetRepository(repo.ID)
 							}
 						})
@@ -98,7 +99,7 @@ func (d *Desktop) repositoryDialog(c *native.Context) {
 					}
 				})
 			})
-			if iconButton(c, d.text("repo.open")+"…", "open", true).Disabled(d.busy).Clicked() {
+			if IconButton(c, d.text("repo.open")+"…", "open", true).Disabled(d.busy).Clicked() {
 				d.repositoriesOpen = false
 				d.chooseRepository()
 			}

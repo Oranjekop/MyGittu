@@ -9,7 +9,18 @@ import (
 	"testing"
 
 	native "github.com/egoist/mygo/ui"
+	"mygittu/internal/brand"
 )
+
+func TestRemoteRabbitFramesAreSquare(t *testing.T) {
+	atlas, err := png.DecodeConfig(bytes.NewReader(brand.RemoteRabbitPNG))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if atlas.Width%4 != 0 || atlas.Height%3 != 0 || atlas.Width/4 != atlas.Height/3 {
+		t.Fatalf("expected square frames in the 4×3 atlas, got %d×%d", atlas.Width, atlas.Height)
+	}
+}
 
 func TestRemoteAnimationKeepsTextStill(t *testing.T) {
 	for _, action := range []string{"pull", "fetch", "push"} {
@@ -29,7 +40,7 @@ func checkRemoteAnimation(t *testing.T, action string) {
 	if bytes.Equal(before, after.Pix) {
 		t.Fatal("animation frame did not move the synchronization icon")
 	}
-	for y := 166; y < after.Bounds().Dy(); y++ {
+	for y := 175; y < after.Bounds().Dy(); y++ {
 		start, end := y*after.Stride, (y+1)*after.Stride
 		if !bytes.Equal(before[start:end], after.Pix[start:end]) {
 			t.Fatal("animation moved content outside the icon area")

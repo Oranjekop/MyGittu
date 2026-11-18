@@ -20,11 +20,11 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 			}).Grow(1).FillWidth().Disabled(d.busy)
 			native.TextInput(c, &d.stashMessage).Placeholder(d.text("stash.message")).FillWidth().Disabled(d.busy)
 			native.Row(c).Gap(controlSpacing).Children(func() {
-				if native.PrimaryButton(c, d.text("stash.save")).Disabled(d.busy).Clicked() {
+				if IconButton(c, d.text("stash.save"), "stash", true).Disabled(d.busy).Clicked() {
 					edit("stash.save", d.stashMessage)
 				}
 				valid := d.stashRow >= 0 && d.stashRow < len(d.references.Stashes)
-				if native.Button(c, d.text("stash.apply")).Disabled(d.busy || !valid).Clicked() && valid {
+				if IconButton(c, d.text("stash.apply"), "restore", false).Disabled(d.busy || !valid).Clicked() && valid {
 					name, _, _ := strings.Cut(d.references.Stashes[d.stashRow], "\t")
 					edit("stash.apply", name)
 				}
@@ -37,11 +37,11 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 			}).Grow(1).FillWidth().Disabled(d.busy)
 			native.TextInput(c, &d.tagName).Placeholder(d.text("tag.name")).FillWidth().Disabled(d.busy)
 			native.Row(c).Gap(controlSpacing).Children(func() {
-				if native.PrimaryButton(c, d.text("tag.create")).Disabled(d.busy || strings.TrimSpace(d.tagName) == "").Clicked() {
+				if IconButton(c, d.text("tag.create"), "tag", true).Disabled(d.busy || strings.TrimSpace(d.tagName) == "").Clicked() {
 					edit("tag.create", strings.TrimSpace(d.tagName))
 				}
 				valid := d.tagRow >= 0 && d.tagRow < len(d.references.Tags)
-				if native.Button(c, d.text("tag.delete")).Disabled(d.busy || !valid).Clicked() && valid {
+				if IconButton(c, d.text("tag.delete"), "remove", false).Disabled(d.busy || !valid).Clicked() && valid {
 					edit("tag.delete", d.references.Tags[d.tagRow])
 				}
 			})

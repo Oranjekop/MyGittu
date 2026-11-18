@@ -2,39 +2,76 @@ package ui
 
 import (
 	"fmt"
-	native "github.com/egoist/mygo/ui"
 	"strings"
+
+	native "github.com/egoist/mygo/ui"
+	"mygittu/internal/commitai"
+	"mygittu/internal/settings"
 )
 
 func (d *Desktop) openSettings() {
 	d.settingsOpen = true
+	d.settingsTab = 0
+	d.resetPromptDraft()
+	d.aiForm.apply(d.prefs.AI)
+	d.aiForm.key = d.aiForm.savedKey
 	if d.selected == "" {
 		d.identityScope = 1
 	}
-	d.loadIdentity()
 }
 func (d *Desktop) settingsDialog(c *native.Context) {
 	native.Modal(c, &d.settingsOpen, func() {
-		native.Column(c).Width(540).MaxWidth(540).Gap(panelSpacing).Children(func() {
+		native.Column(c).Width(620).MaxWidth(620).Gap(panelSpacing).Children(func() {
 			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 				native.Icon(c, icons["settings"]).Width(20).Height(20)
 				native.Text(c, d.text("nav.settings")).FontSize(18).Bold().Grow(1)
-				if native.Button(c, d.text("close")).Clicked() {
+				if IconButton(c, d.text("close"), "close", false).Clicked() {
 					d.settingsOpen = false
 				}
 			})
 			if d.err != "" {
 				native.Text(c, d.err).TextColor(native.Hex("#bf3030"))
 			}
-			d.settingsContents(c)
+			native.Row(c).Height(340).FillWidth().Gap(panelSpacing).Children(func() {
+				native.Column(c).Width(124).FillHeight().Gap(detailSpacing).Children(func() {
+					tabIcons := [...]string{"appearance", "user", "sparkle", "prompt", "download"}
+					for i, label := range []string{d.copy("外观", "Appearance"), d.text("identity.title"), d.copy("AI 供应商", "AI provider"), d.copy("AI 提示词", "AI prompt"), d.text("update.title")} {
+						if IconButton(c, label, tabIcons[i], d.settingsTab == i).FillWidth().Justify(native.Start).Clicked() && d.settingsTab != i {
+							d.settingsTab = i
+							if i == 3 && d.aiPromptDraft == "" && d.prefs.AIPrompt == "" {
+								d.resetPromptDraft()
+							}
+							if i == 1 && d.Client != nil {
+								d.loadIdentity()
+							}
+						}
+					}
+				})
+				native.Scroll(c).Grow(1).FillHeight().Children(func() {
+					native.Column(c).FillWidth().Gap(controlSpacing).PaddingEnd(controlSpacing).Children(func() {
+						switch d.settingsTab {
+						case 0:
+							d.appearanceSettings(c)
+						case 1:
+							d.identitySettings(c)
+						case 2:
+							d.aiSettings(c)
+						case 3:
+							d.promptSettings(c)
+						case 4:
+							d.updateSettings(c)
+						}
+					})
+				})
+			})
 		})
 	})
 }
-func (d *Desktop) settingsContents(c *native.Context) {
+func (d *Desktop) updateSettings(c *native.Context) {
 	t := c.Theme()
 	native.Row(c).Gap(panelSpacing).Children(func() {
 		native.Text(c, d.text("update.title")).Bold()
-		if native.Button(c, d.text("update.check")).Disabled(d.updateChecking).Clicked() {
+		if IconButton(c, d.text("update.check"), "refresh", false).Disabled(d.updateChecking).Clicked() {
 			d.checkUpdate(true)
 		}
 		if d.updateChecking {
@@ -46,7 +83,7 @@ func (d *Desktop) settingsContents(c *native.Context) {
 		if d.updateInstalling {
 			label = d.text("update.downloading")
 		}
-		if native.Button(c, label).Disabled(d.updateInstalling).Clicked() {
+		if IconButton(c, label, "download", false).Disabled(d.updateInstalling).Clicked() {
 			d.installUpdate()
 		}
 	}
@@ -59,14 +96,16 @@ func (d *Desktop) settingsContents(c *native.Context) {
 		} else if d.updateBytes > 0 {
 			native.Textf(c, "%.1f MiB", float64(d.updateBytes)/(1<<20)).TextColor(t.TextMuted)
 		}
-		if native.Button(c, d.text("update.cancel")).Clicked() && d.updateCancel != nil {
+		if IconButton(c, d.text("update.cancel"), "close", false).Clicked() && d.updateCancel != nil {
 			d.updateCancel()
 		}
 	}
 	if !d.updateChecking && d.update.Latest != "" && !d.update.Available {
 		native.Text(c, d.text("update.current"))
 	}
-	native.Text(c, d.text("identity.title")).Bold()
+}
+func (d *Desktop) identitySettings(c *native.Context) {
+	t := c.Theme()
 	oldScope := d.identityScope
 	native.Segmented(c, &d.identityScope, d.text("identity.local"), d.text("identity.global")).Disabled(d.busy || d.selected == "")
 	if oldScope != d.identityScope {
@@ -83,7 +122,7 @@ func (d *Desktop) settingsContents(c *native.Context) {
 		})
 	})
 	native.Row(c).Gap(panelSpacing).Children(func() {
-		if native.PrimaryButton(c, d.text("identity.save")).Disabled(d.busy || strings.TrimSpace(d.identity.Name) == "" || strings.TrimSpace(d.identity.Email) == "").Clicked() {
+		if IconButton(c, d.text("identity.save"), "save", true).Disabled(d.busy || strings.TrimSpace(d.identity.Name) == "" || strings.TrimSpace(d.identity.Email) == "").Clicked() {
 			d.saveIdentity()
 		}
 		if d.identitySaved {
@@ -91,6 +130,9 @@ func (d *Desktop) settingsContents(c *native.Context) {
 		}
 	})
 	native.Text(c, d.text("identity.future")).TextColor(t.TextMuted)
+}
+func (d *Desktop) appearanceSettings(c *native.Context) {
+	t := c.Theme()
 	native.Text(c, d.text("settings.language"))
 	oldLanguage := d.languageIndex
 	native.Segmented(c, &d.languageIndex, "简体中文", "English").Disabled(d.busy)
@@ -110,6 +152,33 @@ func (d *Desktop) settingsContents(c *native.Context) {
 		v.Theme = []string{"system", "light", "dark"}[d.themeIndex]
 		d.savePrefs(v)
 	}
-	native.Text(c, d.text("settings.integration"))
+	native.Text(c, d.copy("字体大小", "Font size")).Bold()
+	native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+		size := d.prefs.TextSize()
+		if IconButton(c, "", "minus", false).Tooltip(d.copy("缩小字号", "Decrease font size")).Label(d.copy("缩小字号", "Decrease font size")).Disabled(d.busy || size <= 11).Clicked() {
+			d.changeFontSize(max(11, size-1))
+		}
+		native.Textf(c, "%g", size).Width(32)
+		if IconButton(c, "", "plus", false).Tooltip(d.copy("增大字号", "Increase font size")).Label(d.copy("增大字号", "Increase font size")).Disabled(d.busy || size >= 18).Clicked() {
+			d.changeFontSize(min(18, size+1))
+		}
+		if IconButton(c, d.copy("恢复默认", "Reset"), "undo", false).Disabled(d.busy || size == (settings.Values{}).TextSize()).Clicked() {
+			d.changeFontSize(0)
+		}
+	})
+	native.Text(c, appFontName).TextColor(t.TextMuted)
 
+}
+
+func (d *Desktop) changeFontSize(size float32) {
+	prefs := d.prefs
+	prefs.FontSize = size
+	d.savePrefs(prefs)
+}
+
+func (d *Desktop) resetPromptDraft() {
+	d.aiPromptDraft = d.prefs.AIPrompt
+	if d.aiPromptDraft == "" {
+		d.aiPromptDraft = commitai.DefaultPrompt(d.prefs.Language)
+	}
 }

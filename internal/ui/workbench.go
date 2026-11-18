@@ -33,54 +33,64 @@ type workbench struct {
 	batch                               map[string]bool
 }
 
-func (d *Desktop) batchPaths(files []git.FileStatus) []string {
-	add := func(paths []string, file git.FileStatus) []string {
-		paths = append(paths, file.Path)
-		if file.OriginalPath != "" {
-			paths = append(paths, file.OriginalPath)
-		}
+func stagingPaths(paths []string, file git.FileStatus, stage bool) []string {
+	if file.State == git.Conflicted {
 		return paths
 	}
-	var paths []string
-	if len(d.tools.batch) > 0 {
-		for _, file := range files {
-			if d.tools.batch[file.Path] {
-				paths = add(paths, file)
-			}
-		}
+	if stage && (file.Worktree == git.Clean || file.Worktree == "") {
 		return paths
 	}
-	if d.row >= 0 && d.row < len(files) {
-		return add(nil, files[d.row])
+	if !stage && (file.Index == git.Clean || file.Index == "") {
+		return paths
 	}
-	return nil
+	paths = append(paths, file.Path)
+	if file.OriginalPath != "" {
+		paths = append(paths, file.OriginalPath)
+	}
+	return paths
 }
 
-func (d *Desktop) showBatchActions(c *native.Context, files []git.FileStatus) {
-	if len(d.tools.batch) == 0 {
-		return
-	}
-	count := 0
-	for _, file := range files {
-		if d.tools.batch[file.Path] {
-			count++
+func (d *Desktop) stagingSelection(files []git.FileStatus) (stage, unstage []string, count int) {
+	for i, file := range files {
+		if !d.tools.batch[file.Path] && (len(d.tools.batch) != 0 || d.row != i) {
+			continue
+		}
+		count++
+		stage = stagingPaths(stage, file, true)
+		unstage = stagingPaths(unstage, file, false)
+		if len(d.tools.batch) == 0 {
+			break
 		}
 	}
-	native.Column(c).FillWidth().Padding(controlSpacing).Gap(controlSpacing).Radius(6).Background(c.Theme().Surface).Children(func() {
-		native.Textf(c, d.text("batch.count"), count).Bold()
-		native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
-			for _, op := range []struct{ label, method string }{{"batch.stage", "git.stage"}, {"batch.unstage", "git.unstage"}} {
-				if native.Button(c, d.text(op.label)).Padding(5, 7).Disabled(d.busy || count == 0).Clicked() {
-					d.mutate(op.method, ipc.Params{Paths: d.batchPaths(files)})
-				}
+	return stage, unstage, count
+}
+func (d *Desktop) showStagingActions(c *native.Context, files []git.FileStatus) {
+	stage, unstage, count := d.stagingSelection(files)
+	if count == 0 {
+		return
+	}
+	batch := len(d.tools.batch) > 0
+	stageLabel, unstageLabel := "stage", "unstage"
+	if batch {
+		stageLabel, unstageLabel = "batch.stage", "batch.unstage"
+	}
+	native.Column(c).FillWidth().Padding(controlSpacing).Gap(detailSpacing).Radius(6).Background(c.Theme().Surface).Children(func() {
+		if batch {
+			native.Textf(c, d.text("batch.count"), count).Bold()
+		}
+		native.Row(c).Gap(detailSpacing).Wrap().Children(func() {
+			if IconButton(c, d.text(stageLabel), "stage", false).Gap(3).Padding(0, 5).Disabled(d.busy || len(stage) == 0).Clicked() {
+				d.mutate("git.stage", ipc.Params{Paths: stage})
 			}
-			if native.Button(c, d.text("batch.clear")).Padding(5, 7).Disabled(d.busy).Clicked() {
+			if IconButton(c, d.text(unstageLabel), "unstage", false).Gap(3).Padding(0, 5).Disabled(d.busy || len(unstage) == 0).Clicked() {
+				d.mutate("git.unstage", ipc.Params{Paths: unstage})
+			}
+			if batch && IconButton(c, d.text("batch.clear"), "clear", false).Gap(3).Padding(0, 5).Disabled(d.busy).Clicked() {
 				clear(d.tools.batch)
 			}
 		})
 	})
 }
-
 func (d *Desktop) loadConflict(path string) {
 	id := d.selected
 	d.task(func(ctx context.Context) (func(), error) {
@@ -98,12 +108,12 @@ func (d *Desktop) showConflict(c *native.Context) {
 		native.Column(c).Width(730).Gap(controlSpacing).Children(func() {
 			native.Text(c, w.conflictPath).Bold()
 			native.Row(c).FillWidth().Gap(controlSpacing).Children(func() {
-				for _, side := range []struct{ label, text string }{
-					{"conflict.ours", w.conflict.Ours}, {"conflict.theirs", w.conflict.Theirs},
+				for _, side := range []struct{ label, text, icon string }{
+					{"conflict.ours", w.conflict.Ours, "left"}, {"conflict.theirs", w.conflict.Theirs, "right"},
 				} {
 					native.Column(c).Grow(1).MinWidth(0).Gap(controlSpacing).Children(func() {
 						native.TextArea(c, &side.text).ReadOnly(true).Height(135).FillWidth()
-						if native.Button(c, d.text(side.label)).Clicked() {
+						if IconButton(c, d.text(side.label), side.icon, false).Clicked() {
 							w.resolution = side.text
 						}
 					})
@@ -112,14 +122,14 @@ func (d *Desktop) showConflict(c *native.Context) {
 			native.Text(c, d.text("conflict.result")).Bold()
 			native.TextArea(c, &w.resolution).Height(140).FillWidth()
 			native.Row(c).Gap(controlSpacing).Children(func() {
-				if native.PrimaryButton(c, d.text("conflict.save")).Disabled(d.busy).Clicked() {
+				if IconButton(c, d.text("conflict.save"), "save", true).Disabled(d.busy).Clicked() {
 					id, path, token, content := d.selected, w.conflictPath, w.conflict.Token, w.resolution
 					d.task(func(ctx context.Context) (func(), error) {
 						err := d.Client.Call(ctx, "git.resolve", ipc.Params{RepoID: id, Path: path, Hash: token, Message: content}, nil)
 						return func() { w.conflictOpen = false; d.refresh() }, err
 					})
 				}
-				if native.Button(c, d.text("close")).Clicked() {
+				if IconButton(c, d.text("close"), "close", false).Clicked() {
 					w.conflictOpen = false
 				}
 			})
@@ -169,13 +179,13 @@ func (d *Desktop) showFileHistory(c *native.Context) {
 			}
 			native.Row(c).Gap(controlSpacing).Children(func() {
 				valid := w.fileRow >= 0 && w.fileRow < len(w.fileCommits)
-				if native.Button(c, d.text("file.patch")).Disabled(d.busy || !valid).Clicked() && valid {
+				if IconButton(c, d.text("file.patch"), "diff", false).Disabled(d.busy || !valid).Clicked() && valid {
 					show("patch", w.fileCommits[w.fileRow].Hash)
 				}
-				if native.Button(c, d.text("file.blame")).Disabled(d.busy).Clicked() {
+				if IconButton(c, d.text("file.blame"), "history", false).Disabled(d.busy).Clicked() {
 					show("blame", "")
 				}
-				if native.Button(c, d.text("close")).Clicked() {
+				if IconButton(c, d.text("close"), "close", false).Clicked() {
 					w.fileOpen = false
 				}
 			})
@@ -211,11 +221,11 @@ func (d *Desktop) showRecovery(c *native.Context) {
 				native.Text(c, w.recoveryHash).FontSize(11)
 			}
 			native.Row(c).Gap(controlSpacing).Children(func() {
-				if native.PrimaryButton(c, d.text("recover."+w.recoveryAction)).Disabled(d.busy).Clicked() {
+				if IconButton(c, d.text("recover."+w.recoveryAction), recoveryIcon(w.recoveryAction), true).Disabled(d.busy).Clicked() {
 					w.confirmOpen = false
 					d.mutate("git.recover", ipc.Params{Action: w.recoveryAction, Hash: w.recoveryHash})
 				}
-				if native.Button(c, d.text("close")).Clicked() {
+				if IconButton(c, d.text("close"), "close", false).Clicked() {
 					w.confirmOpen = false
 				}
 			})
@@ -255,7 +265,7 @@ func (d *Desktop) showBranches(c *native.Context) {
 				w.branchSelected = selected.Name
 			}
 			native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
-				if native.Button(c, d.text("compare.useSelected")).Disabled(d.busy || selected.Name == "").Clicked() {
+				if IconButton(c, d.text("compare.useSelected"), "diff", false).Disabled(d.busy || selected.Name == "").Clicked() {
 					w.right, w.compared = selected.Name, false
 					for _, branch := range w.branches {
 						if branch.Current {
@@ -265,14 +275,14 @@ func (d *Desktop) showBranches(c *native.Context) {
 					}
 				}
 				for _, op := range []struct{ label, action string }{{"branch.switch", "switch"}, {"branch.merge", "merge"}, {"branch.delete", "delete"}} {
-					if native.Button(c, d.text(op.label)).Disabled(d.busy || selected.Name == "" || selected.Current || selected.Remote).Clicked() {
+					if IconButton(c, d.text(op.label), recoveryIcon(op.action), false).Disabled(d.busy || selected.Name == "" || selected.Current || selected.Remote).Clicked() {
 						d.mutate("git.branch", ipc.Params{Action: op.action, Name: selected.Name})
 					}
 				}
 			})
 			native.Row(c).Gap(controlSpacing).Children(func() {
 				native.TextInput(c, &d.branch).Placeholder(d.text("branch.name")).Grow(1).MinWidth(0).Disabled(d.busy)
-				if native.Button(c, d.text("branch.create")).Disabled(d.busy || strings.TrimSpace(d.branch) == "").Clicked() {
+				if IconButton(c, d.text("branch.create"), "branch", false).Disabled(d.busy || strings.TrimSpace(d.branch) == "").Clicked() {
 					d.mutate("git.branch", ipc.Params{Action: "create", Name: strings.TrimSpace(d.branch)})
 				}
 			})
@@ -292,7 +302,7 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 		if w.left != leftBefore || w.right != rightBefore {
 			w.compared = false
 		}
-		if native.Button(c, d.text("compare.run")).Disabled(d.busy || w.left == "" || w.right == "").Clicked() {
+		if IconButton(c, d.text("compare.run"), "diff", false).Disabled(d.busy || w.left == "" || w.right == "").Clicked() {
 			id, left, right := d.selected, w.left, w.right
 			d.task(func(ctx context.Context) (func(), error) {
 				var result app.BranchComparison
@@ -310,5 +320,16 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 			content = &w.comparison.Files
 		}
 		native.TextArea(c, content).Grow(1).FillWidth().ReadOnly(true)
+	}
+}
+
+func recoveryIcon(action string) string {
+	switch action {
+	case "merge.continue":
+		return "merge"
+	case "delete":
+		return "remove"
+	default:
+		return action
 	}
 }

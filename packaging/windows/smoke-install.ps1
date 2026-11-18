@@ -6,6 +6,7 @@ $installArgs=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/DIR="'+$
 $process=Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -PassThru
 if($process.ExitCode -ne 0){throw "Installer exited $($process.ExitCode)"}
 $agent=$null
+$desktop=$null
 try{
  $file=Join-Path $root 'desktop.exe'
  $bytes=[IO.File]::ReadAllBytes($file);$pe=[BitConverter]::ToInt32($bytes,0x3c);$machine=[BitConverter]::ToUInt16($bytes,$pe+4)
@@ -17,10 +18,14 @@ try{
  $health=(& (Join-Path $root 'mygittu.exe') -method health.ping)|ConvertFrom-Json
  if($LASTEXITCODE -or $health.app_version -ne $Version){throw 'Installed Agent health/version check failed'}
  if(!(Test-Path -LiteralPath (Join-Path $root "MyGittuShell-$Version.dll"))){throw 'Versioned shell DLL is missing'}
+ $desktop=Start-Process -FilePath $file -PassThru
+ Start-Sleep -Seconds 2
+ if($desktop.HasExited){throw 'Installed desktop exited before the upgrade check'}
  $upgrade=Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -PassThru
- if($upgrade.ExitCode -ne 0 -or !$agent.HasExited){throw 'Installation over a running Agent failed'}
+ if($upgrade.ExitCode -ne 0 -or !$agent.HasExited -or !$desktop.HasExited){throw 'Installation over a running desktop and Agent failed'}
  Write-Host "Installed native $native package and verified Agent $Version"
 }finally{
+ if($desktop -and !$desktop.HasExited){Stop-Process -Id $desktop.Id -Force}
  if($agent -and !$agent.HasExited){Stop-Process -Id $agent.Id -Force}
  $uninstaller=Join-Path $root 'unins000.exe'
  if(Test-Path -LiteralPath $uninstaller){$removed=Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru;if($removed.ExitCode -ne 0){throw 'Uninstaller failed'}}

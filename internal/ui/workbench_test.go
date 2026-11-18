@@ -37,8 +37,14 @@ func TestBatchPathsIncludesSelectedRenamesOnly(t *testing.T) {
 	d := New(nil, "", "")
 	d.row = 2
 	d.tools.batch = map[string]bool{"new.txt": true, "updated.txt": true}
-	files := []git.FileStatus{{Path: "new.txt", OriginalPath: "old.txt"}, {Path: "updated.txt"}, {Path: "preview-only.txt"}}
-	if got := d.batchPaths(files); !slices.Equal(got, []string{"new.txt", "old.txt", "updated.txt"}) {
-		t.Fatalf("unexpected batch paths: %v", got)
+	files := []git.FileStatus{
+		{Path: "new.txt", OriginalPath: "old.txt", Worktree: git.Modified, Index: git.Modified},
+		{Path: "updated.txt", Worktree: git.Modified, Index: git.Clean},
+		{Path: "preview-only.txt", Worktree: git.Modified, Index: git.Clean},
+	}
+	stage, unstage, count := d.stagingSelection(files)
+	if count != 2 || !slices.Equal(stage, []string{"new.txt", "old.txt", "updated.txt"}) ||
+		!slices.Equal(unstage, []string{"new.txt", "old.txt"}) {
+		t.Fatalf("unexpected selection: stage=%v unstage=%v count=%d", stage, unstage, count)
 	}
 }
