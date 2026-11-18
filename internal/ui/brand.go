@@ -15,5 +15,13 @@ var brandBitmap = func() *ui.Bitmap {
 	return ui.NewBitmap(im)
 }()
 
-// RemoteBitmap returns the rabbit mark used by lightweight Git operation windows.
-func RemoteBitmap() *ui.Bitmap { return brandBitmap }
+var syncBitmap = func() *ui.Bitmap {
+	bitmap, err := ui.DecodeBitmap(brand.SyncPNG)
+	if err != nil {
+		panic(err)
+	}
+	return bitmap
+}()
+
+// RemoteBitmap returns the separate synchronization mark.
+func RemoteBitmap() *ui.Bitmap { return syncBitmap }

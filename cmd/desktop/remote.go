@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -15,14 +16,15 @@ import (
 )
 
 type remoteWindow struct {
-	client *ipc.Client
-	win    *mygo.Window
-	path   string
-	action string
-	status string
-	err    string
-	lang   string
-	frame  int
+	client   *ipc.Client
+	win      *mygo.Window
+	path     string
+	action   string
+	status   string
+	err      string
+	lang     string
+	frame    int
+	finished bool
 }
 
 func runRemote(client *ipc.Client, path, action string) error {
@@ -30,10 +32,17 @@ func runRemote(client *ipc.Client, path, action string) error {
 		return fmt.Errorf("invalid remote action")
 	}
 	d := &remoteWindow{client: client, path: path, action: action, lang: "zh-CN"}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
 	mygo.App.WhenReady(func() {
 		d.win = mygo.NewWindow(mygo.WindowOptions{Title: "MyGittu", Width: 420, Height: 180, MinWidth: 360, MinHeight: 150, Content: native.View(d.view)})
-		go d.animate()
-		go d.execute()
+		d.win.OnClosed(cancel)
+		animationCtx, stopAnimation := context.WithCancel(ctx)
+		go d.animate(animationCtx)
+		go func() {
+			defer stopAnimation()
+			d.execute(ctx)
+		}()
 	})
 	return mygo.App.Run()
 }
@@ -49,11 +58,12 @@ func (d *remoteWindow) view(c *native.Context) {
 	t := c.Theme()
 	native.Column(c).Fill().Padding(22).Gap(12).Children(func() {
 		native.Row(c).Gap(12).Children(func() {
-			bounce := float32(44 + (d.frame%3)*3)
-			native.Image(c, ui.RemoteBitmap()).Width(bounce).Height(bounce)
+			// Translation preserves the layout box, keeping the text still.
+			bounce := float32(-3 * math.Sin(float64(d.frame)*2*math.Pi/24))
+			native.Image(c, ui.RemoteBitmap()).Width(56).Height(56).Translate(0, bounce)
 			native.Column(c).Gap(4).Children(func() {
 				native.Text(c, d.text("MyGittu 远程操作", "MyGittu remote operation")).FontSize(18).Bold()
-				native.Text(c, d.status+strings.Repeat(".", d.frame%4)).TextColor(t.TextMuted)
+				native.Text(c, d.status).TextColor(t.TextMuted)
 			})
 		})
 		if d.err != "" {
@@ -65,31 +75,37 @@ func (d *remoteWindow) view(c *native.Context) {
 	})
 }
 
-func (d *remoteWindow) animate() {
-	ticker := time.NewTicker(180 * time.Millisecond)
+func (d *remoteWindow) animate(ctx context.Context) {
+	ticker := time.NewTicker(time.Second / 24)
 	defer ticker.Stop()
-	for range ticker.C {
-		if d.win == nil || d.err != "" {
+	for {
+		select {
+		case <-ctx.Done():
 			return
+		case <-ticker.C:
+			mygo.RunOnMain(func() {
+				if !d.finished && !d.win.IsDestroyed() {
+					d.frame = (d.frame + 1) % 24
+					d.win.Invalidate()
+				}
+			})
 		}
-		d.frame++
-		mygo.RunOnMain(func() { d.win.Invalidate() })
 	}
 }
 
-func (d *remoteWindow) execute() {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
+func (d *remoteWindow) execute(ctx context.Context) {
 	var prefs settings.Values
-	if err := d.client.Call(ctx, "settings.get", ipc.Params{}, &prefs); err == nil && prefs.Language != "" {
-		d.lang = prefs.Language
-	}
-	d.status = map[string]string{
-		"fetch": d.text("正在获取远程更新…", "Fetching remote updates…"),
-		"pull":  d.text("正在拉取远程更新…", "Pulling remote updates…"),
-		"push":  d.text("正在推送本地提交…", "Pushing local commits…"),
-	}[d.action]
-	mygo.RunOnMain(func() { d.win.Invalidate() })
+	_ = d.client.Call(ctx, "settings.get", ipc.Params{}, &prefs)
+	d.win.Update(func() {
+		if prefs.Language != "" {
+			d.lang = prefs.Language
+		}
+		d.status = map[string]string{
+			"fetch": d.text("正在获取远程更新…", "Fetching remote updates…"),
+			"pull":  d.text("正在拉取远程更新…", "Pulling remote updates…"),
+			"push":  d.text("正在推送本地提交…", "Pushing local commits…"),
+		}[d.action]
+	})
 	var repo repository.Info
 	if err := d.client.Call(ctx, "repo.register", ipc.Params{Path: d.path}, &repo); err != nil {
 		d.fail(err)
@@ -99,11 +115,23 @@ func (d *remoteWindow) execute() {
 		d.fail(err)
 		return
 	}
-	d.status = d.text("已完成", "Completed")
-	mygo.RunOnMain(func() { d.win.Invalidate(); time.AfterFunc(900*time.Millisecond, d.win.Close) })
+	d.win.Update(func() {
+		d.finished, d.frame = true, 0
+		d.status = d.text("已完成", "Completed")
+	})
+	time.AfterFunc(900*time.Millisecond, func() {
+		mygo.RunOnMain(func() {
+			if !d.win.IsDestroyed() {
+				d.win.Close()
+			}
+		})
+	})
 }
 
 func (d *remoteWindow) fail(err error) {
-	d.err = strings.TrimSpace(err.Error())
-	mygo.RunOnMain(func() { d.win.Invalidate() })
+	d.win.Update(func() {
+		d.finished, d.frame = true, 0
+		d.status = d.text("操作失败", "Operation failed")
+		d.err = strings.TrimSpace(err.Error())
+	})
 }
