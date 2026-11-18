@@ -3,8 +3,10 @@ package status
 import (
 	"context"
 	"errors"
+	"maps"
 	"mygittu/internal/app"
 	git "mygittu/internal/git"
+	"mygittu/internal/platform"
 	"mygittu/internal/repository"
 	"path/filepath"
 	"strings"
@@ -40,7 +42,8 @@ func New(s *app.Service) *Cache {
 	return &Cache{snapshots: map[string]Snapshot{}, epochs: map[string]uint64{}, Service: s}
 }
 func (c *Cache) Refresh(ctx context.Context, id string) error {
-	if _, e := c.Service.Registry.Get(id); e != nil {
+	repo, e := c.Service.Registry.Get(id)
+	if e != nil {
 		return e
 	}
 	v, _ := c.refresh.LoadOrStore(id, make(chan struct{}, 1))
@@ -83,9 +86,16 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 		c.mu.Unlock()
 		return ErrStale
 	}
+	changed := !maps.Equal(c.snapshots[id].states, states)
 	c.generation++
 	c.snapshots[id] = Snapshot{Files: files, Generation: c.generation, Updated: time.Now(), Branch: branch, states: states}
 	c.mu.Unlock()
+	if changed {
+		// Let Explorer's 500 ms native lookup cache expire before repainting.
+		time.AfterFunc(550*time.Millisecond, func() {
+			platform.NotifyRepositoryOverlay(repo.Root)
+		})
+	}
 	return nil
 }
 func (c *Cache) Invalidate(id string) {
@@ -94,12 +104,31 @@ func (c *Cache) Invalidate(id string) {
 	delete(c.snapshots, id)
 	c.mu.Unlock()
 }
+
+// A filesystem event invalidates in-flight scans. Keep the last successful
+// snapshot visible until a replacement is ready.
+func (c *Cache) markDirty(id string) {
+	c.mu.Lock()
+	c.epochs[id]++
+	c.mu.Unlock()
+}
 func (c *Cache) Get(id string) (Snapshot, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	v, ok := c.snapshots[id]
 	v.Files = append([]git.FileStatus{}, v.Files...)
 	return v, ok
+}
+
+func (c *Cache) GetSince(id string, previous time.Time) Snapshot {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	snapshot := c.snapshots[id]
+	if !snapshot.Updated.After(previous) {
+		return Snapshot{}
+	}
+	snapshot.Files = append([]git.FileStatus(nil), snapshot.Files...)
+	return snapshot
 }
 func (c *Cache) Lookup(path string) Overlay {
 	if !filepath.IsAbs(path) {

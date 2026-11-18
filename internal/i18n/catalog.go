@@ -5,6 +5,10 @@ package i18n
 type Message struct{ ZH, EN string }
 
 var Catalog = map[string]Message{
+	"nav.workspace":      {"工作区", "Workspace"},
+	"repo.search":        {"按名称或路径搜索", "Search by name or path"},
+	"repo.forget":        {"从最近仓库移除", "Remove from recent repositories"},
+	"repo.noMatches":     {"没有匹配的仓库", "No matching repositories"},
 	"nav.files":          {"文件", "Files"},
 	"files.empty":        {"没有项目文件", "No project files"},
 	"files.select":       {"选择文件以预览", "Select a file to preview"},

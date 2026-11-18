@@ -17,8 +17,7 @@ func (d *Desktop) openWork(ctx context.Context, path string) (func(), error) {
 	e := d.Client.Call(ctx, "repo.list", ipc.Params{}, &repos)
 	return func() {
 		d.repos = repos
-		d.selected = info.ID
-		d.path = info.Root
+		d.selectRepository(info.ID, info.Root)
 		d.offset = 0
 		if d.page == 5 || d.page == 6 {
 			d.page = 0

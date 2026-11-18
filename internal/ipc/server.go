@@ -8,7 +8,6 @@ import (
 	"mygittu/internal/app"
 	"mygittu/internal/buildinfo"
 	git "mygittu/internal/git"
-	"mygittu/internal/platform"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
 	"mygittu/internal/status"
@@ -20,23 +19,24 @@ import (
 )
 
 type Params struct {
-	RepoID       string          `json:"repo_id"`
-	Path         string          `json:"path"`
-	Paths        []string        `json:"paths"`
-	Message      string          `json:"message"`
-	Action       string          `json:"action"`
-	Name         string          `json:"name"`
-	Staged       bool            `json:"staged"`
-	Limit        int             `json:"limit"`
-	Offset       int             `json:"offset"`
-	Query        string          `json:"query"`
-	Hash         string          `json:"hash"`
-	URL          string          `json:"url"`
-	Destination  string          `json:"destination"`
-	OriginalPath string          `json:"original_path"`
-	Settings     settings.Values `json:"settings"`
-	Identity     app.Identity    `json:"identity"`
-	Scope        string          `json:"scope"`
+	RepoID        string          `json:"repo_id"`
+	Path          string          `json:"path"`
+	Paths         []string        `json:"paths"`
+	Message       string          `json:"message"`
+	Action        string          `json:"action"`
+	Name          string          `json:"name"`
+	Staged        bool            `json:"staged"`
+	Limit         int             `json:"limit"`
+	Offset        int             `json:"offset"`
+	Query         string          `json:"query"`
+	Hash          string          `json:"hash"`
+	URL           string          `json:"url"`
+	Destination   string          `json:"destination"`
+	OriginalPath  string          `json:"original_path"`
+	StatusUpdated time.Time       `json:"status_updated,omitempty"`
+	Settings      settings.Values `json:"settings"`
+	Identity      app.Identity    `json:"identity"`
+	Scope         string          `json:"scope"`
 }
 type Server struct {
 	Service   *app.Service
@@ -58,13 +58,11 @@ func (s *Server) ensureRepository(path string) bool {
 			defer s.discovery.Delete(key)
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer cancel()
-			info, err := s.Service.Registry.Register(ctx, root)
+			info, err := s.Service.Registry.RegisterDiscovered(ctx, root)
 			if err != nil || s.Cache == nil {
 				return
 			}
-			if s.Cache.Refresh(ctx, info.ID) == nil {
-				platform.NotifyRepositoryOverlay(root)
-			}
+			_ = s.Cache.Refresh(ctx, info.ID)
 		}()
 	}
 	return true
@@ -151,6 +149,8 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		if !ok {
 			return fail("cache_miss", "status is refreshing")
 		}
+	case "status.poll":
+		result = s.Cache.GetSince(p.RepoID, p.StatusUpdated)
 	case "git.stage", "git.unstage":
 		e = s.Service.Paths(ctx, p.RepoID, p.Paths, r.Method == "git.stage")
 	case "git.commit":

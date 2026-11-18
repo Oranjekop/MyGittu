@@ -1,5 +1,8 @@
 name: build-and-test
-on: [push, pull_request]
+on:
+  push:
+    branches: ['**']
+  pull_request:
 permissions:
   contents: read
 jobs:
@@ -14,7 +17,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
       - run: go mod verify
       - run: go vet ./...
       - run: go test ./...
@@ -38,5 +41,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27.4'
+          cache: false
       - run: go test ./internal/git -fuzz FuzzStatus -fuzztime 10s
       - run: go test ./internal/ipc -fuzz FuzzFrame -fuzztime 10s

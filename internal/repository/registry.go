@@ -96,6 +96,12 @@ func Key(path string) string {
 	return path
 }
 func (r *Registry) Register(ctx context.Context, path string) (Info, error) {
+	return r.register(ctx, path, true)
+}
+func (r *Registry) RegisterDiscovered(ctx context.Context, path string) (Info, error) {
+	return r.register(ctx, path, false)
+}
+func (r *Registry) register(ctx context.Context, path string, opened bool) (Info, error) {
 	info, e := r.Discover(ctx, path)
 	if e != nil {
 		return info, e
@@ -105,8 +111,11 @@ func (r *Registry) Register(ctx context.Context, path string) (Info, error) {
 	old, exists := r.repos[info.ID]
 	if exists {
 		info.Aliases = mergeAliases(info.Aliases, old.Aliases)
+		info.LastOpened = old.LastOpened
 	}
-	info.LastOpened = time.Now().UnixNano()
+	if opened {
+		info.LastOpened = time.Now().UnixNano()
+	}
 	if !exists && len(r.repos) >= 256 {
 		return info, fmt.Errorf("repository registration limit reached (256)")
 	}

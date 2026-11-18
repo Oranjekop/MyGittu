@@ -1,14 +1,12 @@
 name: Build installers and release
 on:
   push:
-    branches: [main]
     tags: ['v*']
-  workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  cancel-in-progress: false
 jobs:
   version:
     runs-on: ubuntu-latest
@@ -25,6 +23,17 @@ jobs:
             [[ "$GITHUB_REF_NAME" == "v$version" ]] || { echo 'Tag must match VERSION'; exit 1; }
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
+      - name: Prepare draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --json isDraft > "$RUNNER_TEMP/release.json"; then
+            jq -e '.isDraft' "$RUNNER_TEMP/release.json" >/dev/null
+          else
+            python3 scripts/release_notes.py "$VERSION" > "$RUNNER_TEMP/notes.md"
+            gh release create "$GITHUB_REF_NAME" --verify-tag --draft --title "MyGittu $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
   windows:
     needs: version
     runs-on: windows-2022
@@ -33,6 +42,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: false
       - name: Tests
         run: |
           go mod verify
@@ -42,8 +52,6 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Install Inno Setup
         run: choco upgrade innosetup --no-progress -y
-      - name: Validate sparse identity package
-        run: ./packaging/windows/build-sparse.ps1 -Version '${{ needs.version.outputs.value }}'
       - name: Build Chinese multi-architecture installer
         env:
           MYGITTU_CERT_BASE64: ${{ secrets.MYGITTU_CERT_BASE64 }}
@@ -75,13 +83,12 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Install and launch on Windows x64
         run: ./packaging/windows/smoke-install.ps1 -Installer 'dist/release/MyGittu-${{ needs.version.outputs.value }}-Windows-Setup.exe'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer
-          path: |
-            dist/release/*.exe
-            dist/release/*.cer
-          if-no-files-found: error
+      - name: Upload Windows release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem dist/release -File | Where-Object Extension -in '.exe','.cer' | ForEach-Object FullName)
+          gh release upload $env:GITHUB_REF_NAME @assets --clobber
   macos:
     needs: version
     runs-on: macos-15
@@ -90,6 +97,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: false
       - name: Tests
         run: |
           go mod verify
@@ -99,20 +107,19 @@ jobs:
         run: bash packaging/darwin/release.sh '${{ needs.version.outputs.value }}'
       - name: Install and launch on Apple Silicon
         run: bash packaging/darwin/smoke-install.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-installer
-          path: dist/release/*.pkg
-          if-no-files-found: error
+      - name: Upload macOS release file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/release/*.pkg --clobber
   windows-arm64-install:
     needs: [version, windows]
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-installer
-          path: dist/release
+      - name: Download Windows installer from draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download $env:GITHUB_REF_NAME --pattern '*.exe' --dir dist/release
       - name: Install and launch on Windows ARM64
         run: ./packaging/windows/smoke-install.ps1 -Installer 'dist/release/MyGittu-${{ needs.version.outputs.value }}-Windows-Setup.exe'
   macos-intel-install:
@@ -120,32 +127,26 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: macos-installer
-          path: dist/release
+      - name: Download macOS installer from draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" --pattern '*.pkg' --dir dist/release
       - name: Install and launch on Intel
         run: bash packaging/darwin/smoke-install.sh
   publish:
-    if: github.ref_type == 'tag'
-    needs: [version, windows, macos, windows-arm64-install, macos-intel-install]
+    needs: [windows-arm64-install, macos-intel-install]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: '*-installer'
-          path: dist/release
-          merge-multiple: true
       - name: Publish release with checksums
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.version.outputs.value }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
-          python3 scripts/release_notes.py "$VERSION" > dist/release/RELEASE_NOTES.md
+          gh release download "$GITHUB_REF_NAME" --pattern '*.exe' --pattern '*.pkg' --pattern '*.cer' --dir release
           shopt -s nullglob
-          (cd dist/release && sha256sum *.exe *.pkg *.cer > SHA256SUMS.txt)
-          gh release create "v$VERSION" --verify-tag --title "MyGittu v$VERSION" --notes-file dist/release/RELEASE_NOTES.md dist/release/*.exe dist/release/*.pkg dist/release/*.cer dist/release/SHA256SUMS.txt
+          (cd release && sha256sum *.exe *.pkg *.cer > SHA256SUMS.txt)
+          gh release upload "$GITHUB_REF_NAME" release/SHA256SUMS.txt --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

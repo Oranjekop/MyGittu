@@ -188,18 +188,20 @@ static int cachedQuery(const std::wstring &path) {
   };
   static std::mutex mutex;
   static std::unordered_map<std::wstring, Entry> cache;
-  std::unique_lock<std::mutex> lock(mutex, std::try_to_lock);
-  if (!lock.owns_lock())
-    return 0;
-  auto i = cache.find(path);
   auto now = GetTickCount64();
-  if (i != cache.end() && i->second.until > now)
-    return i->second.state;
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    auto i = cache.find(path);
+    if (i != cache.end() && i->second.until > now)
+      return i->second.state;
+  }
   int state = query(path);
-  if (cache.size() >= 2048)
-    cache.clear();
-  if (state != 0)
+  if (state != 0) {
+    std::lock_guard<std::mutex> lock(mutex);
+    if (cache.size() >= 2048)
+      cache.clear();
     cache[path] = {state, now + 500};
+  }
   return state;
 }
 // CommandLineToArgvW compatible quoting; the executable is never supplied by

@@ -34,7 +34,7 @@ func runRemote(client *ipc.Client, path, action string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	mygo.App.WhenReady(func() {
-		d.win = mygo.NewWindow(mygo.WindowOptions{Title: "MyGittu", Width: 420, Height: 180, MinWidth: 360, MinHeight: 150, Content: native.View(d.view)})
+		d.win = mygo.NewWindow(mygo.WindowOptions{Title: "MyGittu", Width: 400, Height: 234, MinWidth: 360, MinHeight: 220, Content: native.View(d.view)})
 		d.win.OnClosed(cancel)
 		animationCtx, stopAnimation := context.WithCancel(ctx)
 		go d.animate(animationCtx)
@@ -55,22 +55,42 @@ func (d *remoteWindow) text(zh, en string) string {
 
 func (d *remoteWindow) view(c *native.Context) {
 	t := c.Theme()
-	native.Column(c).Fill().Padding(22).Gap(12).Children(func() {
-		native.Row(c).Gap(12).Children(func() {
-			// Translation preserves the layout box, keeping the text still.
-			ui.OperationIcon(c, 56, d.frame, d.action)
-			native.Column(c).Gap(4).Children(func() {
-				native.Text(c, d.text("MyGittu 远程操作", "MyGittu remote operation")).FontSize(18).Bold()
-				native.Text(c, d.status).TextColor(t.TextMuted)
+	native.Column(c).Fill().Padding(18).Gap(12).Background(t.Background).Children(func() {
+		if d.err == "" {
+			native.Column(c).Grow(1).FillWidth().Center().Gap(14).Children(func() {
+				native.Column(c).Width(106).Height(90).Center().Radius(20).Background(t.Surface).Children(func() {
+					ui.OperationIcon(c, 76, d.frame, d.action)
+				})
+				message := d.status
+				if message == "" {
+					message = d.runningStatus()
+				}
+				native.Text(c, message).FontSize(19).Bold()
 			})
+			return
+		}
+		native.Text(c, d.status).FontSize(19).Bold().TextColor(t.Danger)
+		native.Scroll(c).Grow(1).FillWidth().Background(t.Surface).Radius(8).Children(func() {
+			native.Text(c, d.err).FillWidth().Padding(10)
 		})
-		if d.err != "" {
-			native.Text(c, d.err).TextColor(native.Hex("#bf3030"))
-		}
-		if d.err != "" && native.PrimaryButton(c, d.text("关闭", "Close")).Clicked() {
-			d.win.Close()
-		}
+		native.Row(c).FillWidth().Children(func() {
+			native.Box(c).Grow(1)
+			if native.Button(c, d.text("关闭", "Close")).Clicked() {
+				d.win.Close()
+			}
+		})
 	})
+}
+
+func (d *remoteWindow) runningStatus() string {
+	switch d.action {
+	case "fetch":
+		return d.text("正在获取远程更新…", "Fetching remote updates…")
+	case "push":
+		return d.text("正在推送本地提交…", "Pushing local commits…")
+	default:
+		return d.text("正在拉取远程更新…", "Pulling remote updates…")
+	}
 }
 
 func (d *remoteWindow) animate(ctx context.Context) {
@@ -98,11 +118,7 @@ func (d *remoteWindow) execute(ctx context.Context) {
 		if prefs.Language != "" {
 			d.lang = prefs.Language
 		}
-		d.status = map[string]string{
-			"fetch": d.text("正在获取远程更新…", "Fetching remote updates…"),
-			"pull":  d.text("正在拉取远程更新…", "Pulling remote updates…"),
-			"push":  d.text("正在推送本地提交…", "Pushing local commits…"),
-		}[d.action]
+		d.status = d.runningStatus()
 	})
 	var repo repository.Info
 	if err := d.client.Call(ctx, "repo.register", ipc.Params{Path: d.path}, &repo); err != nil {

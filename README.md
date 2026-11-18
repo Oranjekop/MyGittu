@@ -87,7 +87,7 @@ bash packaging/darwin/release.sh
 
 ## 标签发布
 
-普通 `main` 推送会运行测试并构建两个平台安装包，保存在 Actions Artifacts 中。发布新版本时：
+普通分支推送运行测试。版本标签触发安装包构建，产物直接上传到 GitHub Release 草稿，四种架构的安装检查通过后公开发布。发布新版本时：
 
 1. 修改 `VERSION`，在 `CHANGELOG.md` 添加同版本条目。
 2. 提交并推送代码，等待检查通过。

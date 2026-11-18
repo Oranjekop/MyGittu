@@ -13,7 +13,7 @@ import (
 
 func TestRemoteAnimationKeepsTextStill(t *testing.T) {
 	d := &remoteWindow{action: "pull", lang: "zh-CN", status: "正在拉取远程更新…"}
-	tester := native.NewTester(d.view, 420, 180)
+	tester := native.NewTester(d.view, 400, 234)
 	first := tester.Image()
 	before := append([]byte(nil), first.Pix...)
 	d.frame = 6
@@ -22,8 +22,8 @@ func TestRemoteAnimationKeepsTextStill(t *testing.T) {
 	if bytes.Equal(before, after.Pix) {
 		t.Fatal("animation frame did not move the synchronization icon")
 	}
-	for y := 0; y < after.Bounds().Dy(); y++ {
-		start, end := y*after.Stride+90*4, (y+1)*after.Stride
+	for y := 145; y < after.Bounds().Dy(); y++ {
+		start, end := y*after.Stride, (y+1)*after.Stride
 		if !bytes.Equal(before[start:end], after.Pix[start:end]) {
 			t.Fatal("animation moved content outside the icon area")
 		}

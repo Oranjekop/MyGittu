@@ -78,6 +78,19 @@ func TestLookupBoundaries(t *testing.T) {
 		t.Fatal("conflict directory")
 	}
 }
+
+func TestDirtyRepositoryKeepsOverlayUntilRefresh(t *testing.T) {
+	c, repo := fixture(t)
+	ctx := context.Background()
+	if err := c.Refresh(ctx, repo.ID); err != nil {
+		t.Fatal(err)
+	}
+	before := c.Lookup(repo.Root)
+	c.markDirty(repo.ID)
+	if got := c.Lookup(repo.Root); got != before || !got.Cached {
+		t.Fatalf("badge disappeared while refresh was pending: %+v", got)
+	}
+}
 func BenchmarkLookup100K(b *testing.B) {
 	c, repo := fixture(b)
 	states := make(map[string]git.State, 100001)

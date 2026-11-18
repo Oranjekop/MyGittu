@@ -111,7 +111,7 @@ func (c *Cache) Run(ctx context.Context) {
 			}
 		case <-watcher.Errors:
 			for id := range known {
-				c.Invalidate(id)
+				c.markDirty(id)
 				pending[id] = time.Now()
 			}
 		case event, ok := <-watcher.Events:
@@ -123,7 +123,7 @@ func (c *Cache) Run(ctx context.Context) {
 				id = watched[event.Name]
 			}
 			if id != "" {
-				c.Invalidate(id)
+				c.markDirty(id)
 				pending[id] = time.Now().Add(250 * time.Millisecond)
 				if event.Op&fsnotify.Create != 0 {
 					if st, e := os.Stat(event.Name); e == nil && st.IsDir() {

@@ -91,6 +91,25 @@ func TestCommitAndCloneProgress(t *testing.T) {
 		})
 	}
 }
+
+func TestRecentRepositorySearch(t *testing.T) {
+	d := New(nil, "", "")
+	d.repositoriesOpen = true
+	d.repos = []repository.Info{
+		{ID: "one", Root: "work/MyGittu", LastOpened: 2},
+		{ID: "two", Root: "archive/MyGittu", LastOpened: 1},
+		{ID: "discovered", Root: "external/MyGittu"},
+	}
+	tt := native.NewTester(d.view, 1160, 740)
+	if !tt.HasText("work/MyGittu") || !tt.HasText("archive/MyGittu") || tt.HasText("external/MyGittu") {
+		t.Fatal("recent projects could not be distinguished by path")
+	}
+	d.repositorySearch = "ARCHIVE"
+	tt.Frame()
+	if tt.HasText("work/MyGittu") || !tt.HasText("archive/MyGittu") {
+		t.Fatal("search did not match the full repository path")
+	}
+}
 func TestLanguageSwitchAndEmptySettings(t *testing.T) {
 	d := New(nil, "", "")
 	d.settingsOpen = true
