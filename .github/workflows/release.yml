@@ -52,6 +52,15 @@ jobs:
           if ($env:MYGITTU_CERT_BASE64) {
             $env:MYGITTU_CERT_PATH = Join-Path $env:RUNNER_TEMP 'mygittu-publisher.pfx'
             [IO.File]::WriteAllBytes($env:MYGITTU_CERT_PATH, [Convert]::FromBase64String($env:MYGITTU_CERT_BASE64))
+            $password = ConvertTo-SecureString $env:MYGITTU_CERT_PASSWORD -AsPlainText -Force
+            $cert = (Get-PfxData -FilePath $env:MYGITTU_CERT_PATH -Password $password).EndEntityCertificates[0]
+            if ($cert.Subject -eq $cert.Issuer) {
+              New-Item -ItemType Directory -Force dist/release | Out-Null
+              $public = Export-Certificate -Cert $cert -FilePath dist/release/MyGittu-Windows-Publisher.cer
+              Import-Certificate -FilePath $public.FullName -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+            }
+          } elseif ('${{ github.ref_type }}' -eq 'tag') {
+            throw 'Windows release signing certificate is missing'
           }
           try {
             ./packaging/windows/release.ps1 -Version '${{ needs.version.outputs.value }}'
@@ -69,7 +78,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: dist/release/*.exe
+          path: |
+            dist/release/*.exe
+            dist/release/*.cer
           if-no-files-found: error
   macos:
     needs: version
@@ -135,5 +146,6 @@ jobs:
         shell: bash
         run: |
           python3 scripts/release_notes.py "$VERSION" > dist/release/RELEASE_NOTES.md
-          (cd dist/release && sha256sum *.exe *.pkg > SHA256SUMS.txt)
-          gh release create "v$VERSION" --verify-tag --title "MyGittu v$VERSION" --notes-file dist/release/RELEASE_NOTES.md dist/release/*.exe dist/release/*.pkg dist/release/SHA256SUMS.txt
+          shopt -s nullglob
+          (cd dist/release && sha256sum *.exe *.pkg *.cer > SHA256SUMS.txt)
+          gh release create "v$VERSION" --verify-tag --title "MyGittu v$VERSION" --notes-file dist/release/RELEASE_NOTES.md dist/release/*.exe dist/release/*.pkg dist/release/*.cer dist/release/SHA256SUMS.txt

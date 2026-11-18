@@ -16,6 +16,8 @@
 
 先安装对应本机架构的 MyGittu。证书必须在目标设备受信任。脚本不添加根证书、不修改 Developer Mode、不绕过签名验证。注册在当前用户身份执行，DLL 与 desktop.exe 通过 ExternalLocation 引用已安装目录。
 
+本机自签名可用 `build-sparse.ps1 -CertificateThumbprint <指纹>` 从当前用户的个人证书库签名。将公开证书导入本地计算机的「受信任的人」存储后，再运行注册脚本。验证 v0.0.6 等使用旧 DLL 文件名的安装时，构建时传入 `-ShellFilename MyGittuShell.dll`。
+
 卸载当前用户的菜单身份：
 
 ```powershell

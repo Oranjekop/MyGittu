@@ -3,6 +3,8 @@
 #endif
 #define RepoRoot AddBackslash(SourcePath) + "..\.."
 
+#define ShellFilename "MyGittuShell-" + AppVersion + ".dll"
+
 [Setup]
 AppId={{8E775DC6-289F-4CA1-9058-985C56602F39}
 AppName=MyGittu
@@ -41,8 +43,11 @@ Name: shell; Description: "启用资源管理器右键菜单"; Flags: unchecked
 Name: overlays; Description: "启用 Git 文件状态图标"; Flags: unchecked
 
 [Files]
-Source: "dist\windows\x64\*"; DestDir: "{app}"; Flags: ignoreversion; Check: UseX64
-Source: "dist\windows\arm64\*"; DestDir: "{app}"; Flags: ignoreversion; Check: UseArm64
+Source: "dist\windows\x64\*"; DestDir: "{app}"; Excludes: "MyGittuShell.dll"; Flags: ignoreversion; Check: UseX64
+Source: "dist\windows\arm64\*"; DestDir: "{app}"; Excludes: "MyGittuShell.dll"; Flags: ignoreversion; Check: UseArm64
+Source: "dist\windows\x64\MyGittuShell.dll"; DestDir: "{app}"; DestName: "{#ShellFilename}"; Flags: ignoreversion; Check: UseX64
+Source: "dist\windows\arm64\MyGittuShell.dll"; DestDir: "{app}"; DestName: "{#ShellFilename}"; Flags: ignoreversion; Check: UseArm64
+Source: "packaging\windows\prepare-upgrade.ps1"; Flags: dontcopy
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 #ifdef ModernShellPackage
@@ -56,7 +61,7 @@ Name: "{autodesktop}\MyGittu"; Filename: "{app}\desktop.exe"; Tasks: desktopicon
 
 [Registry]
 Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "MyGittuAgent"; ValueData: """{app}\agent.exe"""; Flags: uninsdeletevalue; Check: RestartExplorer
-Root: HKLM; Subkey: "Software\Classes\CLSID\{{29810E41-632A-4A9B-A190-4D6593668101}\InprocServer32"; ValueType: string; ValueData: "{app}\MyGittuShell.dll"; Flags: uninsdeletekey; Tasks: shell
+Root: HKLM; Subkey: "Software\Classes\CLSID\{{29810E41-632A-4A9B-A190-4D6593668101}\InprocServer32"; ValueType: string; ValueData: "{app}\{#ShellFilename}"; Flags: uninsdeletekey; Tasks: shell
 Root: HKLM; Subkey: "Software\Classes\CLSID\{{29810E41-632A-4A9B-A190-4D6593668101}\InprocServer32"; ValueType: string; ValueName: ThreadingModel; ValueData: Apartment; Tasks: shell
 Root: HKLM; Subkey: "Software\Classes\*\shellex\ContextMenuHandlers\MyGittu"; ValueType: string; ValueData: "{{29810E41-632A-4A9B-A190-4D6593668101}"; Flags: uninsdeletekey; Tasks: shell
 Root: HKLM; Subkey: "Software\Classes\Directory\shellex\ContextMenuHandlers\MyGittu"; ValueType: string; ValueData: "{{29810E41-632A-4A9B-A190-4D6593668101}"; Flags: uninsdeletekey; Tasks: shell
@@ -88,6 +93,22 @@ begin
     RegKeyExists(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers\MyGittu Clean');
 end;
 
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var ExitCode: Integer;
+begin
+  Result := '';
+  if not FileExists(ExpandConstant('{app}\agent.exe')) then
+    Exit;
+  ExtractTemporaryFile('prepare-upgrade.ps1');
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' +
+    ExpandConstant('{tmp}\prepare-upgrade.ps1') + '" -InstallPath "' +
+    ExpandConstant('{app}') + '\."', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+    Result := '无法停止旧版 MyGittu 后台服务。'
+  else if ExitCode <> 0 then
+    Result := '旧版 MyGittu 后台服务仍在运行。请关闭后重试。';
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var I: Integer; Key, Id, LabelText: String;
 begin
@@ -95,7 +116,7 @@ begin
     for I := 2 to 4 do begin
       Id := '{29810E41-632A-4A9B-A190-4D659366810' + IntToStr(I) + '}';
       Key := 'Software\Classes\CLSID\' + Id + '\InprocServer32';
-      RegWriteStringValue(HKLM, Key, '', ExpandConstant('{app}\MyGittuShell.dll'));
+      RegWriteStringValue(HKLM, Key, '', ExpandConstant('{app}\{#ShellFilename}'));
       RegWriteStringValue(HKLM, Key, 'ThreadingModel', 'Apartment');
       case I of 2: LabelText := 'MyGittu Clean'; 3: LabelText := 'MyGittu Modified'; 4: LabelText := 'MyGittu Conflict'; end;
       RegWriteStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers\' + LabelText, '', Id);

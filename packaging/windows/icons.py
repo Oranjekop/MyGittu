@@ -19,6 +19,9 @@ def distance(x, y, a, b):
 
 
 def sample(x, y, state, color, points):
+    # Enlarge from 17 to 24 units while anchoring the lower-right edge.
+    x = 31.5 + (x - 31.5) * 17 / 24
+    y = 31.5 + (y - 31.5) * 17 / 24
     radius = math.hypot(x - 23, y - 23)
     if radius > 8.5:
         return None
