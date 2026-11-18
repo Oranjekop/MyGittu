@@ -22,74 +22,77 @@ import (
 )
 
 type Desktop struct {
-	Client                             *ipc.Client
-	win                                *mygo.Window
-	repos                              []repository.Info
-	selected                           string
-	path, message, branch, detail, err string
-	draftDir, savedMessage             string
-	drafts                             map[string]string
-	statusPolling                      bool
-	page                               int
-	busy                               bool
-	operation                          string
-	operationFrame                     int
-	snapshot                           status.Snapshot
-	logs                               []app.Commit
-	row                                int
-	files, history                     native.ListState
-	filePane                           float32
-	sidebarCollapsed                   bool
-	captionStyled, captionDark         bool
-	staged                             bool
-	offset                             int
-	query                              string
-	cloneURL, cloneDestination         string
-	logRow                             int
-	changes                            []git.FileStatus
-	stagedCount                        int
-	prefs                              settings.Values
-	settingsTab                        int
-	integration                        integrationState
-	integrationLoaded                  bool
-	integrationError                   string
-	aiPromptDraft                      string
-	aiForm                             aiSettingsForm
-	aiConfirm, aiGenerating            bool
-	aiError                            string
-	languageIndex, themeIndex          int
-	identity                           app.Identity
-	commitIdentity                     app.Identity
-	identityScope                      int
-	identitySaved                      bool
-	update                             app.UpdateInfo
-	updateChecking                     bool
-	updateInstalling                   bool
-	updateCancel                       context.CancelFunc
-	updateBytes, updateTotal           int64
-	updateError                        string
-	settingsOpen                       bool
-	repositoriesOpen                   bool
-	repositorySearch                   string
-	comparison                         *editor.DiffState
-	binary                             bool
-	projectFiles                       []string
-	projectSearch                      string
-	projectTree                        []projectEntry
-	projectCollapsed                   map[string]bool
-	projectFileRow                     int
-	projectFileList                    native.ListState
-	projectPreview                     app.Comparison
-	tools                              workbench
-	references                         app.References
-	stashRow, tagRow                   int
-	stashList, tagList                 native.ListState
-	stashMessage, tagName              string
-	hunksOpen                          bool
-	hunkPath                           string
-	hunks                              []app.StageHunk
-	hunkRow                            int
-	hunkList                           native.ListState
+	Client                                    *ipc.Client
+	win                                       *mygo.Window
+	repos                                     []repository.Info
+	selected                                  string
+	path, message, branch, detail, err        string
+	draftDir, savedMessage                    string
+	drafts                                    map[string]string
+	statusPolling                             bool
+	page                                      int
+	busy                                      bool
+	operation                                 string
+	operationFrame                            int
+	snapshot                                  status.Snapshot
+	logs                                      []app.Commit
+	row                                       int
+	files, history                            native.ListState
+	filePane                                  float32
+	sidebarCollapsed                          bool
+	captionStyled, captionDark                bool
+	staged                                    bool
+	offset                                    int
+	query                                     string
+	cloneURL, cloneDestination                string
+	cloneProvider, cloneAuthMode              int
+	cloneUsername, clonePassword, cloneSSHKey string
+	logRow                                    int
+	changes                                   []git.FileStatus
+	stagedCount                               int
+	prefs                                     settings.Values
+	settingsTab                               int
+	repositoryTools                           repositoryTools
+	integration                               integrationState
+	integrationLoaded                         bool
+	integrationError                          string
+	aiPromptDraft                             string
+	aiForm                                    aiSettingsForm
+	aiConfirm, aiGenerating                   bool
+	aiError                                   string
+	languageIndex, themeIndex                 int
+	identity                                  app.Identity
+	commitIdentity                            app.Identity
+	identityScope                             int
+	identitySaved                             bool
+	update                                    app.UpdateInfo
+	updateChecking                            bool
+	updateInstalling                          bool
+	updateCancel                              context.CancelFunc
+	updateBytes, updateTotal                  int64
+	updateError                               string
+	settingsOpen                              bool
+	repositoriesOpen                          bool
+	repositorySearch                          string
+	comparison                                *editor.DiffState
+	binary                                    bool
+	projectFiles                              []string
+	projectSearch                             string
+	projectTree                               []projectEntry
+	projectCollapsed                          map[string]bool
+	projectFileRow                            int
+	projectFileList                           native.ListState
+	projectPreview                            app.Comparison
+	tools                                     workbench
+	references                                app.References
+	stashRow, tagRow                          int
+	stashList, tagList                        native.ListState
+	stashMessage, tagName                     string
+	hunksOpen                                 bool
+	hunkPath                                  string
+	hunks                                     []app.StageHunk
+	hunkRow                                   int
+	hunkList                                  native.ListState
 }
 
 func New(client *ipc.Client, path, action string) *Desktop {
@@ -419,6 +422,9 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 					d.mutate("git.stage", ipc.Params{Paths: paths})
 				}
 			})
+			if d.snapshot.CherryPicking {
+				d.cherryControls(c, files)
+			}
 			if d.snapshot.Merging && !slices.ContainsFunc(files, func(file git.FileStatus) bool { return file.State == git.Conflicted }) {
 				if IconButton(c, d.text("recover.merge.continue"), "merge", false).Disabled(d.busy).Clicked() {
 					d.confirmRecovery("merge.continue", "")
@@ -480,6 +486,9 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 					d.settingsTab = 1
 					d.loadIdentity()
 				}
+				if IconButton(c, "", "undo", false).Label(d.copy("修正最近提交", "Amend latest commit")).Tooltip(d.copy("修正最近提交", "Amend latest commit")).Disabled(d.busy || d.snapshot.Merging || d.snapshot.CherryPicking).Clicked() {
+					d.prepareAmend()
+				}
 				if IconButton(c, d.text("commit.submit"), "commit", true).Disabled(d.busy || !canCommit || strings.TrimSpace(d.message) == "").Clicked() {
 					d.mutate("git.commit", ipc.Params{Message: d.message})
 				}
@@ -497,6 +506,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				}()).Grow(1)
 				if d.row >= 0 && d.row < len(files) {
 					file := files[d.row]
+					d.restoreFileButton(c, file)
 					if file.Index != git.Clean && file.Worktree != git.Clean && file.State != git.Conflicted {
 						mode := 0
 						if d.staged {
@@ -516,7 +526,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 					}
 				}
 				if d.row >= 0 && d.row < len(files) && !d.staged && files[d.row].Worktree == git.Modified {
-					if IconButton(c, d.text("hunk.stage"), "stage", false).Disabled(d.busy).Clicked() {
+					if IconButton(c, d.copy("区块操作", "Hunk actions"), "diff", false).Disabled(d.busy).Clicked() {
 						d.loadHunks(files[d.row].Path)
 					}
 				}
@@ -592,7 +602,7 @@ func (d *Desktop) view(c *native.Context) {
 					}
 				}
 			}
-			if IconButton(c, "", "refresh", false).Label(d.text("refresh")).Tooltip(d.text("refresh")).Disabled(d.busy || (d.selected == "" && d.page != 4)).Clicked() {
+			if d.refreshButton(c).Disabled(d.busy || (d.selected == "" && d.page != 4)).Clicked() {
 				d.refresh()
 			}
 			if IconButton(c, "", "settings", false).Label(d.text("nav.settings")).Tooltip(d.text("nav.settings")).Clicked() {
@@ -630,13 +640,10 @@ func (d *Desktop) view(c *native.Context) {
 			}
 			native.Column(c).Grow(1).FillHeight().Gap(controlSpacing).Children(func() {
 
-				if d.busy && !d.settingsOpen {
+				if d.busy && !d.settingsOpen && (d.operation != "" || d.aiGenerating) {
 					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 						if d.operation == "" {
-							label := d.text("busy")
-							if d.aiGenerating {
-								label = d.aiActionLabel()
-							}
+							label := d.aiActionLabel()
 							native.Text(c, label).TextColor(t.TextMuted)
 						} else {
 							action, _, _ := strings.Cut(d.operation, ".")
@@ -704,6 +711,10 @@ func (d *Desktop) view(c *native.Context) {
 						if IconButton(c, d.text("recover.revert"), "revert", false).Disabled(d.busy || !valid).Clicked() && valid {
 							d.confirmRecovery("revert", d.logs[d.logRow].Hash)
 						}
+						if IconButton(c, d.copy("拣选提交", "Cherry-pick"), "branch", false).Disabled(d.busy || !valid).Clicked() && valid {
+							hash := d.logs[d.logRow].Hash
+							d.askAction(d.copy("将该提交应用到当前分支？", "Apply this commit to the current branch?"), hash, func() { d.runCherry("start", hash) })
+						}
 					})
 					if d.detail != "" {
 						native.TextArea(c, &d.detail).Height(180).FillWidth().ReadOnly(true)
@@ -724,24 +735,10 @@ func (d *Desktop) view(c *native.Context) {
 						}
 					})
 				case 3:
+					d.repositoryToolButtons(c)
 					d.showBranches(c)
 				case 5:
-					native.Text(c, d.text("clone.title")).Bold()
-					native.TextInput(c, &d.cloneURL).Placeholder(d.text("clone.url")).FillWidth()
-					native.TextInput(c, &d.cloneDestination).Placeholder(d.text("clone.destination")).FillWidth()
-					if IconButton(c, d.text("clone.run"), "clone", true).Disabled(d.busy || strings.TrimSpace(d.cloneURL) == "" || !filepath.IsAbs(d.cloneDestination)).Clicked() {
-						url, dest := d.cloneURL, d.cloneDestination
-						d.operationTask("clone.running", func(ctx context.Context) (func(), error) {
-							var repo repository.Info
-							e := d.Client.Call(ctx, "git.clone", ipc.Params{URL: url, Destination: dest}, &repo)
-							return func() {
-								d.repos = append(d.repos, repo)
-								d.selectRepository(repo.ID, repo.Root)
-								d.page = 0
-								d.refresh()
-							}, e
-						})
-					}
+					d.cloneView(c)
 				case 6:
 					native.Text(c, d.text("remote."+d.branch)).Bold()
 					if IconButton(c, d.text("remote."+d.branch), d.branch, true).Disabled(d.busy).Clicked() {
@@ -755,6 +752,7 @@ func (d *Desktop) view(c *native.Context) {
 	})
 	d.settingsDialog(c)
 	d.commitAIDialog(c)
+	d.showRepositoryTools(c)
 	d.repositoryDialog(c)
 	d.hunkDialog(c)
 	d.showConflict(c)

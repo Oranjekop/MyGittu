@@ -65,13 +65,21 @@ func hunkToken(header, hunk []byte) string {
 }
 
 func (s *Service) StageSelectedHunk(ctx context.Context, id, path, token string, index int) error {
+	return s.applySelectedHunk(ctx, id, path, token, index, false)
+}
+
+func (s *Service) RestoreSelectedHunk(ctx context.Context, id, path, token string, index int) error {
+	return s.applySelectedHunk(ctx, id, path, token, index, true)
+}
+
+func (s *Service) applySelectedHunk(ctx context.Context, id, path, token string, index int, restore bool) error {
 	_, err := s.writeLocked(ctx, id, func() (git.Result, error) {
 		header, hunks, err := s.worktreePatch(ctx, id, path)
 		if err != nil {
 			return git.Result{}, err
 		}
 		if index < 0 || index >= len(hunks) || token != hunkToken(header, hunks[index]) {
-			return git.Result{}, fmt.Errorf("selected hunk changed; reload before staging")
+			return git.Result{}, fmt.Errorf("selected hunk changed; reload the diff")
 		}
 		file, err := os.CreateTemp("", "mygittu-stage-*.patch")
 		if err != nil {
@@ -92,7 +100,11 @@ func (s *Service) StageSelectedHunk(ctx context.Context, id, path, token string,
 		if closeErr != nil {
 			return git.Result{}, closeErr
 		}
-		return s.Read(ctx, id, "apply", "--cached", "--recount", "--", file.Name())
+		mode := "--cached"
+		if restore {
+			mode = "--reverse"
+		}
+		return s.Read(ctx, id, "apply", mode, "--recount", "--", file.Name())
 	})
 	return err
 }

@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	native "github.com/egoist/mygo/ui"
+	"mygittu/internal/buildinfo"
 )
 
 type integrationState struct {
@@ -41,9 +42,9 @@ func (d *Desktop) runIntegration(action string, enabled bool) {
 
 func (d *Desktop) integrationSettings(c *native.Context) {
 	t := c.Theme()
-	if !d.integrationLoaded && d.busy {
-		native.Text(c, d.text("busy"))
-	}
+	native.Text(c, d.copy("当前版本", "Current version")+"  "+buildinfo.Version).TextColor(t.TextMuted)
+	d.cloneSettings(c)
+
 	if d.integrationError != "" {
 		native.Text(c, d.integrationError).FillWidth().TextColor(t.Danger)
 	}

@@ -24,13 +24,14 @@ type Overlay struct {
 var ErrStale = errors.New("repository changed during refresh; retry")
 
 type Snapshot struct {
-	Files      []git.FileStatus `json:"files"`
-	Generation uint64           `json:"generation"`
-	Updated    time.Time        `json:"updated"`
-	Branch     string           `json:"branch"`
-	Merging    bool             `json:"merging"`
-	Tracking   app.BranchStatus `json:"tracking"`
-	states     map[string]git.State
+	Files         []git.FileStatus `json:"files"`
+	Generation    uint64           `json:"generation"`
+	Updated       time.Time        `json:"updated"`
+	Branch        string           `json:"branch"`
+	CherryPicking bool             `json:"cherry_picking"`
+	Merging       bool             `json:"merging"`
+	Tracking      app.BranchStatus `json:"tracking"`
+	states        map[string]git.State
 }
 type Cache struct {
 	mu         sync.RWMutex
@@ -87,7 +88,9 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 	changed := !maps.Equal(c.snapshots[id].states, states)
 	c.generation++
 	_, mergeErr := os.Stat(filepath.Join(repo.GitDir, "MERGE_HEAD"))
-	c.snapshots[id] = Snapshot{Files: files, Generation: c.generation, Updated: time.Now(), Branch: branch.Name, Merging: mergeErr == nil, Tracking: branch, states: states}
+	_, cherryErr := os.Stat(filepath.Join(repo.GitDir, "CHERRY_PICK_HEAD"))
+	cherryPicking := cherryErr == nil
+	c.snapshots[id] = Snapshot{Files: files, Generation: c.generation, Updated: time.Now(), Branch: branch.Name, Merging: mergeErr == nil, CherryPicking: cherryPicking, Tracking: branch, states: states}
 	c.mu.Unlock()
 	if changed {
 		// Let Explorer's 500 ms native lookup cache expire before repainting.

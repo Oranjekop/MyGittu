@@ -11,11 +11,13 @@ import (
 )
 
 type Values struct {
-	AIPrompt string          `json:"ai_prompt,omitempty"`
-	FontSize float32         `json:"font_size,omitempty"`
-	AI       commitai.Config `json:"ai,omitempty"`
-	Language string          `json:"language"`
-	Theme    string          `json:"theme"`
+	CloneUsername string          `json:"clone_username,omitempty"`
+	CloneSSHKey   string          `json:"clone_ssh_key,omitempty"`
+	AIPrompt      string          `json:"ai_prompt,omitempty"`
+	FontSize      float32         `json:"font_size,omitempty"`
+	AI            commitai.Config `json:"ai,omitempty"`
+	Language      string          `json:"language"`
+	Theme         string          `json:"theme"`
 }
 type Store struct {
 	mu     sync.RWMutex

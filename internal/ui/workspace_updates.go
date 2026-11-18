@@ -26,7 +26,7 @@ func (d *Desktop) watchWorkspace(ctx context.Context) {
 }
 
 func (d *Desktop) canPollWorkspace() bool {
-	return d.selected != "" && (d.page == 0 || d.page == 2) && !d.busy && !d.settingsOpen && !d.repositoriesOpen && !d.hunksOpen && !d.tools.conflictOpen && !d.tools.confirmOpen
+	return d.selected != "" && (d.page == 0 || d.page == 2) && !d.busy && !d.settingsOpen && !d.repositoriesOpen && !d.hunksOpen && !d.tools.conflictOpen && !d.tools.confirmOpen && !d.repositoryTools.confirmOpen && !d.repositoryTools.amendOpen
 }
 
 func (d *Desktop) pollWorkspace(ctx context.Context) {
@@ -83,7 +83,7 @@ func (d *Desktop) applyWorkspaceStatus(snapshot status.Snapshot) bool {
 			}
 		}
 	}
-	branchChanged := d.snapshot.Branch != snapshot.Branch || d.snapshot.Tracking != snapshot.Tracking || d.snapshot.Merging != snapshot.Merging
+	branchChanged := d.snapshot.Branch != snapshot.Branch || d.snapshot.Tracking != snapshot.Tracking || d.snapshot.Merging != snapshot.Merging || d.snapshot.CherryPicking != snapshot.CherryPicking
 	d.snapshot = snapshot
 	if slices.Equal(d.changes, changes) {
 		return branchChanged

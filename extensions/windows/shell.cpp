@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <atomic>
 #include <chrono>
+#include <iterator>
 #include <mutex>
 #include <new>
 #include <sddl.h>
@@ -274,11 +275,13 @@ static bool repositoryPath(const std::wstring &path) {
 }
 static const wchar_t *actions[] = {L"status", L"commit", L"log",  L"diff",
                                    L"pull",   L"push",   L"clone"};
+static constexpr int repositoryCommands[] = {4, 0, 1, 5, 2, 3};
+static constexpr int cloneCommand = 6;
 static const wchar_t *commandTitle(int action) {
-  const wchar_t *en[] = {L"Changes", L"Commit…", L"History", L"Diff",
-                         L"Pull…",   L"Push…",   L"Clone…"};
-  const wchar_t *zh[] = {L"变更",  L"提交…", L"历史", L"差异",
-                         L"拉取…", L"推送…", L"克隆…"};
+  const wchar_t *en[] = {L"Changes", L"Commit", L"History", L"Diff",
+                         L"Pull",   L"Push",   L"Clone"};
+  const wchar_t *zh[] = {L"变更",  L"提交", L"历史", L"差异",
+                         L"拉取", L"推送", L"克隆"};
   return english() ? en[action] : zh[action];
 }
 static HRESULT launch(const std::wstring &path, int action) {
@@ -411,8 +414,8 @@ public:
       try {
     if ((flags & CMF_DEFAULTONLY) || path.empty() || last < first)
       return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
-    commands = repositoryPath(path) ? std::vector<int>{0, 4, 1, 5, 2, 3}
-                                    : std::vector<int>{6};
+    commands = repositoryPath(path) ? std::vector<int>(std::begin(repositoryCommands), std::end(repositoryCommands))
+                                    : std::vector<int>{cloneCommand};
     if (last - first + 1 < commands.size())
       return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
     auto popup = CreatePopupMenu();

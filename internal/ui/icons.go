@@ -3,6 +3,7 @@ package ui
 import (
 	native "github.com/egoist/mygo/ui"
 	"strings"
+	"time"
 )
 
 // Original 20px line icons: one stroke weight and round ends throughout.
@@ -74,3 +75,16 @@ func IconButton(c *native.Context, label, icon string, primary bool) native.Elem
 }
 
 func controlHeight(c *native.Context) float32 { return max(27, c.Theme().FontSize+14.5) }
+
+func (d *Desktop) refreshButton(c *native.Context) native.Element {
+	label := d.text("refresh")
+	if d.busy {
+		label = d.copy("正在刷新", "Refreshing")
+	}
+	return native.Button(c, "").Label(label).Tooltip(label).Height(controlHeight(c)).Padding(0, 8).Children(func() {
+		icon := native.Icon(c, icons["refresh"]).Width(14).Height(14)
+		if d.busy {
+			icon.Rotate(icon.Loop("busy-refresh", 900*time.Millisecond, native.Linear) * 360)
+		}
+	})
+}

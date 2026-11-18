@@ -67,18 +67,18 @@ func (d *remoteWindow) view(c *native.Context) {
 			d.captionStyled, d.captionDark = true, t.Dark
 		}
 	}
-	native.Column(c).Fill().Padding(18).Gap(12).Background(t.Background).Children(func() {
-		if d.err == "" {
-			native.Column(c).Grow(1).FillWidth().Center().Gap(14).Children(func() {
-				native.Image(c, d.rabbitFrame()).Width(138).Height(138)
-				message := d.status
-				if message == "" {
-					message = d.runningStatus()
-				}
-				native.Text(c, message).FontSize(17 + t.FontSize - 12.5).Bold()
-			})
-			return
+	if d.err == "" {
+		message := d.status
+		if message == "" {
+			message = d.runningStatus()
 		}
+		native.Column(c).Fill().Background(t.Background).Padding(12, 12, 26, 12).Center().Gap(8).Children(func() {
+			native.Image(c, d.rabbitFrame()).Width(116).Height(116)
+			native.Text(c, message).FontSize(17 + t.FontSize - 12.5).Bold()
+		})
+		return
+	}
+	native.Column(c).Fill().Padding(18).Gap(12).Background(t.Background).Children(func() {
 		native.Text(c, d.status).FontSize(17 + t.FontSize - 12.5).Bold().TextColor(t.Danger)
 		native.Scroll(c).Grow(1).FillWidth().Background(t.Surface).Radius(8).Children(func() {
 			native.Text(c, d.err).FillWidth().Padding(10)

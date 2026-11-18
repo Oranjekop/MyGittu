@@ -256,7 +256,7 @@ func (s *Service) Remote(ctx context.Context, id, action string) error {
 	_, e := s.Write(ctx, id, args...)
 	return e
 }
-func (s *Service) Clone(ctx context.Context, url, destination string) (repository.Info, error) {
+func (s *Service) Clone(ctx context.Context, url, destination string, credentials ...git.CloneAuth) (repository.Info, error) {
 	if strings.TrimSpace(url) == "" || strings.HasPrefix(url, "-") || strings.Contains(url, "::") {
 		return repository.Info{}, fmt.Errorf("clone URL required")
 	}
@@ -274,7 +274,11 @@ func (s *Service) Clone(ctx context.Context, url, destination string) (repositor
 	if e := os.MkdirAll(filepath.Dir(destination), 0700); e != nil {
 		return repository.Info{}, e
 	}
-	if _, e := s.Runner.Run(ctx, "", "clone", "--", url, destination); e != nil {
+	var auth git.CloneAuth
+	if len(credentials) > 0 {
+		auth = credentials[0]
+	}
+	if e := s.Runner.Clone(ctx, url, destination, auth); e != nil {
 		return repository.Info{}, e
 	}
 	return s.Registry.Register(ctx, destination)

@@ -226,7 +226,7 @@ public:
       return E_PENDING;
     }
     bool repo = repositoryPath(location);
-    *state = ((action == 6) != repo) ? ECS_ENABLED : ECS_HIDDEN;
+    *state = ((action == cloneCommand) != repo) ? ECS_ENABLED : ECS_HIDDEN;
     return S_OK;
   } catch (...) {
     return E_FAIL;
@@ -252,8 +252,9 @@ public:
       return E_NOTIMPL;
     std::vector<IExplorerCommand *> commands;
     try {
-      for (int value : {0, 4, 1, 5, 2, 3, 6})
+      for (int value : repositoryCommands)
         commands.push_back(new Modern(value, path));
+      commands.push_back(new Modern(cloneCommand, path));
       *out = new CommandEnum(std::move(commands));
       return S_OK;
     } catch (...) {

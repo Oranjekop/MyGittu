@@ -38,6 +38,11 @@ func (d *Desktop) hunkDialog(c *native.Context) {
 					d.hunksOpen = false
 					d.mutate("git.hunk.stage", ipc.Params{Path: d.hunkPath, Hash: hunk.Token, Offset: d.hunkRow})
 				}
+				if IconButton(c, d.copy("恢复此区块", "Restore this hunk"), "undo", false).Disabled(d.busy).Clicked() {
+					p := ipc.Params{Path: d.hunkPath, Hash: hunk.Token, Offset: d.hunkRow}
+					d.hunksOpen = false
+					d.askAction(d.copy("丢弃此区块的未暂存改动？", "Discard unstaged changes in this hunk?"), p.Path, func() { d.mutate("git.hunk.restore", p) })
+				}
 			}
 			if IconButton(c, d.text("close"), "close", false).Clicked() {
 				d.hunksOpen = false

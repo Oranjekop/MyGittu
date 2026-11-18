@@ -15,6 +15,7 @@ func (d *Desktop) openSettings() {
 	d.resetPromptDraft()
 	d.aiForm.apply(d.prefs.AI)
 	d.aiForm.key = d.aiForm.savedKey
+	d.cloneUsername, d.cloneSSHKey = d.prefs.CloneUsername, d.prefs.CloneSSHKey
 	if d.selected == "" {
 		d.identityScope = 1
 	}

@@ -24,14 +24,37 @@ var remoteRabbitFrames = sync.OnceValue(func() [3][4]*native.Bitmap {
 	width, height := atlas.Bounds().Dx()/4, atlas.Bounds().Dy()/3
 	var frames [3][4]*native.Bitmap
 	for row := range frames {
+		crop := rabbitFrameBounds(atlas, row, width, height)
 		for col := range frames[row] {
-			rect := image.Rect(col*width, row*height, (col+1)*width, (row+1)*height)
+			rect := crop.Add(image.Pt(col*width, row*height))
 			frames[row][col] = native.NewBitmap(sheet.SubImage(rect))
 		}
 	}
 	return frames
 })
 
+// Use one square crop per animation so transparent margins do not offset
+// the artwork and the drawing scale stays fixed between frames.
+func rabbitFrameBounds(atlas image.Image, row, width, height int) image.Rectangle {
+	var bounds image.Rectangle
+	for col := 0; col < 4; col++ {
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				_, _, _, alpha := atlas.At(col*width+x, row*height+y).RGBA()
+				if alpha > 0 {
+					bounds = bounds.Union(image.Rect(x, y, x+1, y+1))
+				}
+			}
+		}
+	}
+	side := max(bounds.Dx(), bounds.Dy())
+	if side == 0 || side > min(width, height) {
+		return image.Rect(0, 0, width, height)
+	}
+	x := min(max(0, bounds.Min.X-(side-bounds.Dx())/2), width-side)
+	y := min(max(0, bounds.Min.Y-(side-bounds.Dy())/2), height-side)
+	return image.Rect(x, y, x+side, y+side)
+}
 func (d *remoteWindow) rabbitFrame() *native.Bitmap {
 	row := 0
 	switch d.action {

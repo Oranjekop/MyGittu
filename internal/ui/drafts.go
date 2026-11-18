@@ -19,6 +19,7 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.hunksOpen = false
 		d.aiConfirm, d.aiError = false, ""
 		d.tools = workbench{}
+		d.repositoryTools = repositoryTools{}
 	}
 	d.selected, d.path = id, root
 }

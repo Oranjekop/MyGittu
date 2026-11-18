@@ -46,6 +46,10 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 	return b.Buffer.Write(p)
 }
 func (r *Runner) Run(ctx context.Context, repo string, args ...string) (Result, error) {
+	return r.run(ctx, repo, nil, args...)
+}
+
+func (r *Runner) run(ctx context.Context, repo string, env []string, args ...string) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
 	defer cancel()
 	// Disable interactive prompts; use installed credential helpers for remote operations.
@@ -54,6 +58,7 @@ func (r *Runner) Run(ctx context.Context, repo string, args ...string) (Result, 
 	cmd.WaitDelay = 2 * time.Second
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_LITERAL_PATHSPECS=1", "GIT_PAGER=cat")
+	cmd.Env = append(cmd.Env, env...)
 	out, errout := &limitedBuffer{max: 8 << 20}, &limitedBuffer{max: 64 << 10}
 	cmd.Stdout = out
 	cmd.Stderr = errout

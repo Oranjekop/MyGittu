@@ -31,7 +31,7 @@ func TestRemoteAnimationKeepsTextStill(t *testing.T) {
 func checkRemoteAnimation(t *testing.T, action string) {
 	t.Helper()
 	d := &remoteWindow{action: action, lang: "zh-CN"}
-	tester := native.NewTester(d.view, 400, 234)
+	tester := native.NewTester(d.view, 384, 195)
 	first := tester.Image()
 	before := append([]byte(nil), first.Pix...)
 	d.frame = 1
@@ -40,7 +40,23 @@ func checkRemoteAnimation(t *testing.T, action string) {
 	if bytes.Equal(before, after.Pix) {
 		t.Fatal("animation frame did not move the synchronization icon")
 	}
-	for y := 175; y < after.Bounds().Dy(); y++ {
+	label, ok := tester.Find(d.runningStatus())
+	if !ok || label.Y+label.H > 175 || label.X < 0 || label.X+label.W > 384 {
+		t.Fatalf("status is clipped or too close to the edge: %v", label)
+	}
+	var artwork image.Rectangle
+	background := after.RGBAAt(0, 0)
+	for y := 0; y < after.Bounds().Dy(); y++ {
+		for x := 0; x < after.Bounds().Dx(); x++ {
+			if after.RGBAAt(x, y) != background {
+				artwork = artwork.Union(image.Rect(x, y, x+1, y+1))
+			}
+		}
+	}
+	if offset := artwork.Min.Y + artwork.Max.Y - after.Bounds().Dy(); offset < -24 || offset > 24 {
+		t.Fatalf("artwork and status are not centered as a group: %v", artwork)
+	}
+	for y := int(label.Y); y < after.Bounds().Dy(); y++ {
 		start, end := y*after.Stride, (y+1)*after.Stride
 		if !bytes.Equal(before[start:end], after.Pix[start:end]) {
 			t.Fatal("animation moved content outside the icon area")

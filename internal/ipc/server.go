@@ -20,6 +20,7 @@ import (
 )
 
 type Params struct {
+	CloneAuth     git.CloneAuth   `json:"clone_auth,omitempty"`
 	RepoID        string          `json:"repo_id"`
 	Path          string          `json:"path"`
 	Paths         []string        `json:"paths"`
@@ -177,6 +178,26 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.FileLog(ctx, p.RepoID, p.Path, p.Limit, p.Offset)
 	case "git.file.insight":
 		result, e = s.Service.FileInsight(ctx, p.RepoID, p.Path, p.Action, p.Hash)
+	case "git.remotes":
+		result, e = s.Service.Remotes(ctx, p.RepoID)
+	case "git.remote.configure":
+		e = s.Service.ConfigureRemote(ctx, p.RepoID, p.Action, p.Name, p.URL)
+	case "git.amend.target":
+		result, e = s.Service.AmendTarget(ctx, p.RepoID)
+	case "git.amend":
+		e = s.Service.Amend(ctx, p.RepoID, p.Hash, p.Message)
+	case "git.cherry-pick":
+		e = s.Service.CherryPick(ctx, p.RepoID, p.Action, p.Hash)
+	case "git.worktrees":
+		result, e = s.Service.Worktrees(ctx, p.RepoID)
+	case "git.worktree.edit":
+		e = s.Service.EditWorktree(ctx, p.RepoID, p.Action, p.Path, p.Name)
+	case "git.restore.preview":
+		result, e = s.Service.RestoreToken(ctx, p.RepoID, p.Path, p.Action == "untracked")
+	case "git.restore":
+		e = s.Service.RestoreFile(ctx, p.RepoID, p.Path, p.Hash, p.Action == "untracked")
+	case "git.hunk.restore":
+		e = s.Service.RestoreSelectedHunk(ctx, p.RepoID, p.Path, p.Hash, p.Offset)
 	case "git.recover":
 		e = s.Service.RecoverCommit(ctx, p.RepoID, p.Action, p.Hash)
 	case "git.compare":
@@ -212,12 +233,15 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 	case "git.remote":
 		e = s.Service.Remote(ctx, p.RepoID, p.Action)
 	case "git.clone":
-		result, e = s.Service.Clone(ctx, p.URL, p.Destination)
+		result, e = s.Service.Clone(ctx, p.URL, p.Destination, p.CloneAuth)
 	default:
 		return fail("method", "unsupported method")
 	}
-	if r.Method == "git.stage" || r.Method == "git.unstage" || r.Method == "git.commit" || r.Method == "git.branch" || r.Method == "git.remote" {
-		s.Cache.Invalidate(p.RepoID)
+	switch r.Method {
+	case "git.stage", "git.unstage", "git.commit", "git.branch", "git.remote", "git.amend", "git.cherry-pick", "git.remote.configure", "git.restore", "git.hunk.restore", "git.hunk.stage", "git.recover", "git.resolve", "git.worktree.edit":
+		if s.Cache != nil {
+			s.Cache.Invalidate(p.RepoID)
+		}
 	}
 	if e != nil {
 		return fail("operation", e.Error())

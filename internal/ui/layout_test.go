@@ -9,6 +9,7 @@ import (
 	native "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"mygittu/internal/app"
+	"mygittu/internal/buildinfo"
 	git "mygittu/internal/git"
 	"mygittu/internal/repository"
 	"mygittu/internal/status"
@@ -225,7 +226,7 @@ func TestIntegrationSettingsAt150Percent(t *testing.T) {
 	d.integration = integrationState{Menu: true, Modern: true, Overlays: true}
 	tt := native.NewTester(d.view, 960, 680)
 	tt.SetScale(1.5)
-	for _, label := range []string{"系统集成", "登录时启动 MyGittu"} {
+	for _, label := range []string{"系统集成", "登录时启动 MyGittu", "当前版本  " + buildinfo.Version} {
 		if !tt.HasText(label) {
 			t.Fatalf("missing integration setting %q", label)
 		}
@@ -238,4 +239,46 @@ func TestIntegrationSettingsAt150Percent(t *testing.T) {
 		}
 	}
 	saveLayoutPreview(t, tt, "settings-integration-150.png")
+}
+
+func TestExtendedGitDialogsAt150Percent(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected = "demo"
+	d.page = 3
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if !tt.HasText("远程仓库") || !tt.HasText("工作树") {
+		t.Fatal("branch tools missing")
+	}
+	w := &d.repositoryTools
+	w.remoteOpen = true
+	w.remotes = []app.RemoteEntry{{Name: "origin", URL: "https://example.invalid/team/project.git"}}
+	w.name, w.branch = "origin", "main"
+	tt.Frame()
+	if !tt.HasText("推送并跟踪") || !tt.HasText("设置跟踪") {
+		t.Fatal("remote actions missing")
+	}
+	saveLayoutPreview(t, tt, "remotes-150.png")
+	if err := tt.Click("移除远程"); err != nil {
+		t.Fatal(err)
+	}
+	if !w.confirmOpen || !tt.HasText("移除此远程仓库配置？") {
+		t.Fatal("remote removal confirmation missing")
+	}
+	w.confirmOpen = false
+	w.remoteOpen = false
+	w.treeOpen = true
+	w.trees = []app.Worktree{{Path: "D:/Projects/Main", Branch: "main", Primary: true}}
+	tt.Frame()
+	if !tt.HasText("创建工作树") {
+		t.Fatal("worktree actions missing")
+	}
+	saveLayoutPreview(t, tt, "worktrees-150.png")
+	w.treeOpen = false
+	w.amendOpen = true
+	w.amendMessage = "subject\n\ndescription"
+	tt.Frame()
+	if !tt.HasText("确认修正") {
+		t.Fatal("amend confirmation missing")
+	}
 }

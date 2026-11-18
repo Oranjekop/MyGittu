@@ -156,3 +156,30 @@ func TestSettingsOverlayPreservesWorkspace(t *testing.T) {
 		t.Fatal("settings changed the workspace")
 	}
 }
+
+func TestHostedCloneURL(t *testing.T) {
+	for _, tc := range []struct {
+		host, input, want string
+		ssh               bool
+	}{
+		{"github.com", "octocat/Hello-World", "https://github.com/octocat/Hello-World.git", false},
+		{"gitee.com", "https://gitee.com/team/project.git", "git@gitee.com:team/project.git", true},
+		{"gitlab.com", "group/subgroup/project", "https://gitlab.com/group/subgroup/project.git", false},
+		{"bitbucket.org", "git@bitbucket.org:team/project.git", "git@bitbucket.org:team/project.git", true},
+		{"gitee.com", "https://github.com/team/project", "", false},
+		{"github.com", "team/../project", "", false},
+	} {
+		if got := providerCloneURL(tc.host, tc.input, tc.ssh); got != tc.want {
+			t.Errorf("%q -> %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestBusyWorkspaceHasNoGenericText(t *testing.T) {
+	d := New(nil, "", "")
+	d.busy = true
+	tester := native.NewTester(d.view, 960, 680)
+	if tester.HasText(d.text("busy")) {
+		t.Fatal("generic busy text is still visible")
+	}
+}
