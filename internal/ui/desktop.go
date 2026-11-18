@@ -627,7 +627,7 @@ func (d *Desktop) view(c *native.Context) {
 			}
 			native.Column(c).Grow(1).FillHeight().Gap(controlSpacing).Children(func() {
 
-				if d.busy {
+				if d.busy && !d.settingsOpen {
 					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 						if d.operation == "" {
 							label := d.text("busy")

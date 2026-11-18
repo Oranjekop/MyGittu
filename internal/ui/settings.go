@@ -106,9 +106,8 @@ func (d *Desktop) updateSettings(c *native.Context) {
 }
 func (d *Desktop) identitySettings(c *native.Context) {
 	t := c.Theme()
-	oldScope := d.identityScope
-	native.Segmented(c, &d.identityScope, d.text("identity.local"), d.text("identity.global")).Disabled(d.busy || d.selected == "")
-	if oldScope != d.identityScope {
+	scopeControl := native.Segmented(c, &d.identityScope, d.text("identity.local"), d.text("identity.global")).Disabled(d.busy || d.selected == "")
+	if scopeControl.Changed() && !d.busy && d.selected != "" && d.Client != nil {
 		d.loadIdentity()
 	}
 	native.Row(c).Gap(panelSpacing).Children(func() {

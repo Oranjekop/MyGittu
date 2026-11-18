@@ -22,7 +22,7 @@ func (d *Desktop) repositoryMenu(c *native.Context) {
 			label = name
 		}
 	}
-	native.MenuButton(c, label, func(menu *native.Menu) {
+	native.PopoverMenuButton(c, label, func(menu *native.Menu) {
 		for _, repo := range d.repos {
 			if repo.LastOpened == 0 && repo.ID != d.selected {
 				continue
@@ -46,7 +46,11 @@ func (d *Desktop) repositoryMenu(c *native.Context) {
 		if menu.Item(d.text("repo.open") + "…").Chosen() {
 			d.chooseRepository()
 		}
-	}).Height(27).Padding(0, 8).MaxWidth(200).Tooltip(d.text("repo.recent")).Disabled(d.busy)
+	}, native.PopoverMenuButtonOptions{
+		Item: func(item native.Element) {
+			item.Padding(4, 8)
+		},
+	}).Height(controlHeight(c)).Padding(0, 8).MaxWidth(200).Tooltip(d.text("repo.recent")).Disabled(d.busy)
 }
 
 func (d *Desktop) repositoryDialog(c *native.Context) {
