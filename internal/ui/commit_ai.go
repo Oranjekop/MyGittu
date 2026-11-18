@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,11 +17,13 @@ import (
 type aiSettingsForm struct {
 	config        commitai.Config
 	key, savedKey string
+	models        []string
+	modelError    string
 }
 
 func (f *aiSettingsForm) apply(config commitai.Config) {
-	if f.config != config {
-		f.key = f.savedKey
+	if f.config.Provider != config.Provider || f.config.BaseURL != config.BaseURL {
+		f.models, f.modelError = nil, ""
 	}
 	f.config = config
 }
@@ -49,6 +52,7 @@ func (d *Desktop) aiSettings(c *native.Context) {
 	if selected != names[0] && selected != previous {
 		f.config = commitai.Config{Provider: selected}
 		f.key = ""
+		f.models, f.modelError = nil, ""
 		for _, provider := range providers {
 			if provider.Name == selected {
 				f.config.BaseURL = provider.BaseURL
@@ -58,6 +62,7 @@ func (d *Desktop) aiSettings(c *native.Context) {
 	} else if selected == names[0] && previous != "" {
 		f.config = commitai.Config{}
 		f.key = ""
+		f.models, f.modelError = nil, ""
 	}
 	if f.config.Provider != "" {
 		previousURL := f.config.BaseURL
@@ -73,11 +78,30 @@ func (d *Desktop) aiSettings(c *native.Context) {
 		}
 		if previousURL != f.config.BaseURL {
 			f.key = ""
+			f.models, f.modelError = nil, ""
 		}
 		native.Text(c, d.copy("API 密钥（本次运行）", "API key (this session)"))
 		input := native.TextInput(c, &f.key).Password().FillWidth().Disabled(d.busy)
 		if env := f.environment(); env != "" {
 			input.Placeholder(env)
+		}
+		_, addressError := f.config.Base()
+		if IconButton(c, d.copy("获取模型 ID", "Fetch model IDs"), "download", false).Disabled(d.busy || addressError != nil).Clicked() {
+			d.fetchAIModels()
+		}
+		if len(f.models) > 0 {
+			label := d.copy("选择模型", "Choose a model")
+			selected := f.config.Model
+			if !slices.Contains(f.models, selected) {
+				selected = ""
+			}
+			native.Select(c, &selected, f.models).Label(label).Placeholder(label).FillWidth().Disabled(d.busy)
+			if selected != "" {
+				f.config.Model = selected
+			}
+		}
+		if f.modelError != "" {
+			native.Text(c, f.modelError).FillWidth().TextColor(c.Theme().Danger)
 		}
 	}
 	_, configErr := f.config.Endpoint()
@@ -221,4 +245,28 @@ func (d *Desktop) saveCommitPrompt(prompt string) {
 	prefs := d.prefs
 	prefs.AIPrompt = prompt
 	d.savePrefs(prefs)
+}
+
+func (d *Desktop) fetchAIModels() {
+	f := &d.aiForm
+	config, key := f.config, strings.TrimSpace(f.key)
+	if key == "" {
+		key = strings.TrimSpace(os.Getenv(f.environment()))
+	}
+	f.models, f.modelError = nil, ""
+	d.task(func(ctx context.Context) (func(), error) {
+		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		models, err := commitai.ListModels(ctx, config, key)
+		return func() {
+			if f.config.Provider != config.Provider || f.config.BaseURL != config.BaseURL {
+				return
+			}
+			if err != nil {
+				f.modelError = fmt.Sprintf(d.copy("无法获取模型列表：%s。可手动填写模型 ID。", "Could not list models: %s. Enter the model ID manually."), err)
+				return
+			}
+			f.models = models
+		}, nil
+	})
 }

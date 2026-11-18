@@ -53,3 +53,19 @@ func TestGenerateUsesStagedPatch(t *testing.T) {
 		t.Fatalf("sent %d requests, want 2", got)
 	}
 }
+
+func TestListModelsWithoutModelID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" || r.Header.Get("Authorization") != "Bearer test-key" || r.ContentLength != 0 {
+			t.Error("unexpected list request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		fmt.Fprint(w, `{"data":[{"id":"z"},{"id":"a"},{"id":"a"},{"id":""}]}`)
+	}))
+	defer server.Close()
+	ids, err := ListModels(context.Background(), Config{BaseURL: server.URL + "/v1/"}, "test-key")
+	if err != nil || strings.Join(ids, ",") != "a,z" {
+		t.Fatalf("models=%v error=%v", ids, err)
+	}
+}

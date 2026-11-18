@@ -50,6 +50,9 @@ type Desktop struct {
 	stagedCount                        int
 	prefs                              settings.Values
 	settingsTab                        int
+	integration                        integrationState
+	integrationLoaded                  bool
+	integrationError                   string
 	aiPromptDraft                      string
 	aiForm                             aiSettingsForm
 	aiConfirm, aiGenerating            bool

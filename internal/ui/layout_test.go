@@ -193,6 +193,9 @@ func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
 	if d.aiForm.config.Provider != "DeepSeek" || d.aiForm.config.BaseURL == "" || !tt.HasText("模型 ID") {
 		t.Fatal("provider selection did not populate its configuration")
 	}
+	if !tt.HasText("获取模型 ID") {
+		t.Fatal("model retrieval button missing")
+	}
 	saveLayoutPreview(t, tt, "settings-ai-150.png")
 	if err := tt.Click("AI 提示词"); err != nil {
 		t.Fatal(err)
@@ -212,4 +215,27 @@ func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
 	if !d.settingsOpen || d.settingsTab != 2 {
 		t.Fatal("unconfigured AI should open provider settings")
 	}
+}
+
+func TestIntegrationSettingsAt150Percent(t *testing.T) {
+	d := New(nil, "", "")
+	d.openSettings()
+	d.settingsTab = 5
+	d.integrationLoaded = true
+	d.integration = integrationState{Menu: true, Modern: true, Overlays: true}
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	for _, label := range []string{"系统集成", "登录时启动 MyGittu"} {
+		if !tt.HasText(label) {
+			t.Fatalf("missing integration setting %q", label)
+		}
+	}
+	if explorerSupported {
+		for _, label := range []string{"资源管理器右键菜单", "Git 状态徽标", "重启资源管理器以应用"} {
+			if !tt.HasText(label) {
+				t.Fatalf("missing Explorer setting %q", label)
+			}
+		}
+	}
+	saveLayoutPreview(t, tt, "settings-integration-150.png")
 }

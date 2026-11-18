@@ -1,6 +1,7 @@
-param([string]$PackagePath,[string]$InstallPath="$env:ProgramFiles/MyGittu",[switch]$Remove)
+param([string]$PackagePath,[string]$InstallPath="$env:ProgramFiles/MyGittu",[switch]$Remove,[switch]$IfRegistered)
 $ErrorActionPreference='Stop'
 if($Remove){Get-AppxPackage -Name Oranjekop.MyGittu.Shell | Remove-AppxPackage;return}
+if($IfRegistered -and !(Get-AppxPackage -Name Oranjekop.MyGittu.Shell)){return}
 if(!$PackagePath){throw 'PackagePath is required for registration'}
 if([Environment]::OSVersion.Version.Build -lt 22000){return}
 $package=(Resolve-Path -LiteralPath $PackagePath).Path

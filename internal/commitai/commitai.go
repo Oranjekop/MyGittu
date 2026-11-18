@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -50,7 +51,7 @@ func Providers() []Provider {
 	}
 }
 
-func (c Config) Endpoint() (string, error) {
+func (c Config) Base() (string, error) {
 	u, err := url.Parse(strings.TrimSpace(c.BaseURL))
 	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
 		return "", errors.New("enter a valid AI API base URL without credentials, query or fragment")
@@ -60,10 +61,18 @@ func (c Config) Endpoint() (string, error) {
 	if u.Scheme != "https" && !(u.Scheme == "http" && local) {
 		return "", errors.New("AI API requires HTTPS unless it runs on localhost")
 	}
+	return strings.TrimRight(u.String(), "/"), nil
+}
+
+func (c Config) Endpoint() (string, error) {
+	base, err := c.Base()
+	if err != nil {
+		return "", err
+	}
 	if strings.TrimSpace(c.Model) == "" {
 		return "", errors.New("enter the model ID")
 	}
-	return strings.TrimRight(u.String(), "/") + "/chat/completions", nil
+	return base + "/chat/completions", nil
 }
 
 type message struct {
@@ -99,26 +108,11 @@ func Generate(ctx context.Context, config Config, key, language, patch, prompt s
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	resp, err := request(ctx, http.MethodPost, endpoint, key, bytes.NewReader(body))
 	if err != nil {
-		return "", errors.New("invalid AI endpoint")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
-	client := http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := client.Do(req)
-	if err != nil {
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		return "", errors.New("could not reach the AI provider")
+		return "", err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("AI provider returned HTTP %d", resp.StatusCode)
-	}
 	var response struct {
 		Choices []struct {
 			Message message `json:"message"`
@@ -135,4 +129,71 @@ func Generate(ctx context.Context, config Config, key, language, patch, prompt s
 		return "", errors.New("AI provider returned an invalid commit message")
 	}
 	return result, nil
+}
+
+func request(ctx context.Context, method, endpoint, key string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
+	if err != nil {
+		return nil, errors.New("invalid AI endpoint")
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	if method == http.MethodGet && req.URL.Host == "api.anthropic.com" && req.URL.Path == "/v1/models" {
+		req.Header.Set("anthropic-version", "2026-10-21")
+	}
+	client := http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, errors.New("could not reach the AI provider")
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("AI provider returned HTTP %d", resp.StatusCode)
+	}
+	return resp, nil
+}
+
+func modelListEndpoint(base string) string {
+	if base == "https://api.anthropic.com/v1" {
+		return base + "/models?limit=1000"
+	}
+	return base + "/models"
+}
+
+func ListModels(ctx context.Context, config Config, key string) ([]string, error) {
+	base, err := config.Base()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := request(ctx, http.MethodGet, modelListEndpoint(base), key, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var response struct{ Data []struct{ ID string } }
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&response); err != nil {
+		return nil, errors.New("invalid AI model list")
+	}
+	ids := make([]string, 0, len(response.Data))
+	seen := make(map[string]bool, len(response.Data))
+	for _, model := range response.Data {
+		id := strings.TrimSpace(model.ID)
+		if id == "" || len(id) > 512 || strings.ContainsAny(id, "\r\n\x00") || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil, errors.New("provider returned no model IDs")
+	}
+	sort.Strings(ids)
+	return ids, nil
 }

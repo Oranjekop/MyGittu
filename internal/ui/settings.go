@@ -34,10 +34,13 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 			}
 			native.Row(c).Height(340).FillWidth().Gap(panelSpacing).Children(func() {
 				native.Column(c).Width(124).FillHeight().Gap(detailSpacing).Children(func() {
-					tabIcons := [...]string{"appearance", "user", "sparkle", "prompt", "download"}
-					for i, label := range []string{d.copy("外观", "Appearance"), d.text("identity.title"), d.copy("AI 供应商", "AI provider"), d.copy("AI 提示词", "AI prompt"), d.text("update.title")} {
+					tabIcons := [...]string{"appearance", "user", "sparkle", "prompt", "download", "settings"}
+					for i, label := range []string{d.copy("外观", "Appearance"), d.text("identity.title"), d.copy("AI 供应商", "AI provider"), d.copy("AI 提示词", "AI prompt"), d.text("update.title"), d.copy("系统集成", "Integration")} {
 						if IconButton(c, label, tabIcons[i], d.settingsTab == i).FillWidth().Justify(native.Start).Clicked() && d.settingsTab != i {
 							d.settingsTab = i
+							if i == 5 && !d.busy {
+								d.queryIntegration()
+							}
 							if i == 3 && d.aiPromptDraft == "" && d.prefs.AIPrompt == "" {
 								d.resetPromptDraft()
 							}
@@ -60,6 +63,8 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 							d.promptSettings(c)
 						case 4:
 							d.updateSettings(c)
+						case 5:
+							d.integrationSettings(c)
 						}
 					})
 				})
