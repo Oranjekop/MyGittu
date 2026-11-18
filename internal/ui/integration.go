@@ -43,7 +43,9 @@ func (d *Desktop) runIntegration(action string, enabled bool) {
 func (d *Desktop) integrationSettings(c *native.Context) {
 	t := c.Theme()
 	native.Text(c, d.copy("当前版本", "Current version")+"  "+buildinfo.Version).TextColor(t.TextMuted)
-	d.cloneSettings(c)
+	if IconButton(c, d.copy("克隆凭据", "Clone credentials"), "user", false).Disabled(d.busy).Clicked() {
+		d.settingsTab = 6
+	}
 
 	if d.integrationError != "" {
 		native.Text(c, d.integrationError).FillWidth().TextColor(t.Danger)

@@ -232,6 +232,8 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		e = s.Service.Branch(ctx, p.RepoID, p.Action, p.Name)
 	case "git.remote":
 		e = s.Service.Remote(ctx, p.RepoID, p.Action)
+	case "git.github.authorize":
+		e = s.Service.Runner.AuthorizeGitHub(ctx, p.Name)
 	case "git.clone":
 		result, e = s.Service.Clone(ctx, p.URL, p.Destination, p.CloneAuth)
 	default:

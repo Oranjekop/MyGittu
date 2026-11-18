@@ -1,8 +1,10 @@
 package git
 
 import (
+	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -30,6 +32,16 @@ func TestCloneCredentialHelperScopesHost(t *testing.T) {
 			}
 		} else if err == nil || strings.Contains(string(result), "test-placeholder") {
 			t.Fatal("credential delivered to an unrelated destination")
+		}
+	}
+}
+
+func TestGitHubCredentialRejectsOtherHosts(t *testing.T) {
+	runner := &Runner{}
+	for _, remote := range []string{"https://gitee.com/team/repo", "https://github.com.example/team/repo", "ssh://git@github.com/team/repo", "https://user@github.com/team/repo"} {
+		err := runner.Clone(context.Background(), remote, filepath.Join(t.TempDir(), "repo"), CloneAuth{GitHubAccount: "demo-user"})
+		if err == nil || !strings.Contains(err.Error(), "github.com HTTPS") {
+			t.Fatalf("remote %q: %v", remote, err)
 		}
 	}
 }

@@ -46,31 +46,6 @@ func providerCloneURL(host, input string, ssh bool) string {
 	return "https://" + host + "/" + input + ".git"
 }
 
-func (d *Desktop) cloneSettings(c *native.Context) {
-	native.Text(c, d.copy("克隆凭据", "Clone credentials")).Bold()
-	native.TextInput(c, &d.cloneUsername).Placeholder(d.copy("HTTPS 用户名", "HTTPS username")).FillWidth().Disabled(d.busy)
-	native.TextInput(c, &d.clonePassword).Password().Placeholder(d.copy("密码或令牌（本次运行）", "Password or token (this session)")).FillWidth().Disabled(d.busy)
-	native.Row(c).Gap(controlSpacing).Children(func() {
-		native.TextInput(c, &d.cloneSSHKey).Placeholder(d.copy("SSH 私钥路径", "SSH private key path")).Grow(1).Disabled(d.busy)
-		if IconButton(c, d.copy("选择私钥", "Choose key"), "open", false).Disabled(d.busy).Clicked() {
-			d.task(func(context.Context) (func(), error) {
-				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: d.win, Title: d.copy("选择 SSH 私钥", "Choose SSH private key")})
-				return func() {
-					if len(paths) > 0 {
-						d.cloneSSHKey = paths[0]
-					}
-				}, err
-			})
-		}
-	})
-	valid := d.cloneSSHKey == "" || filepath.IsAbs(strings.TrimSpace(d.cloneSSHKey))
-	if IconButton(c, d.copy("保存克隆配置", "Save clone settings"), "save", true).Disabled(d.busy || !valid).Clicked() {
-		prefs := d.prefs
-		prefs.CloneUsername, prefs.CloneSSHKey = strings.TrimSpace(d.cloneUsername), strings.TrimSpace(d.cloneSSHKey)
-		d.savePrefs(prefs)
-	}
-}
-
 func (d *Desktop) cloneView(c *native.Context) {
 	native.Text(c, d.text("clone.title")).Bold()
 	native.Segmented(c, &d.cloneProvider, d.copy("Git 地址", "Git URL"), "GitHub", "Gitee", "GitLab", "Bitbucket").Disabled(d.busy)
@@ -80,26 +55,22 @@ func (d *Desktop) cloneView(c *native.Context) {
 		placeholder = d.copy("所有者/仓库 或仓库链接", "owner/repository or repository URL")
 	}
 	native.TextInput(c, &d.cloneURL).Placeholder(placeholder).FillWidth().Disabled(d.busy)
-	native.Segmented(c, &d.cloneAuthMode, d.copy("Git 默认", "Git default"), d.copy("HTTPS 凭据", "HTTPS credentials"), d.copy("SSH 私钥", "SSH key")).Disabled(d.busy)
-	remote := providerCloneURL(host, d.cloneURL, d.cloneAuthMode == 2)
+	lookupURL := providerCloneURL(host, d.cloneURL, false)
+	profile := d.chooseCloneProfile(c, host, lookupURL)
+	remote := providerCloneURL(host, d.cloneURL, profile.Kind == "ssh")
 	var auth git.CloneAuth
 	ready := true
-	switch d.cloneAuthMode {
-	case 1:
-		auth.Username, auth.Password = d.prefs.CloneUsername, d.clonePassword
-		ready = auth.Username != "" && auth.Password != "" && strings.HasPrefix(remote, "https://")
-	case 2:
-		auth.SSHKey = d.prefs.CloneSSHKey
-		ready = auth.SSHKey != ""
-	}
-	if d.cloneAuthMode != 0 {
-		if IconButton(c, d.copy("配置克隆凭据", "Configure clone credentials"), "settings", false).Disabled(d.busy).Clicked() {
-			d.openSettings()
-			d.settingsTab = 5
-			if !d.busy {
-				d.queryIntegration()
-			}
+	switch profile.Kind {
+	case "https":
+		auth.Username, auth.Password = profile.Username, d.cloneCredentials.secrets[profile.ID]
+		ready = auth.Password != "" && strings.HasPrefix(remote, "https://")
+		if auth.Password == "" {
+			native.Text(c, d.copy("请在设置中为此凭据输入密码或令牌。", "Enter the password or token for this credential in Settings.")).TextColor(c.Theme().TextMuted)
 		}
+	case "ssh":
+		auth.SSHKey = profile.SSHKey
+	case "github":
+		auth.GitHubAccount = profile.Username
 	}
 	native.Row(c).Gap(controlSpacing).Children(func() {
 		native.TextInput(c, &d.cloneDestination).Placeholder(d.text("clone.destination")).Grow(1).Disabled(d.busy)

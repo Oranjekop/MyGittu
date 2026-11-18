@@ -6,11 +6,23 @@ import (
 	"mygittu/internal/commitai"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"unicode/utf8"
 )
 
+type CloneProfile struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	Kind     string `json:"kind"`
+	Host     string `json:"host,omitempty"`
+	Username string `json:"username,omitempty"`
+	SSHKey   string `json:"ssh_key,omitempty"`
+}
+
 type Values struct {
+	CloneProfiles []CloneProfile  `json:"clone_profiles,omitempty"`
 	CloneUsername string          `json:"clone_username,omitempty"`
 	CloneSSHKey   string          `json:"clone_ssh_key,omitempty"`
 	AIPrompt      string          `json:"ai_prompt,omitempty"`
@@ -33,6 +45,7 @@ func New(path string) (*Store, error) {
 			if e = json.Unmarshal(b, &s.values); e != nil {
 				return nil, e
 			}
+			s.values.migrateCloneProfiles()
 			if e = Validate(s.values); e != nil {
 				return nil, e
 			}
@@ -49,6 +62,20 @@ func (v Values) TextSize() float32 {
 	return v.FontSize
 }
 func Validate(v Values) error {
+	if len(v.CloneProfiles) > 64 {
+		return fmt.Errorf("too many clone credentials")
+	}
+	ids, labels := map[string]bool{}, map[string]bool{}
+	for _, p := range v.CloneProfiles {
+		if err := ValidateCloneProfile(p); err != nil {
+			return err
+		}
+		folded := strings.ToLower(p.Label)
+		if ids[p.ID] || labels[folded] {
+			return fmt.Errorf("duplicate clone credential")
+		}
+		ids[p.ID], labels[folded] = true, true
+	}
 	if utf8.RuneCountInString(v.AIPrompt) > commitai.MaxPrompt {
 		return fmt.Errorf("AI prompt exceeds %d characters", commitai.MaxPrompt)
 	}
@@ -70,7 +97,13 @@ func Validate(v Values) error {
 	}
 	return nil
 }
-func (s *Store) Get() Values { s.mu.RLock(); defer s.mu.RUnlock(); return s.values }
+func (s *Store) Get() Values {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	v := s.values
+	v.CloneProfiles = slices.Clone(v.CloneProfiles)
+	return v
+}
 func (s *Store) Update(v Values) error {
 	if e := Validate(v); e != nil {
 		return e
@@ -92,6 +125,50 @@ func (s *Store) Update(v Values) error {
 			return e
 		}
 	}
+	v.CloneProfiles = slices.Clone(v.CloneProfiles)
 	s.values = v
 	return nil
+}
+
+func ValidateCloneProfile(p CloneProfile) error {
+	if p.ID == "" || p.Label == "" || len(p.Label) > 128 || strings.ContainsAny(p.Label+p.Username+p.Host+p.SSHKey, "\r\n\x00") {
+		return fmt.Errorf("invalid clone credential")
+	}
+	switch p.Kind {
+	case "https":
+		if p.Username == "" || (p.Host == "" && p.ID != "legacy-https") || strings.ContainsAny(p.Host, "/@?# :\\") {
+			return fmt.Errorf("invalid HTTPS account or host")
+		}
+	case "ssh":
+		if !filepath.IsAbs(p.SSHKey) {
+			return fmt.Errorf("enter an absolute SSH private key path")
+		}
+	case "github":
+		if p.Username == "" || strings.HasPrefix(p.Username, "-") || strings.ContainsAny(p.Username, " /@:#?\\") {
+			return fmt.Errorf("enter a GitHub username")
+		}
+	default:
+		return fmt.Errorf("unknown clone credential type")
+	}
+	return nil
+}
+
+func (v *Values) migrateCloneProfiles() {
+	if len(v.CloneProfiles) == 0 {
+		if v.CloneUsername != "" {
+			label := "HTTPS (" + v.CloneUsername + ")"
+			if len(label) > 128 {
+				label = "HTTPS"
+			}
+			p := CloneProfile{ID: "legacy-https", Label: label, Kind: "https", Username: v.CloneUsername}
+			if ValidateCloneProfile(p) == nil {
+				v.CloneProfiles = append(v.CloneProfiles, p)
+			}
+		}
+		p := CloneProfile{ID: "legacy-ssh", Label: "SSH", Kind: "ssh", SSHKey: v.CloneSSHKey}
+		if ValidateCloneProfile(p) == nil {
+			v.CloneProfiles = append(v.CloneProfiles, p)
+		}
+	}
+	v.CloneUsername, v.CloneSSHKey = "", ""
 }

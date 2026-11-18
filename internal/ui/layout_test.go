@@ -12,6 +12,7 @@ import (
 	"mygittu/internal/buildinfo"
 	git "mygittu/internal/git"
 	"mygittu/internal/repository"
+	"mygittu/internal/settings"
 	"mygittu/internal/status"
 )
 
@@ -281,4 +282,57 @@ func TestExtendedGitDialogsAt150Percent(t *testing.T) {
 	if !tt.HasText("确认修正") {
 		t.Fatal("amend confirmation missing")
 	}
+}
+
+func TestCloneCredentialProfilesAt150Percent(t *testing.T) {
+	d := New(nil, "", "clone")
+	d.prefs.CloneProfiles = []settings.CloneProfile{
+		{ID: "personal", Label: "GitHub Personal", Kind: "github", Username: "personal-user"},
+		{ID: "work", Label: "GitHub Work", Kind: "github", Username: "work-user"},
+		{ID: "gitee", Label: "Gitee Work", Kind: "https", Host: "gitee.com", Username: "gitee-user"},
+	}
+	d.cloneProvider = 1
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if err := tt.Click("Git 默认凭据"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("GitHub Personal") || !tt.HasText("GitHub Work") || tt.HasText("Gitee Work") {
+		t.Fatal("credential menu did not filter accounts by host")
+	}
+	if err := tt.Click("GitHub Work"); err != nil {
+		t.Fatal(err)
+	}
+	if d.cloneCredentials.selected != "work" {
+		t.Fatalf("wrong active credential: %q", d.cloneCredentials.selected)
+	}
+	if err := tt.Click("配置克隆凭据"); err != nil {
+		t.Fatal(err)
+	}
+	if d.settingsTab != 6 || d.cloneCredentials.draft.Username != "work-user" || !tt.HasText("在浏览器授权") {
+		t.Fatal("GitHub authorization settings missing")
+	}
+	saveLayoutPreview(t, tt, "clone-credentials-150.png")
+	if !tt.HasText("GitHub Personal") || !tt.HasText("Gitee Work") {
+		t.Fatal("settings credential list missing saved rows")
+	}
+	if err := tt.Click("删除凭据"); err != nil {
+		t.Fatal(err)
+	}
+	if d.cloneCredentials.deleteID != "work" || !tt.HasText("确认删除") {
+		t.Fatal("deletion is not scoped to selected profile")
+	}
+	if err := tt.Click("取消"); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.prefs.CloneProfiles) != 3 || d.cloneCredentials.deleteID != "" {
+		t.Fatal("cancel changed saved profiles")
+	}
+	if err := tt.Click("新增凭据"); err != nil {
+		t.Fatal(err)
+	}
+	if d.cloneCredentials.draft.ID != "" || d.cloneCredentials.draft.Username != "" {
+		t.Fatal("adding did not clear editor")
+	}
+
 }

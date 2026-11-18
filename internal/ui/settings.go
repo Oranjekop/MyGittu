@@ -15,14 +15,17 @@ func (d *Desktop) openSettings() {
 	d.resetPromptDraft()
 	d.aiForm.apply(d.prefs.AI)
 	d.aiForm.key = d.aiForm.savedKey
-	d.cloneUsername, d.cloneSSHKey = d.prefs.CloneUsername, d.prefs.CloneSSHKey
+	d.cloneCredentials.clearEditor()
 	if d.selected == "" {
 		d.identityScope = 1
 	}
 }
 func (d *Desktop) settingsDialog(c *native.Context) {
+	width, height := c.Size()
+	dialogWidth := min(float32(820), max(420, width-80))
+	bodyHeight := min(float32(495), max(245, height-160))
 	native.Modal(c, &d.settingsOpen, func() {
-		native.Column(c).Width(620).MaxWidth(620).Gap(panelSpacing).Children(func() {
+		native.Column(c).Width(dialogWidth).MaxWidth(dialogWidth).Gap(panelSpacing).Children(func() {
 			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 				native.Icon(c, icons["settings"]).Width(20).Height(20)
 				native.Text(c, d.text("nav.settings")).FontSize(18).Bold().Grow(1)
@@ -33,10 +36,10 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 			if d.err != "" {
 				native.Text(c, d.err).TextColor(native.Hex("#bf3030"))
 			}
-			native.Row(c).Height(340).FillWidth().Gap(panelSpacing).Children(func() {
-				native.Column(c).Width(124).FillHeight().Gap(detailSpacing).Children(func() {
-					tabIcons := [...]string{"appearance", "user", "sparkle", "prompt", "download", "settings"}
-					for i, label := range []string{d.copy("外观", "Appearance"), d.text("identity.title"), d.copy("AI 供应商", "AI provider"), d.copy("AI 提示词", "AI prompt"), d.text("update.title"), d.copy("系统集成", "Integration")} {
+			native.Row(c).Height(bodyHeight).FillWidth().Gap(18).Children(func() {
+				native.Column(c).Width(160).FillHeight().Gap(6).Children(func() {
+					tabIcons := [...]string{"appearance", "user", "sparkle", "prompt", "download", "settings", "user"}
+					for i, label := range []string{d.copy("外观", "Appearance"), d.text("identity.title"), d.copy("AI 供应商", "AI provider"), d.copy("AI 提示词", "AI prompt"), d.text("update.title"), d.copy("系统集成", "Integration"), d.copy("克隆凭据", "Clone credentials")} {
 						if IconButton(c, label, tabIcons[i], d.settingsTab == i).FillWidth().Justify(native.Start).Clicked() && d.settingsTab != i {
 							d.settingsTab = i
 							if i == 5 && !d.busy {
@@ -51,8 +54,8 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 						}
 					}
 				})
-				native.Scroll(c).Grow(1).FillHeight().Children(func() {
-					native.Column(c).FillWidth().Gap(controlSpacing).PaddingEnd(controlSpacing).Children(func() {
+				native.Scroll(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
+					native.Column(c).FillWidth().Gap(12).PaddingEnd(controlSpacing).Children(func() {
 						switch d.settingsTab {
 						case 0:
 							d.appearanceSettings(c)
@@ -66,6 +69,8 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 							d.updateSettings(c)
 						case 5:
 							d.integrationSettings(c)
+						case 6:
+							d.cloneSettings(c)
 						}
 					})
 				})

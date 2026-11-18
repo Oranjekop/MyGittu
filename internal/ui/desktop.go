@@ -22,77 +22,77 @@ import (
 )
 
 type Desktop struct {
-	Client                                    *ipc.Client
-	win                                       *mygo.Window
-	repos                                     []repository.Info
-	selected                                  string
-	path, message, branch, detail, err        string
-	draftDir, savedMessage                    string
-	drafts                                    map[string]string
-	statusPolling                             bool
-	page                                      int
-	busy                                      bool
-	operation                                 string
-	operationFrame                            int
-	snapshot                                  status.Snapshot
-	logs                                      []app.Commit
-	row                                       int
-	files, history                            native.ListState
-	filePane                                  float32
-	sidebarCollapsed                          bool
-	captionStyled, captionDark                bool
-	staged                                    bool
-	offset                                    int
-	query                                     string
-	cloneURL, cloneDestination                string
-	cloneProvider, cloneAuthMode              int
-	cloneUsername, clonePassword, cloneSSHKey string
-	logRow                                    int
-	changes                                   []git.FileStatus
-	stagedCount                               int
-	prefs                                     settings.Values
-	settingsTab                               int
-	repositoryTools                           repositoryTools
-	integration                               integrationState
-	integrationLoaded                         bool
-	integrationError                          string
-	aiPromptDraft                             string
-	aiForm                                    aiSettingsForm
-	aiConfirm, aiGenerating                   bool
-	aiError                                   string
-	languageIndex, themeIndex                 int
-	identity                                  app.Identity
-	commitIdentity                            app.Identity
-	identityScope                             int
-	identitySaved                             bool
-	update                                    app.UpdateInfo
-	updateChecking                            bool
-	updateInstalling                          bool
-	updateCancel                              context.CancelFunc
-	updateBytes, updateTotal                  int64
-	updateError                               string
-	settingsOpen                              bool
-	repositoriesOpen                          bool
-	repositorySearch                          string
-	comparison                                *editor.DiffState
-	binary                                    bool
-	projectFiles                              []string
-	projectSearch                             string
-	projectTree                               []projectEntry
-	projectCollapsed                          map[string]bool
-	projectFileRow                            int
-	projectFileList                           native.ListState
-	projectPreview                            app.Comparison
-	tools                                     workbench
-	references                                app.References
-	stashRow, tagRow                          int
-	stashList, tagList                        native.ListState
-	stashMessage, tagName                     string
-	hunksOpen                                 bool
-	hunkPath                                  string
-	hunks                                     []app.StageHunk
-	hunkRow                                   int
-	hunkList                                  native.ListState
+	Client                             *ipc.Client
+	win                                *mygo.Window
+	repos                              []repository.Info
+	selected                           string
+	path, message, branch, detail, err string
+	draftDir, savedMessage             string
+	drafts                             map[string]string
+	statusPolling                      bool
+	page                               int
+	busy                               bool
+	operation                          string
+	operationFrame                     int
+	snapshot                           status.Snapshot
+	logs                               []app.Commit
+	row                                int
+	files, history                     native.ListState
+	filePane                           float32
+	sidebarCollapsed                   bool
+	captionStyled, captionDark         bool
+	staged                             bool
+	offset                             int
+	query                              string
+	cloneURL, cloneDestination         string
+	cloneProvider                      int
+	cloneCredentials                   cloneCredentials
+	logRow                             int
+	changes                            []git.FileStatus
+	stagedCount                        int
+	prefs                              settings.Values
+	settingsTab                        int
+	repositoryTools                    repositoryTools
+	integration                        integrationState
+	integrationLoaded                  bool
+	integrationError                   string
+	aiPromptDraft                      string
+	aiForm                             aiSettingsForm
+	aiConfirm, aiGenerating            bool
+	aiError                            string
+	languageIndex, themeIndex          int
+	identity                           app.Identity
+	commitIdentity                     app.Identity
+	identityScope                      int
+	identitySaved                      bool
+	update                             app.UpdateInfo
+	updateChecking                     bool
+	updateInstalling                   bool
+	updateCancel                       context.CancelFunc
+	updateBytes, updateTotal           int64
+	updateError                        string
+	settingsOpen                       bool
+	repositoriesOpen                   bool
+	repositorySearch                   string
+	comparison                         *editor.DiffState
+	binary                             bool
+	projectFiles                       []string
+	projectSearch                      string
+	projectTree                        []projectEntry
+	projectCollapsed                   map[string]bool
+	projectFileRow                     int
+	projectFileList                    native.ListState
+	projectPreview                     app.Comparison
+	tools                              workbench
+	references                         app.References
+	stashRow, tagRow                   int
+	stashList, tagList                 native.ListState
+	stashMessage, tagName              string
+	hunksOpen                          bool
+	hunkPath                           string
+	hunks                              []app.StageHunk
+	hunkRow                            int
+	hunkList                           native.ListState
 }
 
 func New(client *ipc.Client, path, action string) *Desktop {
