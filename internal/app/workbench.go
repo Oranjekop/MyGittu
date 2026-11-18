@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	git "mygittu/internal/git"
@@ -141,7 +143,7 @@ func (s *Service) FileInsight(ctx context.Context, id, path, action, hash string
 	switch action {
 	case "blame":
 		args = []string{"blame", "-l", "--root", "--date=short", "--", path}
-	case "patch":
+	case "patch", "diff":
 		if !commitHash.MatchString(hash) {
 			return "", fmt.Errorf("invalid commit hash")
 		}
@@ -157,11 +159,63 @@ func (s *Service) FileInsight(ctx context.Context, id, path, action, hash string
 			}
 		}
 		args = []string{"show", "--no-ext-diff", "--no-textconv", "--no-color", hash, "--", path}
+		if action == "diff" {
+			args = []string{"show", "--format=", "--patch", "--diff-merges=first-parent", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", hash, "--", path}
+		}
 	default:
 		return "", fmt.Errorf("unknown file insight")
 	}
 	result, err := s.Read(ctx, id, args...)
 	return string(result.Stdout), err
+}
+
+type BlameLine struct {
+	Number                   int
+	Hash, Author, Date, Text string
+}
+
+func (s *Service) FileBlame(ctx context.Context, id, path string) ([]BlameLine, error) {
+	repo, err := s.Registry.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	path, err = repository.Relative(repo.Root, path)
+	if err != nil {
+		return nil, err
+	}
+	result, err := s.Read(ctx, id, "blame", "--line-porcelain", "--root", "--", path)
+	if err != nil {
+		return nil, err
+	}
+	var rows []BlameLine
+	var current BlameLine
+	var authoredAt time.Time
+	for line := range strings.SplitSeq(string(result.Stdout), "\n") {
+		switch {
+		case strings.HasPrefix(line, "\t"):
+			current.Text = strings.TrimSuffix(line[1:], "\r")
+			rows = append(rows, current)
+			current = BlameLine{}
+			authoredAt = time.Time{}
+		case strings.HasPrefix(line, "author "):
+			current.Author = strings.TrimPrefix(line, "author ")
+		case strings.HasPrefix(line, "author-time "):
+			if seconds, err := strconv.ParseInt(strings.TrimPrefix(line, "author-time "), 10, 64); err == nil {
+				authoredAt = time.Unix(seconds, 0)
+			}
+		case strings.HasPrefix(line, "author-tz "):
+			if tz, err := time.Parse("-0700", strings.TrimPrefix(line, "author-tz ")); err == nil && !authoredAt.IsZero() {
+				current.Date = authoredAt.In(tz.Location()).Format(time.DateOnly)
+			}
+		case current.Hash == "":
+			parts := strings.Fields(line)
+			if len(parts) >= 3 && commitHash.MatchString(parts[0]) {
+				current.Hash = parts[0]
+				current.Number, _ = strconv.Atoi(parts[2])
+			}
+		}
+	}
+	return rows, nil
 }
 
 func (s *Service) RecoverCommit(ctx context.Context, id, action, hash string) error {
@@ -205,7 +259,15 @@ func (s *Service) RecoverCommit(ctx context.Context, id, action, hash string) er
 	return err
 }
 
-type BranchComparison struct{ Graph, Files string }
+type BranchComparison struct {
+	Graph, Files string
+	Commits      []BranchComparisonCommit
+}
+
+type BranchComparisonCommit struct {
+	Commit
+	Side string
+}
 
 type BranchEntry struct {
 	Name, Upstream  string
@@ -275,7 +337,18 @@ func (s *Service) CompareBranches(ctx context.Context, id, left, right string) (
 		return comparison, err
 	}
 	comparison.Graph = string(result.Stdout)
-	result, err = s.Read(ctx, id, "diff", "--no-ext-diff", "--no-textconv", "--no-color", a, b, "--")
+	result, err = s.Read(ctx, id, "log", "-z", "--left-right", "--format=%m%x00%H%x00%an%x00%aI%x00%s", "--max-count=200", a+"..."+b, "--")
+	if err != nil {
+		return comparison, err
+	}
+	fields := bytes.Split(bytes.TrimSuffix(result.Stdout, []byte{0}), []byte{0})
+	for i := 0; i+4 < len(fields); i += 5 {
+		comparison.Commits = append(comparison.Commits, BranchComparisonCommit{
+			Side:   string(fields[i]),
+			Commit: Commit{Hash: string(fields[i+1]), Author: string(fields[i+2]), Date: string(fields[i+3]), Subject: string(fields[i+4])},
+		})
+	}
+	result, err = s.Read(ctx, id, "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", a, b, "--")
 	comparison.Files = string(result.Stdout)
 	return comparison, err
 }

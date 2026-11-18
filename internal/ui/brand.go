@@ -35,8 +35,12 @@ func OperationIcon(c *ui.Context, size float32, frame int, action string) {
 	})
 }
 
-func (d *Desktop) animateOperation(ctx context.Context) {
-	ticker := time.NewTicker(time.Second / 24)
+func (d *Desktop) animateOperation(ctx context.Context, operation string) {
+	interval, frames := time.Second/24, 24
+	if operation == cloneOperation {
+		interval, frames = RemoteFrameInterval, RemoteFrameCount
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -45,7 +49,7 @@ func (d *Desktop) animateOperation(ctx context.Context) {
 		case <-ticker.C:
 			mygo.RunOnMain(func() {
 				if ctx.Err() == nil && d.win != nil && !d.win.IsDestroyed() {
-					d.operationFrame = (d.operationFrame + 1) % 24
+					d.operationFrame = (d.operationFrame + 1) % frames
 					d.win.Invalidate()
 				}
 			})

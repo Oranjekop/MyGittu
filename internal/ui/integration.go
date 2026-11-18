@@ -4,13 +4,15 @@ import (
 	"context"
 	native "github.com/egoist/mygo/ui"
 	"mygittu/internal/buildinfo"
+	"strings"
 )
 
 type integrationState struct {
-	Startup  bool
-	Menu     bool
-	Modern   bool
-	Overlays bool
+	Startup         bool
+	Menu            bool
+	Modern          bool
+	ModernAvailable bool
+	Overlays        bool
 }
 
 func (d *Desktop) queryIntegration() {
@@ -33,6 +35,11 @@ func (d *Desktop) runIntegration(action string, enabled bool) {
 			}
 			if actionErr != nil {
 				d.integrationError = actionErr.Error()
+				if state.Menu && strings.Contains(strings.ToUpper(d.integrationError), "0X800B0109") {
+					d.integrationError = d.copy(
+						"Windows 未信任新版菜单的 MSIX 签名证书（0x800B0109）。可通过「显示更多选项」使用 MyGittu 菜单。信任发布证书后可重试注册。",
+						"Windows does not trust the modern menu’s MSIX signing certificate (0x800B0109). Use MyGittu under Show more options. Retry registration after trusting the publisher certificate.")
+				}
 			} else if statusErr != nil {
 				d.integrationError = statusErr.Error()
 			}
@@ -61,9 +68,11 @@ func (d *Desktop) integrationSettings(c *native.Context) {
 		d.integrationSwitch(c, d.copy("资源管理器右键菜单", "Explorer context menu"), "Menu", d.integration.Menu)
 		d.integrationSwitch(c, d.copy("Git 状态徽标", "Git status badges"), "Overlays", d.integration.Overlays)
 		if modernSupported() && d.integration.Menu && !d.integration.Modern {
-			native.Text(c, d.copy("新版菜单尚未注册。若使用自签名组件，请先信任发布证书，再重试。", "The modern menu is not registered. If using the self-signed package, trust the publisher certificate and retry.")).FillWidth().TextColor(t.TextMuted)
-			if IconButton(c, d.copy("重试新版菜单", "Retry modern menu"), "refresh", false).Disabled(d.busy).Clicked() {
-				d.runIntegration("Menu", true)
+			if d.integrationError == "" {
+				native.Text(c, d.copy("可通过「显示更多选项」使用 MyGittu 菜单。", "Use MyGittu under Show more options.")).FillWidth().TextColor(t.TextMuted)
+			}
+			if d.integration.ModernAvailable && IconButton(c, d.copy("重试新版菜单", "Retry modern menu"), "refresh", false).Disabled(d.busy).Clicked() {
+				d.runIntegration("Modern", true)
 			}
 		}
 		if IconButton(c, d.copy("重启资源管理器以应用", "Restart Explorer to apply"), "refresh", false).Disabled(d.busy).Clicked() {

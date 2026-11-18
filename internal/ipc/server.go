@@ -164,6 +164,8 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.LogSearch(ctx, p.RepoID, p.Limit, p.Offset, p.Query)
 	case "git.show":
 		result, e = s.Service.Show(ctx, p.RepoID, p.Hash)
+	case "git.commit.details":
+		result, e = s.Service.CommitDetails(ctx, p.RepoID, p.Hash)
 	case "git.hunks":
 		result, e = s.Service.StageHunks(ctx, p.RepoID, p.Path)
 	case "git.hunk.stage":
@@ -178,6 +180,8 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.FileLog(ctx, p.RepoID, p.Path, p.Limit, p.Offset)
 	case "git.file.insight":
 		result, e = s.Service.FileInsight(ctx, p.RepoID, p.Path, p.Action, p.Hash)
+	case "git.file.blame":
+		result, e = s.Service.FileBlame(ctx, p.RepoID, p.Path)
 	case "git.remotes":
 		result, e = s.Service.Remotes(ctx, p.RepoID)
 	case "git.remote.configure":
@@ -234,6 +238,8 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		e = s.Service.Remote(ctx, p.RepoID, p.Action)
 	case "git.github.authorize":
 		e = s.Service.Runner.AuthorizeGitHub(ctx, p.Name)
+	case "git.github.repositories":
+		result, e = s.Service.Runner.GitHubRepositories(ctx, p.Name)
 	case "git.clone":
 		result, e = s.Service.Clone(ctx, p.URL, p.Destination, p.CloneAuth)
 	default:

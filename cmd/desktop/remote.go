@@ -73,7 +73,7 @@ func (d *remoteWindow) view(c *native.Context) {
 			message = d.runningStatus()
 		}
 		native.Column(c).Fill().Background(t.Background).Padding(12, 12, 26, 12).Center().Gap(8).Children(func() {
-			native.Image(c, d.rabbitFrame()).Width(116).Height(116)
+			native.Image(c, ui.RemoteRabbitFrame(d.action, d.frame)).Width(116).Height(116)
 			native.Text(c, message).FontSize(17 + t.FontSize - 12.5).Bold()
 		})
 		return
@@ -104,7 +104,7 @@ func (d *remoteWindow) runningStatus() string {
 }
 
 func (d *remoteWindow) animate(ctx context.Context) {
-	ticker := time.NewTicker(remoteFrameInterval)
+	ticker := time.NewTicker(ui.RemoteFrameInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -113,7 +113,7 @@ func (d *remoteWindow) animate(ctx context.Context) {
 		case <-ticker.C:
 			mygo.RunOnMain(func() {
 				if !d.finished && !d.win.IsDestroyed() {
-					d.frame = (d.frame + 1) % 5
+					d.frame = (d.frame + 1) % ui.RemoteFrameCount
 					d.win.Invalidate()
 				}
 			})

@@ -151,7 +151,7 @@ func (d *Desktop) cloneCredentialEditor(c *native.Context, f *cloneCredentials) 
 			d.authorizeCloneAccount(name)
 		}
 		if strings.EqualFold(name, f.authorized) && f.authorized != "" {
-			native.Text(c, d.copy("授权完成", "Authorization complete")).TextColor(c.Theme().TextMuted)
+			native.Text(c, d.copy("授权完成。保存此凭据后可在克隆页选择 GitHub 仓库。", "Authorization complete. Save this credential to select GitHub repositories in Clone.")).FillWidth().TextColor(c.Theme().TextMuted)
 		}
 	}
 	p := f.draft
@@ -185,6 +185,7 @@ func (d *Desktop) authorizeCloneAccount(name string) {
 				return
 			}
 			d.cloneCredentials.authorized = name
+			d.cloneAccount = ""
 		}, nil
 	})
 }

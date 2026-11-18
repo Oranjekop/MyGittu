@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	native "github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"mygittu/internal/app"
 	git "mygittu/internal/git"
 	"mygittu/internal/ipc"
@@ -14,13 +15,15 @@ type workbench struct {
 	conflictOpen, fileOpen, confirmOpen bool
 	conflict                            app.Conflict
 	conflictPath, resolution            string
-	filePath, fileResult                string
+	filePath, fileLoaded                string
+	filePatch                           patchView
 	fileCommits                         []app.Commit
 	fileRow                             int
 	fileList                            native.ListState
 	blameList                           native.ListState
-	blameRows                           []string
-	blameRow                            int
+	blameRows                           []app.BlameLine
+	fileMode                            int
+	blameLoaded                         bool
 	recoveryAction, recoveryHash        string
 	left, right                         string
 	branchTargets                       []string
@@ -30,6 +33,8 @@ type workbench struct {
 	compareTab                          int
 	compared                            bool
 	comparison                          app.BranchComparison
+	comparisonPatch                     patchView
+	comparisonCommits                   native.ListState
 	batch                               map[string]bool
 }
 
@@ -140,74 +145,6 @@ func (d *Desktop) showConflict(c *native.Context) {
 	})
 }
 
-func (d *Desktop) openFileHistory(path string) {
-	id := d.selected
-	d.task(func(ctx context.Context) (func(), error) {
-		var list []app.Commit
-		err := d.Client.Call(ctx, "git.file.log", ipc.Params{RepoID: id, Path: path, Limit: 100}, &list)
-		return func() {
-			w := &d.tools
-			w.filePath, w.fileCommits, w.fileRow, w.fileResult, w.fileOpen = path, list, -1, "", true
-			w.blameRows, w.blameRow = nil, -1
-		}, err
-	})
-}
-
-func (d *Desktop) showFileHistory(c *native.Context) {
-	w := &d.tools
-	native.Modal(c, &w.fileOpen, func() {
-		native.Column(c).Width(730).Gap(controlSpacing).Children(func() {
-			native.Text(c, w.filePath).Bold()
-			w.fileList.Selected = &w.fileRow
-			native.Table(c, &w.fileList, []native.TableColumn{{Title: d.text("file.history")}}, len(w.fileCommits), func(row, _ int) {
-				commit := w.fileCommits[row]
-				native.Text(c, commit.Hash[:min(len(commit.Hash), 8)]+"  "+commit.Subject+" · "+commit.Author)
-			}).Height(145).FillWidth().Disabled(d.busy)
-			show := func(action, hash string) {
-				id, path := d.selected, w.filePath
-				d.task(func(ctx context.Context) (func(), error) {
-					var result string
-					err := d.Client.Call(ctx, "git.file.insight", ipc.Params{RepoID: id, Path: path, Action: action, Hash: hash}, &result)
-					return func() {
-						w.blameRows, w.blameRow = nil, -1
-						if action == "blame" && result != "" {
-							w.blameRows = strings.Split(strings.TrimRight(result, "\r\n"), "\n")
-						}
-						w.fileResult = result
-					}, err
-				})
-			}
-			native.Row(c).Gap(controlSpacing).Children(func() {
-				valid := w.fileRow >= 0 && w.fileRow < len(w.fileCommits)
-				if IconButton(c, d.text("file.patch"), "diff", false).Disabled(d.busy || !valid).Clicked() && valid {
-					show("patch", w.fileCommits[w.fileRow].Hash)
-				}
-				if IconButton(c, d.text("file.blame"), "history", false).Disabled(d.busy).Clicked() {
-					show("blame", "")
-				}
-				if IconButton(c, d.text("close"), "close", false).Clicked() {
-					w.fileOpen = false
-				}
-			})
-			if d.err != "" {
-				native.Text(c, d.err).TextColor(c.Theme().Danger)
-			}
-			if len(w.blameRows) > 0 {
-				w.blameList.Selected = &w.blameRow
-				native.Table(c, &w.blameList, []native.TableColumn{{Title: d.text("file.blame")}}, len(w.blameRows), func(row, _ int) {
-					hash, line, _ := strings.Cut(w.blameRows[row], " ")
-					native.Text(c, hash[:min(len(hash), 8)]+" "+line).Tooltip(w.blameRows[row])
-				}).Height(230).FillWidth().Disabled(d.busy)
-				if w.blameRow >= 0 && w.blameRow < len(w.blameRows) {
-					native.Text(c, w.blameRows[w.blameRow]).FillWidth()
-				}
-			} else {
-				native.TextArea(c, &w.fileResult).Height(230).FillWidth().ReadOnly(true)
-			}
-		})
-	})
-}
-
 func (d *Desktop) confirmRecovery(action, hash string) {
 	d.tools.recoveryAction, d.tools.recoveryHash, d.tools.confirmOpen = action, hash, true
 }
@@ -307,19 +244,40 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 			d.task(func(ctx context.Context) (func(), error) {
 				var result app.BranchComparison
 				err := d.Client.Call(ctx, "git.compare", ipc.Params{RepoID: id, Name: left, Query: right}, &result)
-				return func() { w.comparison, w.compared = result, true }, err
+				return func() {
+					w.comparison, w.compared = result, true
+					files, _ := editor.ParsePatch(result.Files)
+					w.comparisonPatch = patchView{lines: d.patchRows(files, true)}
+					w.comparisonCommits = native.ListState{}
+				}, err
 			})
 		}
 	})
-	if w.compared && w.comparison.Graph == "" && w.comparison.Files == "" {
+	if w.compared && len(w.comparison.Commits) == 0 && w.comparison.Files == "" {
 		native.Text(c, d.text("compare.same"))
 	} else if w.compared {
-		native.Segmented(c, &w.compareTab, d.text("compare.graph"), d.text("compare.files"))
-		content := &w.comparison.Graph
+		native.Segmented(c, &w.compareTab, d.copy("独有提交", "Unique commits"), d.text("compare.files"))
 		if w.compareTab == 1 {
-			content = &w.comparison.Files
+			if len(w.comparisonPatch.lines) == 0 {
+				native.Text(c, d.text("diff.empty")).TextColor(c.Theme().TextMuted)
+			} else {
+				d.showPatch(c, &w.comparisonPatch).Grow(1)
+			}
+		} else if len(w.comparison.Commits) == 0 {
+			native.Text(c, d.copy("两个分支没有独有提交。", "Neither branch has unique commits.")).TextColor(c.Theme().TextMuted)
+		} else {
+			native.Table(c, &w.comparisonCommits, []native.TableColumn{
+				{Title: d.copy("所属分支", "Branch"), Width: 145}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 125}, {Title: d.text("date"), Width: 110},
+			}, len(w.comparison.Commits), func(row, col int) {
+				item := w.comparison.Commits[row]
+				branch := w.left
+				if item.Side == ">" {
+					branch = w.right
+				}
+				value := []string{branch, item.Subject, item.Author, commitDate(item.Date)}[col]
+				native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(item.Hash)
+			}).Grow(1).FillWidth()
 		}
-		native.TextArea(c, content).Grow(1).FillWidth().ReadOnly(true)
 	}
 }
 

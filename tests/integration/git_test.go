@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -95,6 +96,30 @@ func write(t *testing.T, path, content string) {
 	t.Helper()
 	if e := os.WriteFile(path, []byte(content), 0600); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestCommitDetailsIncludesRootAndMergePatches(t *testing.T) {
+	s, id, dir := setup(t)
+	ctx := context.Background()
+	write(t, filepath.Join(dir, "root.txt"), "initial\n")
+	command(t, dir, "add", ".")
+	command(t, dir, "commit", "-m", "Root commit")
+	root := strings.TrimSpace(command(t, dir, "rev-parse", "HEAD"))
+	details, err := s.CommitDetails(ctx, id, root)
+	if err != nil || !strings.Contains(details.Summary, "Root commit") || !strings.Contains(details.Patch, "+initial") {
+		t.Fatalf("root details: %+v, %v", details, err)
+	}
+	command(t, dir, "switch", "-c", "feature")
+	write(t, filepath.Join(dir, "feature.txt"), "feature\n")
+	command(t, dir, "add", ".")
+	command(t, dir, "commit", "-m", "Feature commit")
+	command(t, dir, "switch", "main")
+	command(t, dir, "merge", "--no-ff", "-m", "Merge feature", "feature")
+	merge := strings.TrimSpace(command(t, dir, "rev-parse", "HEAD"))
+	details, err = s.CommitDetails(ctx, id, merge)
+	if err != nil || !strings.Contains(details.Summary, "Merge feature") || !strings.Contains(details.Patch, "+feature") {
+		t.Fatalf("merge details: %+v, %v", details, err)
 	}
 }
 func TestGitWorkflow(t *testing.T) {

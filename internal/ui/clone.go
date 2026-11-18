@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -16,6 +17,8 @@ import (
 
 var cloneHosts = [...]string{"", "github.com", "gitee.com", "gitlab.com", "bitbucket.org"}
 var repoPath = regexp.MustCompile(`^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$`)
+
+const cloneOperation = "clone.running"
 
 func providerCloneURL(host, input string, ssh bool) string {
 	input = strings.TrimSpace(input)
@@ -47,6 +50,28 @@ func providerCloneURL(host, input string, ssh bool) string {
 }
 
 func (d *Desktop) cloneView(c *native.Context) {
+	if d.operation == cloneOperation {
+		d.cloneProgress(c)
+		return
+	}
+	native.Column(c).FillWidth().MaxWidth(760).Padding(panelSpacing).Gap(panelSpacing).
+		Background(c.Theme().Background).Radius(8).Children(func() { d.cloneForm(c) })
+}
+
+func (d *Desktop) cloneProgress(c *native.Context) {
+	t := c.Theme()
+	native.Column(c).Grow(1).FillWidth().Padding(20).Gap(controlSpacing).Center().
+		Background(t.Background).Radius(8).Children(func() {
+		native.Image(c, RemoteRabbitFrame("pull", d.operationFrame)).Size(116, 116)
+		native.Text(c, d.text(cloneOperation)).FontSize(t.FontSize + 4).Bold()
+		if destination := strings.TrimSpace(d.cloneDestination); destination != "" {
+			native.Text(c, destination).SingleLine().FillWidth().MaxWidth(640).TextAlign(native.Center).
+				Tooltip(destination).TextColor(t.TextMuted)
+		}
+	})
+}
+
+func (d *Desktop) cloneForm(c *native.Context) {
 	native.Text(c, d.text("clone.title")).Bold()
 	native.Segmented(c, &d.cloneProvider, d.copy("Git 地址", "Git URL"), "GitHub", "Gitee", "GitLab", "Bitbucket").Disabled(d.busy)
 	host := cloneHosts[d.cloneProvider]
@@ -54,9 +79,15 @@ func (d *Desktop) cloneView(c *native.Context) {
 	if host != "" {
 		placeholder = d.copy("所有者/仓库 或仓库链接", "owner/repository or repository URL")
 	}
-	native.TextInput(c, &d.cloneURL).Placeholder(placeholder).FillWidth().Disabled(d.busy)
+	if host != "github.com" {
+		d.cloneAddressInput(c, placeholder)
+	}
 	lookupURL := providerCloneURL(host, d.cloneURL, false)
 	profile := d.chooseCloneProfile(c, host, lookupURL)
+	if host == "github.com" {
+		d.githubRepositoryPicker(c, profile.Username, profile.Kind == "github")
+		d.cloneAddressInput(c, placeholder)
+	}
 	remote := providerCloneURL(host, d.cloneURL, profile.Kind == "ssh")
 	var auth git.CloneAuth
 	ready := true
@@ -73,27 +104,46 @@ func (d *Desktop) cloneView(c *native.Context) {
 		auth.GitHubAccount = profile.Username
 	}
 	native.Row(c).Gap(controlSpacing).Children(func() {
+		if d.cloneParent != "" {
+			name := strings.TrimSuffix(filepath.Base(strings.ReplaceAll(remote, ":", "/")), ".git")
+			if remote == "" || name == "." || name == ".." || name == "" || name == string(filepath.Separator) {
+				name = "my-repository"
+			}
+			d.cloneDestination = filepath.Join(d.cloneParent, name)
+		}
+		before := d.cloneDestination
 		native.TextInput(c, &d.cloneDestination).Placeholder(d.text("clone.destination")).Grow(1).Disabled(d.busy)
+		if before != d.cloneDestination {
+			d.cloneParent = ""
+		}
 		if IconButton(c, d.copy("选择位置", "Choose location"), "open", false).Disabled(d.busy).Clicked() {
-			initial := d.path
+			initial := d.cloneParent
+			if initial == "" {
+				initial = d.path
+			}
 			d.task(func(context.Context) (func(), error) {
 				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: d.win, Directory: true, Title: d.text("clone.destination"), DefaultPath: initial})
 				return func() {
 					if len(paths) == 0 {
 						return
 					}
-					name := strings.TrimSuffix(filepath.Base(strings.ReplaceAll(remote, ":", "/")), ".git")
-					if name == "" || name == "." || name == ".." || name == string(filepath.Separator) {
-						name = "my-repository"
-					}
-					d.cloneDestination = filepath.Join(paths[0], name)
+					d.cloneParent = paths[0]
 				}, err
 			})
 		}
 	})
 	destination := strings.TrimSpace(d.cloneDestination)
+	if remote != "" {
+		native.Text(c, git.Redact(remote)).FillWidth().TextColor(c.Theme().TextMuted)
+	}
+	if strings.TrimSpace(d.cloneURL) != "" && remote == "" {
+		native.Text(c, d.copy("请输入有效的所有者/仓库或仓库链接。", "Enter a valid owner/repository or repository URL.")).TextColor(c.Theme().Danger)
+	}
+	if destination != "" && !filepath.IsAbs(destination) {
+		native.Text(c, d.copy("请输入绝对路径或选择本地文件夹。", "Enter an absolute path or choose a local folder.")).TextColor(c.Theme().Danger)
+	}
 	if IconButton(c, d.text("clone.run"), "clone", true).Disabled(d.busy || !ready || remote == "" || !filepath.IsAbs(destination)).Clicked() {
-		d.operationTask("clone.running", func(ctx context.Context) (func(), error) {
+		d.operationTask(cloneOperation, func(ctx context.Context) (func(), error) {
 			var repo repository.Info
 			err := d.Client.Call(ctx, "git.clone", ipc.Params{URL: remote, Destination: destination, CloneAuth: auth}, &repo)
 			return func() {
@@ -103,5 +153,65 @@ func (d *Desktop) cloneView(c *native.Context) {
 				d.refresh()
 			}, err
 		})
+	}
+}
+
+func (d *Desktop) cloneAddressInput(c *native.Context, placeholder string) {
+	before := d.cloneURL
+	native.TextInput(c, &d.cloneURL).Placeholder(placeholder).FillWidth().Disabled(d.busy)
+	if before != d.cloneURL {
+		d.cloneRepoChoice = ""
+	}
+}
+
+func (d *Desktop) githubRepositoryPicker(c *native.Context, account string, enabled bool) {
+	if !enabled {
+		native.Text(c, d.copy("选择 GitHub 登录凭据后可浏览仓库。", "Select a GitHub login credential to browse repositories.")).TextColor(c.Theme().TextMuted)
+		return
+	}
+	load := func() {
+		d.cloneAccount, d.cloneRepoSearch, d.cloneRepoChoice = account, "", ""
+		d.cloneRepos = nil
+		d.task(func(ctx context.Context) (func(), error) {
+			var names []string
+			err := d.Client.Call(ctx, "git.github.repositories", ipc.Params{Name: account}, &names)
+			slices.Sort(names)
+			return func() { d.cloneRepos = append([]string{}, names...) }, err
+		})
+	}
+	if d.cloneAccount != account && d.Client != nil && !d.busy {
+		load()
+	}
+	native.Row(c).Gap(controlSpacing).Children(func() {
+		native.TextInput(c, &d.cloneRepoSearch).Placeholder(d.copy("筛选仓库", "Filter repositories")).Grow(1).Disabled(d.busy)
+		if IconButton(c, d.copy("刷新 GitHub 仓库", "Refresh GitHub repositories"), "refresh", false).Disabled(d.busy || d.Client == nil).Clicked() {
+			load()
+		}
+	})
+	if d.cloneAccount != account || d.cloneRepos == nil {
+		if d.busy {
+			native.Text(c, d.copy("正在读取 GitHub 仓库…", "Loading GitHub repositories…")).TextColor(c.Theme().TextMuted)
+		}
+		return
+	}
+	var matches []string
+	query := strings.ToLower(strings.TrimSpace(d.cloneRepoSearch))
+	for _, name := range d.cloneRepos {
+		if strings.Contains(strings.ToLower(name), query) {
+			matches = append(matches, name)
+		}
+	}
+	if len(matches) == 0 {
+		native.Text(c, d.copy("没有匹配的仓库。", "No matching repositories.")).TextColor(c.Theme().TextMuted)
+		return
+	}
+	label := d.copy("选择 GitHub 仓库", "Select a GitHub repository")
+	choice := d.cloneRepoChoice
+	if choice == "" {
+		choice = label
+	}
+	native.Select(c, &choice, matches).Label(label).FillWidth().Disabled(d.busy)
+	if choice != label && choice != d.cloneRepoChoice {
+		d.cloneRepoChoice, d.cloneURL = choice, choice
 	}
 }

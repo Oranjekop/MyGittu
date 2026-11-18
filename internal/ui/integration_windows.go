@@ -43,8 +43,11 @@ func runIntegrationScript(ctx context.Context, action string, enabled bool) ([]b
 		}
 		if failed, ok := err.(*exec.ExitError); ok {
 			detail := strings.TrimSpace(string(failed.Stderr))
-			if len(detail) > 1200 {
-				detail = detail[:1200]
+			if strings.Contains(strings.ToUpper(detail), "0X800B0109") {
+				return nil, fmt.Errorf("MSIX registration failed (0x800B0109)")
+			}
+			if runes := []rune(detail); len(runes) > 1200 {
+				detail = string(runes[:1200])
 			}
 			if detail != "" {
 				return nil, fmt.Errorf("%s", detail)

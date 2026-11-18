@@ -46,8 +46,18 @@ type Desktop struct {
 	query                              string
 	cloneURL, cloneDestination         string
 	cloneProvider                      int
+	cloneParent, cloneAccount          string
+	cloneRepoSearch, cloneRepoChoice   string
+	cloneRepos                         []string
 	cloneCredentials                   cloneCredentials
 	logRow                             int
+	historySummary                     *string
+	historyPatch                       patchView
+	historyMode                        int
+	historyFiles                       []editor.FilePatch
+	historyFileRow                     int
+	historyFileList                    native.ListState
+	historyFilePatch                   patchView
 	changes                            []git.FileStatus
 	stagedCount                        int
 	prefs                              settings.Values
@@ -75,6 +85,9 @@ type Desktop struct {
 	repositoriesOpen                   bool
 	repositorySearch                   string
 	comparison                         *editor.DiffState
+	diffLayout                         int
+	diffWrap, diffExpand               bool
+	workspacePatch                     *editor.State
 	binary                             bool
 	projectFiles                       []string
 	projectSearch                      string
@@ -83,6 +96,10 @@ type Desktop struct {
 	projectFileRow                     int
 	projectFileList                    native.ListState
 	projectPreview                     app.Comparison
+	projectCode                        *editor.State
+	projectCodePath, projectCodeSource string
+	projectWrap, projectFormatted      bool
+	projectFormatError                 string
 	tools                              workbench
 	references                         app.References
 	stashRow, tagRow                   int
@@ -93,6 +110,9 @@ type Desktop struct {
 	hunks                              []app.StageHunk
 	hunkRow                            int
 	hunkList                           native.ListState
+	hunkPatch                          patchView
+	hunkPreviewRow                     int
+	hunkConfirm                        bool
 }
 
 func New(client *ipc.Client, path, action string) *Desktop {
@@ -105,7 +125,7 @@ func New(client *ipc.Client, path, action string) *Desktop {
 	case "clone":
 		d.page = 5
 		if path != "" {
-			d.cloneDestination = filepath.Join(path, "my-repository")
+			d.cloneParent = path
 		}
 	case "pull", "push":
 		d.page = 6
@@ -222,7 +242,7 @@ func (d *Desktop) operationTask(operation string, work func(context.Context) (fu
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		if operation != "" {
-			go d.animateOperation(ctx)
+			go d.animateOperation(ctx, operation)
 		}
 		apply, e := work(ctx)
 		mygo.RunOnMain(func() {
@@ -321,6 +341,7 @@ func (d *Desktop) refresh() {
 			d.logs = logs
 			d.detail = detail
 			d.logRow = -1
+			d.historySummary = nil
 		}, e
 	})
 }
@@ -534,17 +555,27 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			if d.binary {
 				native.Text(c, d.text("diff.binary")).TextColor(t.TextMuted)
 			} else if d.comparison != nil {
+				native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
+					native.Segmented(c, &d.diffLayout, d.copy("自动", "Auto"), d.copy("并排", "Side by side"), d.copy("统一", "Unified"))
+					native.Checkbox(c, &d.diffWrap, d.copy("自动换行", "Wrap lines"))
+					native.Checkbox(c, &d.diffExpand, d.copy("展开上下文", "Expand context"))
+				})
 				d.comparison.Font.Size = t.FontSize - 0.5
-				d.comparison.Font.Family = c.Theme().Font
 				d.comparison.Layout = editor.DiffSplit
-				if available-fileWidth < 550 {
+				if d.diffLayout == 2 || d.diffLayout == 0 && available-fileWidth < 550 {
 					d.comparison.Layout = editor.DiffUnified
 				}
+				d.comparison.Wrap = d.diffWrap
+				d.comparison.ExpandUnchanged = d.diffExpand
+				d.comparison.KeepScrollbars = true
 				editor.DiffView(c, d.comparison).Grow(1).FillWidth()
 			} else if d.detail == "" {
 				native.Column(c).Grow(1).FillWidth().Center().Children(func() { native.Text(c, d.text("diff.empty")).TextColor(t.TextMuted) })
 			} else {
-				native.TextArea(c, &d.detail).Grow(1).FillWidth().ReadOnly(true)
+				if d.workspacePatch == nil || d.workspacePatch.Buffer.String() != d.detail {
+					d.workspacePatch = codePreview("changes.diff", d.detail)
+				}
+				editor.View(c, d.workspacePatch).Grow(1).FillWidth()
 			}
 		})
 	}
@@ -605,7 +636,7 @@ func (d *Desktop) view(c *native.Context) {
 			if d.refreshButton(c).Disabled(d.busy || (d.selected == "" && d.page != 4)).Clicked() {
 				d.refresh()
 			}
-			if IconButton(c, "", "settings", false).Label(d.text("nav.settings")).Tooltip(d.text("nav.settings")).Clicked() {
+			if IconButton(c, "", "settings", false).Label(d.text("nav.settings")).Tooltip(d.text("nav.settings")).Disabled(d.operation == cloneOperation).Clicked() {
 				d.openSettings()
 			}
 		})
@@ -640,7 +671,7 @@ func (d *Desktop) view(c *native.Context) {
 			}
 			native.Column(c).Grow(1).FillHeight().Gap(controlSpacing).Children(func() {
 
-				if d.busy && !d.settingsOpen && (d.operation != "" || d.aiGenerating) {
+				if d.busy && !d.settingsOpen && d.operation != cloneOperation && (d.operation != "" || d.aiGenerating) {
 					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 						if d.operation == "" {
 							label := d.aiActionLabel()
@@ -690,17 +721,22 @@ func (d *Desktop) view(c *native.Context) {
 						}
 					})
 					d.history.Selected = &d.logRow
+					previous := d.logRow
 					native.Table(c, &d.history, []native.TableColumn{{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190}}, len(d.logs), func(row, col int) {
 						l := d.logs[row]
 						values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
 						native.Text(c, values[col])
-					}).Grow(1).FillWidth()
-					if IconButton(c, d.text("commit.details"), "changes", false).Disabled(d.busy || d.logRow < 0 || d.logRow >= len(d.logs)).Clicked() {
+					}).Grow(1).MinHeight(110).FillWidth().Disabled(d.busy)
+					if previous != d.logRow && d.logRow >= 0 && d.logRow < len(d.logs) && !d.busy && d.Client != nil {
 						id, hash := d.selected, d.logs[d.logRow].Hash
+						d.historySummary = nil
 						d.task(func(ctx context.Context) (func(), error) {
-							var detail string
-							e := d.Client.Call(ctx, "git.show", ipc.Params{RepoID: id, Hash: hash}, &detail)
-							return func() { d.detail = detail }, e
+							var detail app.CommitDetails
+							e := d.Client.Call(ctx, "git.commit.details", ipc.Params{RepoID: id, Hash: hash}, &detail)
+							return func() {
+								d.historySummary = &detail.Summary
+								d.setHistoryPatch(detail.Patch)
+							}, e
 						})
 					}
 					native.Row(c).Gap(controlSpacing).Children(func() {
@@ -716,8 +752,16 @@ func (d *Desktop) view(c *native.Context) {
 							d.askAction(d.copy("将该提交应用到当前分支？", "Apply this commit to the current branch?"), hash, func() { d.runCherry("start", hash) })
 						}
 					})
-					if d.detail != "" {
-						native.TextArea(c, &d.detail).Height(180).FillWidth().ReadOnly(true)
+					if d.historySummary != nil && d.logRow >= 0 && d.logRow < len(d.logs) {
+						native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+							native.Segmented(c, &d.historyMode, d.text("commit.details"), d.copy("提交差异", "Commit diff"))
+							native.Text(c, d.logs[d.logRow].Hash).TextColor(t.TextMuted)
+						})
+						if d.historyMode == 0 {
+							d.showCommitSummary(c, d.logs[d.logRow])
+						} else {
+							d.showHistoryPatch(c)
+						}
 					}
 					native.Row(c).Gap(controlSpacing).Children(func() {
 						if IconButton(c, d.text("previous"), "left", false).Disabled(d.busy || d.offset == 0).Clicked() {

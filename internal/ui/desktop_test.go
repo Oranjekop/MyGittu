@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
 	native "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -81,16 +82,38 @@ func TestCommitAndCloneProgress(t *testing.T) {
 	} {
 		t.Run(operation.action, func(t *testing.T) {
 			d := New(nil, "", operation.action)
+			if operation.action == "clone" {
+				d.cloneURL = "https://github.com/example/demo.git"
+				d.cloneDestination = filepath.Join(t.TempDir(), "demo")
+			}
 			d.busy, d.operation = true, operation.key
 			tester := native.NewTester(d.view, 1160, 740)
 			if !tester.HasText(operation.label) {
 				t.Fatal("operation progress is missing")
+			}
+			if operation.action == "clone" {
+				label, _ := tester.Find(operation.label)
+				before := bytes.Clone(tester.Image().Pix)
+				d.operationFrame = 1
+				tester.Frame()
+				afterLabel, _ := tester.Find(operation.label)
+				if bytes.Equal(before, tester.Image().Pix) || label != afterLabel {
+					t.Fatal("clone animation must move the artwork and keep the status in place")
+				}
+				if tester.HasText(d.text("clone.title")) || !tester.HasText(d.cloneDestination) {
+					t.Fatal("clone progress should show the destination in place of the form")
+				}
+				saveLayoutPreview(t, tester, "clone-running.png")
 			}
 			d.busy, d.operation = false, ""
 			d.err = "operation failed"
 			tester.Frame()
 			if tester.HasText(operation.label) {
 				t.Fatal("operation progress remains after failure")
+			}
+			if operation.action == "clone" &&
+				(!tester.HasText(d.text("clone.title")) || !tester.HasText(d.cloneURL) || !tester.HasText("操作失败: operation failed")) {
+				t.Fatal("clone failure should restore the populated form and show the error")
 			}
 		})
 	}

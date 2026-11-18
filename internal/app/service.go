@@ -195,6 +195,24 @@ func (s *Service) Show(ctx context.Context, id, hash string) (string, error) {
 	r, e := s.Read(ctx, id, "show", "--no-ext-diff", "--no-textconv", "--no-color", "--format=fuller", "--stat", hash, "--")
 	return string(r.Stdout), e
 }
+
+type CommitDetails struct {
+	Summary string `json:"summary"`
+	Patch   string `json:"patch"`
+}
+
+func (s *Service) CommitDetails(ctx context.Context, id, hash string) (CommitDetails, error) {
+	if !commitHash.MatchString(hash) {
+		return CommitDetails{}, fmt.Errorf("invalid commit hash")
+	}
+	summary, err := s.Read(ctx, id, "show", "--no-patch", "--format=%B", hash, "--")
+	if err != nil {
+		return CommitDetails{}, err
+	}
+	patch, err := s.Read(ctx, id, "show", "--format=", "--patch", "--diff-merges=first-parent",
+		"--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", hash, "--")
+	return CommitDetails{Summary: strings.TrimSpace(string(summary.Stdout)), Patch: string(patch.Stdout)}, err
+}
 func (s *Service) Diff(ctx context.Context, id, path string, staged bool) (string, error) {
 	repo, e := s.Registry.Get(id)
 	if e != nil {

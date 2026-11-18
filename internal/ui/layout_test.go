@@ -105,9 +105,12 @@ func TestBranchListAtNarrow150Percent(t *testing.T) {
 		t.Fatal("branch row did not become selected")
 	}
 	d.tools.compared = true
-	d.tools.comparison = app.BranchComparison{Graph: "< c0132fa  修订主分支说明\n| > 6e48d99  支持工作区调整\n|/\no 8a61b32  更新工作区\n", Files: "diff --git a/README.md b/README.md\n+ 支持调节文件列表宽度。\n"}
+	d.tools.comparison = app.BranchComparison{Commits: []app.BranchComparisonCommit{
+		{Side: "<", Commit: app.Commit{Subject: "修订主分支说明"}},
+		{Side: ">", Commit: app.Commit{Subject: "支持工作区调整"}},
+	}}
 	tt.Frame()
-	for _, label := range []string{"当前分支", "↗ origin/main", "独有提交图", "文件差异"} {
+	for _, label := range []string{"当前分支", "↗ origin/main", "独有提交", "支持工作区调整", "文件差异"} {
 		if !tt.HasText(label) {
 			t.Fatalf("missing branch UI: %s", label)
 		}
@@ -335,4 +338,108 @@ func TestCloneCredentialProfilesAt150Percent(t *testing.T) {
 		t.Fatal("adding did not clear editor")
 	}
 
+}
+
+func TestProjectFormattingKeepsOriginal(t *testing.T) {
+	d := New(nil, "", "")
+	d.projectPreview.New = `{"x":[1,2]}`
+	tt := native.NewTester(func(c *native.Context) { d.showCodePreview(c, "sample.json") }, 760, 460)
+	if err := tt.Click("格式化预览"); err != nil {
+		t.Fatal(err)
+	}
+	if !d.projectCode.ReadOnly || d.projectCode.Buffer.String() == d.projectPreview.New {
+		t.Fatal("expected formatted read-only preview")
+	}
+	if err := tt.Click("显示原文"); err != nil {
+		t.Fatal(err)
+	}
+	if d.projectCode.Buffer.String() != `{"x":[1,2]}` {
+		t.Fatal("original JSON was changed")
+	}
+}
+
+func TestGitHubRepositoryPickerSetsCloneSourceAndDestination(t *testing.T) {
+	d := New(nil, "", "clone")
+	d.cloneProvider = 1
+	d.cloneAccount = "demo-user"
+	d.cloneRepos = []string{"demo-user/visible", "other-org/hidden"}
+	d.cloneRepoSearch = "visible"
+	d.cloneParent = t.TempDir()
+	d.prefs.CloneProfiles = []settings.CloneProfile{{ID: "demo", Label: "Demo", Kind: "github", Username: d.cloneAccount}}
+	d.cloneCredentials.selected = "demo"
+	tt := native.NewTester(d.view, 960, 680)
+	if err := tt.Click("选择 GitHub 仓库"); err != nil {
+		t.Fatal(err)
+	}
+	if tt.HasText("other-org/hidden") {
+		t.Fatal("repository filter did not apply to the picker")
+	}
+	saveLayoutPreview(t, tt, "github-repository-picker.png")
+	if err := tt.Click("demo-user/visible"); err != nil {
+		t.Fatal(err)
+	}
+	if d.cloneURL != "demo-user/visible" || filepath.Base(d.cloneDestination) != "visible" {
+		t.Fatalf("unexpected clone fields: %q, %q", d.cloneURL, d.cloneDestination)
+	}
+}
+
+func TestHistoryPatchCanShowOneChangedFile(t *testing.T) {
+	d := New(nil, "", "")
+	d.setHistoryPatch("diff --git a/first.txt b/first.txt\n--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-old first\n+new first\n" +
+		"diff --git a/second.txt b/second.txt\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-old second\n+new second\n")
+	tt := native.NewTester(d.showHistoryPatch, 960, 460)
+	if err := tt.Click("second.txt"); err != nil {
+		t.Fatal(err)
+	}
+	lines := d.historyFilePatch.lines
+	if len(lines) != 2 || lines[0].old != 1 || lines[0].text != "old second" || lines[1].next != 1 || lines[1].text != "new second" {
+		t.Fatal("expected the patch for only the selected file")
+	}
+	saveLayoutPreview(t, tt, "history-file-patch.png")
+}
+
+func TestHunkDialogShowsCodeAndConfirmsDiscard(t *testing.T) {
+	d := New(nil, "", "")
+	d.hunksOpen, d.hunkPath, d.hunkPreviewRow = true, "service.go", -1
+	d.hunks = []app.StageHunk{{Patch: "@@ -24 +24,2 @@ handler\n-old line\n+new line\n+next line\n"}}
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if !tt.HasText("旧行") || !tt.HasText("25") || tt.HasText("@@ -24 +24,2 @@ handler") {
+		t.Fatal("expected old and new line numbers in the hunk preview")
+	}
+	saveLayoutPreview(t, tt, "structured-hunks-150.png")
+	if err := tt.Click("丢弃此区块的改动"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("确认丢弃") || tt.HasText("暂存此区块") {
+		t.Fatal("discard should require confirmation")
+	}
+	if err := tt.Click("取消"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("暂存此区块") {
+		t.Fatal("cancel should preserve selection and restore actions")
+	}
+}
+
+func TestFileHistoryShowsPatchAndBlameInColumns(t *testing.T) {
+	d := New(nil, "", "")
+	w := &d.tools
+	w.fileOpen, w.filePath = true, "release.yml"
+	w.fileCommits = []app.Commit{{Hash: "abcdef", Subject: "Update release", Author: "Alex", Date: "2026-11-18T09:00:00+08:00"}}
+	w.filePatch.lines = []patchLine{{next: 8, kind: '+', text: "  release: true"}}
+	w.blameLoaded = true
+	w.blameRows = []app.BlameLine{{Number: 8, Author: "Alex", Date: "2026-11-18", Text: "  release: true"}}
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if !tt.HasText("Update release") || !tt.HasText("新行") || !tt.HasText("2026-11-18") {
+		t.Fatal("missing file commit metadata or diff")
+	}
+	saveLayoutPreview(t, tt, "structured-file-history-150.png")
+	if err := tt.Click(d.text("file.blame")); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("代码") || !tt.HasText("Alex") || tt.HasText("Update release") {
+		t.Fatal("expected structured line annotations")
+	}
 }

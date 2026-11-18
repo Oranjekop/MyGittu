@@ -101,6 +101,10 @@ func TestWorkbenchFileHistoryRecoveryAndBatch(t *testing.T) {
 	if err != nil || !strings.Contains(blame, "Test") || !strings.Contains(blame, "change") {
 		t.Fatalf("blame: %s %v", blame, err)
 	}
+	lines, err := s.FileBlame(ctx, id, "a.txt")
+	if err != nil || len(lines) != 1 || lines[0].Number != 1 || lines[0].Hash != hash || lines[0].Author != "Test" || lines[0].Text != "change" || lines[0].Date == "" {
+		t.Fatalf("structured blame: %+v %v", lines, err)
+	}
 	if err := s.RecoverCommit(ctx, id, "undo", log[1].Hash); err == nil {
 		t.Fatal("accepted stale HEAD")
 	}

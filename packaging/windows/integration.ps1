@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Status','Menu','Overlays','Startup','Refresh','Maintain','Remove')]
+    [ValidateSet('Status','Menu','Modern','Overlays','Startup','Refresh','Maintain','Remove')]
     [string]$Action,
     [ValidateSet('On','Off')]
     [string]$State = 'Off',
@@ -7,6 +7,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $root = $PSScriptRoot
 $classes = 'HKLM:\SOFTWARE\Classes'
 $overlayRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers'
@@ -61,6 +62,7 @@ if ($Action -eq 'Status') {
     @{
         startup = [bool](Read-Run $userRun MyGittu)
         modern = [bool]([Environment]::OSVersion.Version.Build -ge 22000 -and (Get-AppxPackage -Name Oranjekop.MyGittu.Shell))
+        modernAvailable = [bool](Test-Path -LiteralPath (Join-Path $root 'MyGittuShell.msix'))
         menu = [bool](MenuEnabled)
         overlays = [bool](OverlaysEnabled)
     } | ConvertTo-Json -Compress
@@ -72,6 +74,15 @@ if ($Action -eq 'Startup') {
 }
 if ($Action -eq 'Refresh') {
     & (Join-Path $root 'restart-explorer.ps1')
+    return
+}
+if ($Action -eq 'Modern') {
+    $package = Join-Path $root 'MyGittuShell.msix'
+    if ($State -eq 'On' -and (Test-Path -LiteralPath $package)) {
+        & (Join-Path $root 'register-modern.ps1') -PackagePath $package -InstallPath $root
+    } elseif ($State -eq 'Off' -and (Test-Path -LiteralPath (Join-Path $root 'register-modern.ps1'))) {
+        & (Join-Path $root 'register-modern.ps1') -Remove
+    }
     return
 }
 if ($Action -eq 'Remove') {
@@ -90,12 +101,7 @@ if (!$Elevated -and $Action -in 'Menu','Overlays') {
         Start-Process -FilePath (Join-Path $root 'agent.exe') -WindowStyle Hidden
     }
     if ($Action -eq 'Menu' -and [Environment]::OSVersion.Version.Build -ge 22000) {
-        $modern = Join-Path $root 'register-modern.ps1'
-        if (Test-Path -LiteralPath $modern) {
-            if ($State -eq 'On') {
-                & $modern -PackagePath (Join-Path $root 'MyGittuShell.msix') -InstallPath $root
-            } else { & $modern -Remove }
-        }
+        & $PSCommandPath -Action Modern -State $State
     }
     return
 }

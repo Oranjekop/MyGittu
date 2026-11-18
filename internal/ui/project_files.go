@@ -1,11 +1,15 @@
 package ui
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"go/format"
 	"path"
 	"strings"
 
 	native "github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"mygittu/internal/app"
 	"mygittu/internal/ipc"
 )
@@ -84,6 +88,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 				}
 				id, path := d.selected, entry.path
 				d.projectPreview = app.Comparison{}
+				d.projectCode = nil
 				d.task(func(ctx context.Context) (func(), error) {
 					var preview app.Comparison
 					err := d.Client.Call(ctx, "git.file.preview", ipc.Params{RepoID: id, Path: path}, &preview)
@@ -95,16 +100,78 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			if row := d.projectFileRow; row < 0 || row >= len(d.projectTree) {
 				native.Text(c, d.text("files.select")).TextColor(t.TextMuted)
 			} else {
-				native.Text(c, d.projectTree[row].path).Bold()
-				if IconButton(c, d.text("file.history"), "history", false).Disabled(d.busy).Clicked() {
-					d.openFileHistory(d.projectTree[row].path)
-				}
+				filename := d.projectTree[row].path
+				native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+					native.Text(c, filename).Bold().Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(filename)
+					if IconButton(c, d.text("file.history"), "history", false).Disabled(d.busy).Clicked() {
+						d.openFileHistory(filename)
+					}
+				})
 				if d.projectPreview.Binary {
 					native.Text(c, d.text("diff.binary")).TextColor(t.TextMuted)
 				} else if !d.busy && d.err == "" {
-					native.TextArea(c, &d.projectPreview.New).Grow(1).FillWidth().ReadOnly(true)
+					d.showCodePreview(c, filename)
 				}
 			}
 		})
 	})
+}
+
+func codePreview(filename, source string) *editor.State {
+	buffer := editor.NewBuffer(source)
+	buffer.SetLanguage(editor.LanguageForText(filename, source))
+	return &editor.State{Buffer: buffer, ReadOnly: true, NoScrollPastEnd: true, KeepScrollbars: true}
+}
+
+func (d *Desktop) showCodePreview(c *native.Context, filename string) {
+	source := d.projectPreview.New
+	if d.projectCode == nil || d.projectCodePath != filename || d.projectCodeSource != source {
+		d.projectCode = codePreview(filename, source)
+		d.projectCodePath, d.projectCodeSource = filename, source
+		d.projectFormatted, d.projectFormatError = false, ""
+	}
+	native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+		native.Checkbox(c, &d.projectWrap, d.copy("自动换行", "Wrap lines"))
+		if lang := editor.LanguageForText(filename, source); lang != nil {
+			native.Text(c, lang.Name).TextColor(c.Theme().TextMuted)
+		}
+		ext := strings.ToLower(path.Ext(filename))
+		if ext != ".go" && ext != ".json" {
+			return
+		}
+		label := d.copy("格式化预览", "Format preview")
+		if d.projectFormatted {
+			label = d.copy("显示原文", "Show original")
+		}
+		if !native.Button(c, label).Clicked() {
+			return
+		}
+		d.projectFormatError = ""
+		if d.projectFormatted {
+			d.projectCode.Buffer.Reset(source)
+			d.projectFormatted = false
+			return
+		}
+		var formatted []byte
+		var err error
+		if ext == ".go" {
+			formatted, err = format.Source([]byte(source))
+		} else {
+			var out bytes.Buffer
+			err = json.Indent(&out, []byte(source), "", "  ")
+			formatted = out.Bytes()
+		}
+		if err != nil {
+			d.projectFormatError = err.Error()
+			return
+		}
+		d.projectCode.Buffer.Reset(string(formatted))
+		d.projectFormatted = true
+	})
+	if d.projectFormatError != "" {
+		native.Text(c, d.copy("格式化失败", "Formatting failed")+" · "+d.projectFormatError).FillWidth().TextColor(c.Theme().Danger)
+	}
+	d.projectCode.SoftWrap = d.projectWrap
+	d.projectCode.Font.Size = c.Theme().FontSize - 0.5
+	editor.View(c, d.projectCode).Grow(1).FillWidth()
 }

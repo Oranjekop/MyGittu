@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"bytes"
@@ -11,7 +11,10 @@ import (
 	"mygittu/internal/brand"
 )
 
-const remoteFrameInterval = 140 * time.Millisecond
+const (
+	RemoteFrameInterval = 140 * time.Millisecond
+	RemoteFrameCount    = 5
+)
 
 var remoteRabbitFrames = sync.OnceValue(func() [3][4]*native.Bitmap {
 	atlas, err := png.Decode(bytes.NewReader(brand.RemoteRabbitPNG))
@@ -55,13 +58,13 @@ func rabbitFrameBounds(atlas image.Image, row, width, height int) image.Rectangl
 	y := min(max(0, bounds.Min.Y-(side-bounds.Dy())/2), height-side)
 	return image.Rect(x, y, x+side, y+side)
 }
-func (d *remoteWindow) rabbitFrame() *native.Bitmap {
+func RemoteRabbitFrame(action string, frame int) *native.Bitmap {
 	row := 0
-	switch d.action {
+	switch action {
 	case "fetch":
 		row = 1
 	case "push":
 		row = 2
 	}
-	return remoteRabbitFrames()[row][min(d.frame, 3)]
+	return remoteRabbitFrames()[row][min(frame, 3)]
 }
