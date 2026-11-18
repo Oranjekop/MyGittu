@@ -84,34 +84,12 @@ func (s *Service) Comparison(ctx context.Context, id, path, original string, sta
 		newText = indexBlob
 	} else {
 		oldText = indexBlob
-		root, err := os.OpenRoot(repo.Root)
-		if err != nil {
-			return Comparison{}, err
-		}
-		defer root.Close()
-		info, err := root.Lstat(path)
+		var binary bool
+		newText, binary, err = readWorktreeFile(repo.Root, path)
 		if os.IsNotExist(err) {
 			newText = nil
-		} else if err != nil {
-			return Comparison{}, err
-		} else if info.Mode()&os.ModeSymlink != 0 {
-			target, err := root.Readlink(path)
-			if err != nil {
-				return Comparison{}, err
-			}
-			newText = []byte(target)
-		} else if info.Mode().IsRegular() {
-			file, err := root.Open(path)
-			if err != nil {
-				return Comparison{}, err
-			}
-			newText, err = io.ReadAll(io.LimitReader(file, (256<<10)+1))
-			file.Close()
-			if err != nil {
-				return Comparison{}, err
-			}
-		} else {
-			return Comparison{Binary: true}, nil
+		} else if err != nil || binary {
+			return Comparison{Binary: binary}, err
 		}
 	}
 	if len(oldText) > 256<<10 || len(newText) > 256<<10 || bytes.Count(oldText, []byte{'\n'}) > 8000 || bytes.Count(newText, []byte{'\n'}) > 8000 {
@@ -121,4 +99,30 @@ func (s *Service) Comparison(ctx context.Context, id, path, original string, sta
 		return Comparison{Binary: true}, nil
 	}
 	return Comparison{Old: strings.ReplaceAll(string(oldText), "\r\n", "\n"), New: strings.ReplaceAll(string(newText), "\r\n", "\n")}, nil
+}
+
+func readWorktreeFile(directory, path string) ([]byte, bool, error) {
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return nil, false, err
+	}
+	defer root.Close()
+	info, err := root.Lstat(path)
+	if err != nil {
+		return nil, false, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := root.Readlink(path)
+		return []byte(target), false, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, true, nil
+	}
+	file, err := root.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, (256<<10)+1))
+	return data, false, err
 }

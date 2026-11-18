@@ -7,6 +7,3 @@ var PNG []byte
 
 //go:embed icon-ui.png
 var SmallPNG []byte
-
-//go:embed sync.png
-var SyncPNG []byte

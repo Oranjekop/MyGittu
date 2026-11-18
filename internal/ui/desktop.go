@@ -53,6 +53,10 @@ type Desktop struct {
 	settingsOpen                       bool
 	comparison                         *editor.DiffState
 	binary                             bool
+	projectFiles                       []string
+	projectFileRow                     int
+	projectFileList                    native.ListState
+	projectPreview                     app.Comparison
 }
 
 func New(client *ipc.Client, path, action string) *Desktop {
@@ -189,9 +193,13 @@ func (d *Desktop) refresh() {
 	d.row = -1
 	d.detail = ""
 	d.comparison = nil
+	if page == projectFilesPage {
+		d.projectFiles, d.projectFileRow, d.projectPreview = nil, -1, app.Comparison{}
+	}
 	d.task(func(ctx context.Context) (func(), error) {
 		var snap status.Snapshot
 		var logs []app.Commit
+		var projectFiles []string
 		var detail string
 		var e error
 		var identity app.Identity
@@ -205,6 +213,8 @@ func (d *Desktop) refresh() {
 			e = d.Client.Call(ctx, "git.log", ipc.Params{RepoID: id, Limit: 100, Offset: offset, Query: query}, &logs)
 		case 3:
 			e = d.Client.Call(ctx, "git.branches", ipc.Params{RepoID: id}, &detail)
+		case projectFilesPage:
+			e = d.Client.Call(ctx, "git.files", ipc.Params{RepoID: id}, &projectFiles)
 		}
 		changes := make([]git.FileStatus, 0, len(snap.Files))
 		stagedCount := 0
@@ -217,6 +227,10 @@ func (d *Desktop) refresh() {
 			}
 		}
 		return func() {
+			if page == projectFilesPage {
+				d.projectFiles, d.projectFileRow, d.projectPreview = projectFiles, -1, app.Comparison{}
+				return
+			}
 			if page == 0 || page == 2 {
 				d.identity = editableIdentity(identity)
 				d.commitIdentity = identity
@@ -412,9 +426,9 @@ func (d *Desktop) view(c *native.Context) {
 				for _, item := range []struct {
 					page  int
 					label string
-				}{{0, "changes.nav"}, {1, "nav.history"}, {3, "nav.branches"}} {
+				}{{0, "changes.nav"}, {projectFilesPage, "nav.files"}, {1, "nav.history"}, {3, "nav.branches"}} {
 					label := d.text(item.label)
-					key := map[int]string{0: "changes", 1: "history", 3: "branch", 4: "settings"}[item.page]
+					key := map[int]string{0: "changes", projectFilesPage: "file", 1: "history", 3: "branch"}[item.page]
 					if iconButton(c, label, key, false).FillWidth().Selected(d.page == item.page || item.page == 0 && d.page == 2).Disabled(d.busy).Clicked() {
 						if item.page == 4 {
 							d.openSettings()
@@ -469,7 +483,8 @@ func (d *Desktop) view(c *native.Context) {
 						if d.operation == "" {
 							native.Text(c, d.text("busy")).TextColor(t.TextMuted)
 						} else {
-							OperationIcon(c, 32, d.operationFrame)
+							action, _, _ := strings.Cut(d.operation, ".")
+							OperationIcon(c, 40, d.operationFrame, action)
 							native.Text(c, d.text(d.operation)).TextColor(t.TextMuted)
 						}
 					})
@@ -497,6 +512,8 @@ func (d *Desktop) view(c *native.Context) {
 					return
 				}
 				switch d.page {
+				case projectFilesPage:
+					d.showProjectFiles(c, t)
 				case 0, 2:
 					d.workspace(c, t)
 				case 1:

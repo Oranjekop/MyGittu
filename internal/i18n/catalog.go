@@ -5,6 +5,9 @@ package i18n
 type Message struct{ ZH, EN string }
 
 var Catalog = map[string]Message{
+	"nav.files":          {"文件", "Files"},
+	"files.empty":        {"没有项目文件", "No project files"},
+	"files.select":       {"选择文件以预览", "Select a file to preview"},
 	"commit.running":     {"正在提交…", "Committing…"},
 	"clone.running":      {"正在克隆…", "Cloning…"},
 	"update.install":     {"下载并安装 %s", "Download and install %s"},

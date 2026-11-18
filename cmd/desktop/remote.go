@@ -58,7 +58,7 @@ func (d *remoteWindow) view(c *native.Context) {
 	native.Column(c).Fill().Padding(22).Gap(12).Children(func() {
 		native.Row(c).Gap(12).Children(func() {
 			// Translation preserves the layout box, keeping the text still.
-			ui.OperationIcon(c, 56, d.frame)
+			ui.OperationIcon(c, 56, d.frame, d.action)
 			native.Column(c).Gap(4).Children(func() {
 				native.Text(c, d.text("MyGittu 远程操作", "MyGittu remote operation")).FontSize(18).Bold()
 				native.Text(c, d.status).TextColor(t.TextMuted)

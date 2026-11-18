@@ -162,6 +162,10 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.LogSearch(ctx, p.RepoID, p.Limit, p.Offset, p.Query)
 	case "git.show":
 		result, e = s.Service.Show(ctx, p.RepoID, p.Hash)
+	case "git.files":
+		result, e = s.Service.Files(ctx, p.RepoID)
+	case "git.file.preview":
+		result, e = s.Service.PreviewFile(p.RepoID, p.Path)
 	case "git.diff":
 		result, e = s.Service.Diff(ctx, p.RepoID, p.Path, p.Staged)
 	case "git.comparison":

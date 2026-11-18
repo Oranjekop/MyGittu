@@ -3,12 +3,14 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"mygittu/internal/app"
 	git "mygittu/internal/git"
 	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
 	"mygittu/internal/status"
 	"net"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -45,6 +47,17 @@ func TestFramedAgentWorkflow(t *testing.T) {
 	call("git.commit", ipc.Params{RepoID: id, Message: "IPC commit"}, &hash)
 	if len(hash) != 40 {
 		t.Fatal("commit missing")
+	}
+	write(t, filepath.Join(dir, "new.txt"), "new file")
+	var files []string
+	call("git.files", ipc.Params{RepoID: id}, &files)
+	if !slices.Contains(files, "ipc.txt") || !slices.Contains(files, "new.txt") {
+		t.Fatalf("tracked or new file missing: %v", files)
+	}
+	var preview app.Comparison
+	call("git.file.preview", ipc.Params{RepoID: id, Path: "ipc.txt"}, &preview)
+	if preview.Binary || preview.New != "over IPC" {
+		t.Fatalf("invalid project file preview: %+v", preview)
 	}
 	var snap status.Snapshot
 	call("status.refresh", ipc.Params{RepoID: id}, &snap)

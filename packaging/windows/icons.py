@@ -4,10 +4,11 @@ import struct
 from pathlib import Path
 
 TARGET = Path(__file__).resolve().parents[2] / "extensions" / "windows"
+SIZES = (16, 20, 24, 28, 32, 40, 48, 56, 64, 72, 96, 128, 256)
 STATES = {
-    "clean": ((17, 117, 88), [(22.7, 25.3), (24.6, 27.2), (28.2, 23.2)]),
-    "modified": ((157, 88, 17), [(22.7, 27.7), (27.9, 22.5)]),
-    "conflicted": ((174, 47, 64), [(25.4, 22.5), (25.4, 26.1)]),
+    "clean": ((17, 117, 88), [(19.2, 23.3), (21.8, 26), (27, 20.4)]),
+    "modified": ((157, 88, 17), [(19.5, 26.6), (26.6, 19.5)]),
+    "conflicted": ((174, 47, 64), [(23, 18.7), (23, 23.4)]),
 }
 
 
@@ -18,14 +19,14 @@ def distance(x, y, a, b):
 
 
 def sample(x, y, state, color, points):
-    radius = math.hypot(x - 25.3, y - 25.3)
-    if radius > 6.0:
+    radius = math.hypot(x - 23, y - 23)
+    if radius > 8.5:
         return None
-    if radius > 5.05:
+    if radius > 7.15:
         return (255, 255, 255)
-    if any(distance(x, y, a, b) < 0.86 for a, b in zip(points, points[1:])):
+    if any(distance(x, y, a, b) < 1.25 for a, b in zip(points, points[1:])):
         return (255, 255, 255)
-    if state == "conflicted" and math.hypot(x - 25.4, y - 28.0) < 0.88:
+    if state == "conflicted" and math.hypot(x - 23, y - 27.2) < 1.25:
         return (255, 255, 255)
     return color
 
@@ -55,13 +56,14 @@ def bitmap(size, state, color, points):
 
 
 for state, (color, points) in STATES.items():
-    sizes = (16, 32, 48)
-    header = bytearray(struct.pack("<HHH", 0, 1, len(sizes)))
+    header = bytearray(struct.pack("<HHH", 0, 1, len(SIZES)))
     images = []
-    offset = 6 + 16 * len(sizes)
-    for size in sizes:
+    offset = 6 + 16 * len(SIZES)
+    for size in SIZES:
         image = bitmap(size, state, color, points)
-        header.extend(struct.pack("<BBBBHHII", size, size, 0, 0, 1, 32, len(image), offset))
+        # ICO encodes a 256-pixel dimension as zero.
+        dimension = size % 256
+        header.extend(struct.pack("<BBBBHHII", dimension, dimension, 0, 0, 1, 32, len(image), offset))
         images.append(image)
         offset += len(image)
     (TARGET / f"{state}.ico").write_bytes(header + b"".join(images))

@@ -12,7 +12,7 @@ import (
 )
 
 func TestRemoteAnimationKeepsTextStill(t *testing.T) {
-	d := &remoteWindow{lang: "zh-CN", status: "正在拉取远程更新…"}
+	d := &remoteWindow{action: "pull", lang: "zh-CN", status: "正在拉取远程更新…"}
 	tester := native.NewTester(d.view, 420, 180)
 	first := tester.Image()
 	before := append([]byte(nil), first.Pix...)

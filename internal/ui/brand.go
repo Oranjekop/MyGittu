@@ -19,17 +19,20 @@ var brandBitmap = func() *ui.Bitmap {
 	return ui.NewBitmap(im)
 }()
 
-var syncBitmap = func() *ui.Bitmap {
-	bitmap, err := ui.DecodeBitmap(brand.SyncPNG)
-	if err != nil {
-		panic(err)
+func OperationIcon(c *ui.Context, size float32, frame int, action string) {
+	phase := float64(frame) / 24
+	hop := float32(-math.Pow(math.Sin(phase*math.Pi), 2)) * size * .13
+	direction := float32(1)
+	if action == "push" {
+		direction = -1
 	}
-	return bitmap
-}()
-
-func OperationIcon(c *ui.Context, size float32, frame int) {
-	offset := float32(-3 * math.Sin(float64(frame)*2*math.Pi/24))
-	ui.Image(c, syncBitmap).Width(size).Height(size).Translate(0, offset)
+	ui.Row(c).Width(size).Height(size).AlignItems(ui.Center).Children(func() {
+		ui.Image(c, brandBitmap).Width(size*.69).Height(size*.69).Translate(0, hop)
+		if symbol := icons[action]; symbol != nil {
+			ui.Icon(c, symbol).Width(size*.29).Height(size*.29).
+				TextColor(c.Theme().Accent).Translate(0, float32(math.Sin(phase*2*math.Pi))*size*.10*direction)
+		}
+	})
 }
 
 func (d *Desktop) animateOperation(ctx context.Context) {

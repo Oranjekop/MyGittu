@@ -18,18 +18,23 @@ import (
 func TestNativePages(t *testing.T) {
 	for _, language := range []string{"zh-CN", "en"} {
 		t.Run(language, func(t *testing.T) {
-			for page := 0; page < 7; page++ {
+			for page := 0; page <= projectFilesPage; page++ {
 				t.Run(fmt.Sprint(page), func(t *testing.T) {
 					d := New(nil, "", "")
 					d.applyPrefs(settings.Values{Language: language, Theme: "light"})
 					d.selected = "demo"
 					d.repos = []repository.Info{{ID: "demo", Root: "D:\\Code\\MyGittu"}}
 					d.page = page
+					if page == projectFilesPage {
+						d.projectFiles = []string{"README.md", "internal/git/status.go"}
+						d.projectFileRow = 0
+						d.projectPreview.New = "# MyGittu"
+					}
 					if page == 4 {
 						d.page = 0
 						d.settingsOpen = true
 					}
-					d.busy = true
+					d.busy = page != projectFilesPage
 					d.snapshot = status.Snapshot{Branch: "main"}
 					d.changes = []git.FileStatus{{Path: "internal/git/status.go", Index: git.Modified, Worktree: git.Clean}, {Path: "README.md", Index: git.Clean, Worktree: git.Modified}, {Path: "中文文件.txt", Index: git.Clean, Worktree: git.Untracked}}
 					d.stagedCount = 1
