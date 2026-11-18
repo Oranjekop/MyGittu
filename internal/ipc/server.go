@@ -8,6 +8,7 @@ import (
 	"mygittu/internal/app"
 	"mygittu/internal/buildinfo"
 	git "mygittu/internal/git"
+	"mygittu/internal/platform"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
 	"mygittu/internal/status"
@@ -61,7 +62,9 @@ func (s *Server) ensureRepository(path string) bool {
 			if err != nil || s.Cache == nil {
 				return
 			}
-			_ = s.Cache.Refresh(ctx, info.ID)
+			if s.Cache.Refresh(ctx, info.ID) == nil {
+				platform.NotifyRepositoryOverlay(root)
+			}
 		}()
 	}
 	return true

@@ -27,6 +27,8 @@ type Desktop struct {
 	path, message, branch, detail, err string
 	page                               int
 	busy                               bool
+	operation                          string
+	operationFrame                     int
 	snapshot                           status.Snapshot
 	logs                               []app.Commit
 	row                                int
@@ -46,6 +48,7 @@ type Desktop struct {
 	identitySaved                      bool
 	update                             app.UpdateInfo
 	updateChecking                     bool
+	updateInstalling                   bool
 	updateError                        string
 	settingsOpen                       bool
 	comparison                         *editor.DiffState
@@ -146,17 +149,26 @@ func (d *Desktop) savePrefs(v settings.Values) {
 
 // All state is owned by the main thread. Background workers deliver one result.
 func (d *Desktop) task(work func(context.Context) (func(), error)) {
+	d.operationTask("", work)
+}
+
+func (d *Desktop) operationTask(operation string, work func(context.Context) (func(), error)) {
 	if d.busy {
 		return
 	}
 	d.busy = true
 	d.err = ""
+	d.operation, d.operationFrame = operation, 0
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
+		if operation != "" {
+			go d.animateOperation(ctx)
+		}
 		apply, e := work(ctx)
 		mygo.RunOnMain(func() {
 			d.busy = false
+			d.operation, d.operationFrame = "", 0
 			if e != nil {
 				d.err = e.Error()
 				d.applyPrefs(d.prefs)
@@ -220,7 +232,11 @@ func (d *Desktop) refresh() {
 }
 func (d *Desktop) mutate(method string, p ipc.Params) {
 	p.RepoID = d.selected
-	d.task(func(ctx context.Context) (func(), error) {
+	operation := ""
+	if method == "git.commit" {
+		operation = "commit.running"
+	}
+	d.operationTask(operation, func(ctx context.Context) (func(), error) {
 		e := d.Client.Call(ctx, method, p, nil)
 		return func() {
 			if method == "git.commit" {
@@ -256,8 +272,8 @@ func (d *Desktop) diff(path string) {
 }
 func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	files := d.visible()
-	native.Row(c).Grow(1).FillWidth().Gap(14).AlignItems(native.Stretch).Children(func() {
-		native.Column(c).Width(360).FillHeight().Gap(10).Children(func() {
+	native.Row(c).Grow(1).FillWidth().Gap(6).AlignItems(native.Stretch).Children(func() {
+		native.Column(c).Width(342).FillHeight().Padding(10).Gap(8).Background(t.Background).Radius(8).Children(func() {
 			native.Row(c).Gap(8).AlignItems(native.Center).Children(func() {
 				native.Textf(c, d.text("changes"), len(files)).Grow(1)
 				if iconButton(c, d.text("stage.all"), "stage", false).Disabled(d.busy || len(files) == 0).Clicked() {
@@ -326,7 +342,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				}
 			})
 		})
-		native.Column(c).Grow(1).FillHeight().Gap(10).Children(func() {
+		native.Column(c).Grow(1).FillHeight().Padding(12).Gap(8).Background(t.Background).Radius(8).Children(func() {
 			native.Row(c).Gap(8).AlignItems(native.Center).Children(func() {
 				native.Text(c, func() string {
 					if d.row >= 0 && d.row < len(files) {
@@ -358,187 +374,202 @@ func (d *Desktop) view(c *native.Context) {
 		c.SetTheme(native.LightTheme())
 	}
 	t := c.Theme()
-	native.Row(c).Fill().Children(func() {
-		native.Column(c).Width(192).FillHeight().Padding(12).Gap(8).Background(t.Surface).Children(func() {
-			native.Row(c).Gap(10).AlignItems(native.Center).Children(func() {
-				native.Image(c, brandBitmap).Width(32).Height(32)
-				native.Text(c, "MyGittu").FontSize(23).Bold()
-			})
-			if iconButton(c, d.text("repo.open")+"…", "open", true).FillWidth().Disabled(d.busy).Clicked() {
-				d.chooseRepository()
-			}
-			if iconButton(c, d.text("clone.run")+"…", "clone", false).FillWidth().Disabled(d.busy).Clicked() {
-				d.page = 5
-			}
-			for _, item := range []struct {
-				page  int
-				label string
-			}{{0, "changes.nav"}, {1, "nav.history"}, {3, "nav.branches"}, {4, "nav.settings"}} {
-				label := d.text(item.label)
-				key := map[int]string{0: "changes", 1: "history", 3: "branch", 4: "settings"}[item.page]
-				if iconButton(c, label, key, false).FillWidth().Selected(d.page == item.page || item.page == 0 && d.page == 2).Disabled(d.busy).Clicked() {
-					if item.page == 4 {
-						d.openSettings()
-						continue
-					}
-					d.page = item.page
-					d.offset = 0
-					d.refresh()
+	native.Column(c).Fill().Padding(6).Gap(6).Background(t.Border).Children(func() {
+		native.Row(c).FillWidth().Padding(8).Gap(8).AlignItems(native.Center).Background(t.Background).Radius(8).Children(func() {
+			native.Image(c, brandBitmap).Width(22).Height(22)
+			native.Text(c, "MyGittu").Bold()
+			for _, r := range d.repos {
+				if r.ID == d.selected {
+					native.Text(c, filepath.Base(r.Root)).Bold().Tooltip(r.Root)
 				}
 			}
-			if len(d.repos) > 0 {
-				native.Text(c, d.text("repo.recent")).TextColor(t.TextMuted)
+			if d.snapshot.Branch != "" && (d.page == 0 || d.page == 2) {
+				native.Text(c, d.snapshot.Branch).TextColor(t.TextMuted)
 			}
-			choice := d.selected
-			native.Sidebar(c, &choice, func() {
-				for _, r := range d.repos {
-					native.SidebarItem(c, r.ID, icons["open"], filepath.Base(r.Root)).Tooltip(r.Root)
-				}
-			}).Grow(1).Disabled(d.busy).OnChange(func() {
-				for _, repo := range d.repos {
-					if repo.ID == choice {
-						d.open(repo.Root)
-						break
+			native.Box(c).Grow(1)
+			if d.selected != "" && d.page != 5 {
+				for _, op := range []struct{ label, action string }{{"remote.fetch", "fetch"}, {"remote.pull", "pull"}, {"remote.push", "push"}} {
+					if iconButton(c, "", op.label, false).Label(d.text(op.label)).Tooltip(d.text(op.label)).Disabled(d.busy).Clicked() {
+						d.remoteAction(op.action)
 					}
 				}
-			})
-			if native.Button(c, d.text("repo.remove")).FillWidth().Disabled(d.busy || d.selected == "").Clicked() {
-				id := d.selected
-				d.task(func(ctx context.Context) (func(), error) {
-					e := d.Client.Call(ctx, "repo.unregister", ipc.Params{RepoID: id}, nil)
-					if e != nil {
-						return nil, e
-					}
-					var repos []repository.Info
-					e = d.Client.Call(ctx, "repo.list", ipc.Params{}, &repos)
-					return func() {
-						d.repos = repos
-						d.selected = ""
-						d.snapshot = status.Snapshot{}
-						if len(repos) > 0 {
-							d.selected = repos[0].ID
-							d.refresh()
-						}
-					}, e
-				})
+			}
+			if iconButton(c, "", "refresh", false).Label(d.text("refresh")).Tooltip(d.text("refresh")).Disabled(d.busy || (d.selected == "" && d.page != 4)).Clicked() {
+				d.refresh()
+			}
+			if iconButton(c, "", "settings", false).Label(d.text("nav.settings")).Tooltip(d.text("nav.settings")).Clicked() {
+				d.openSettings()
 			}
 		})
-		native.Column(c).Grow(1).FillHeight().Padding(20).Gap(12).Children(func() {
-			native.Row(c).Gap(10).Children(func() {
-				for _, r := range d.repos {
-					if r.ID == d.selected {
-						native.Text(c, filepath.Base(r.Root)).Bold().Tooltip(r.Root)
-					}
+		native.Row(c).Grow(1).FillWidth().Gap(6).Children(func() {
+			native.Column(c).Width(174).FillHeight().Padding(10).Gap(6).Background(t.Background).Radius(8).Children(func() {
+				if iconButton(c, d.text("repo.open")+"…", "open", true).FillWidth().Disabled(d.busy).Clicked() {
+					d.chooseRepository()
 				}
-				if d.snapshot.Branch != "" && (d.page == 0 || d.page == 2) {
-					native.Text(c, d.snapshot.Branch).TextColor(t.TextMuted)
+				if iconButton(c, d.text("clone.run")+"…", "clone", false).FillWidth().Disabled(d.busy).Clicked() {
+					d.page = 5
 				}
-				if d.selected != "" && d.page != 5 {
-					for _, op := range []struct{ label, action string }{{"remote.fetch", "fetch"}, {"remote.pull", "pull"}, {"remote.push", "push"}} {
-						if iconButton(c, d.text(op.label), op.label, false).Disabled(d.busy).Clicked() {
-							d.remoteAction(op.action)
+				for _, item := range []struct {
+					page  int
+					label string
+				}{{0, "changes.nav"}, {1, "nav.history"}, {3, "nav.branches"}} {
+					label := d.text(item.label)
+					key := map[int]string{0: "changes", 1: "history", 3: "branch", 4: "settings"}[item.page]
+					if iconButton(c, label, key, false).FillWidth().Selected(d.page == item.page || item.page == 0 && d.page == 2).Disabled(d.busy).Clicked() {
+						if item.page == 4 {
+							d.openSettings()
+							continue
 						}
-					}
-				}
-				native.Box(c).Grow(1)
-				if iconButton(c, d.text("refresh"), "refresh", false).Disabled(d.busy || (d.selected == "" && d.page != 4)).Clicked() {
-					d.refresh()
-				}
-			})
-			if d.busy {
-				native.Text(c, d.text("busy")).TextColor(t.TextMuted)
-			}
-			if d.update.Available {
-				if native.Button(c, fmt.Sprintf(d.text("update.available"), d.update.Latest)).Clicked() {
-					c.OpenURL(d.update.URL)
-				}
-			}
-			if d.err != "" {
-				native.Text(c, d.text("error")+": "+d.err).TextColor(native.Hex("#bf3030"))
-			}
-			if d.selected == "" && d.page != 4 && d.page != 5 {
-				native.Column(c).Grow(1).FillWidth().Center().Gap(16).Children(func() {
-					native.Text(c, "MyGittu").FontSize(32).Bold()
-					native.Text(c, d.text("repo.drop")).TextColor(t.TextMuted)
-					if iconButton(c, d.text("repo.open")+"…", "open", true).Disabled(d.busy).Clicked() {
-						d.chooseRepository()
-					}
-				})
-				return
-			}
-			switch d.page {
-			case 0, 2:
-				d.workspace(c, t)
-			case 1:
-				native.Row(c).Gap(8).Children(func() {
-					native.TextInput(c, &d.query).Placeholder(d.text("history.search")).Grow(1).Disabled(d.busy)
-					if iconButton(c, d.text("search"), "search", false).Disabled(d.busy).Clicked() {
+						d.page = item.page
 						d.offset = 0
 						d.refresh()
 					}
-				})
-				d.history.Selected = &d.logRow
-				native.Table(c, &d.history, []native.TableColumn{{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190}}, len(d.logs), func(row, col int) {
-					l := d.logs[row]
-					values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
-					native.Text(c, values[col])
-				}).Grow(1).FillWidth()
-				if native.Button(c, d.text("commit.details")).Disabled(d.busy || d.logRow < 0 || d.logRow >= len(d.logs)).Clicked() {
-					id, hash := d.selected, d.logs[d.logRow].Hash
-					d.task(func(ctx context.Context) (func(), error) {
-						var detail string
-						e := d.Client.Call(ctx, "git.show", ipc.Params{RepoID: id, Hash: hash}, &detail)
-						return func() { d.detail = detail }, e
-					})
 				}
-				if d.detail != "" {
-					native.TextArea(c, &d.detail).Height(180).FillWidth().ReadOnly(true)
+				if len(d.repos) > 0 {
+					native.Text(c, d.text("repo.recent")).TextColor(t.TextMuted)
 				}
-				native.Row(c).Gap(8).Children(func() {
-					if native.Button(c, d.text("previous")).Disabled(d.busy || d.offset == 0).Clicked() {
-						d.offset = max(0, d.offset-100)
-						d.refresh()
+				choice := d.selected
+				native.Sidebar(c, &choice, func() {
+					for _, r := range d.repos {
+						native.SidebarItem(c, r.ID, icons["open"], filepath.Base(r.Root)).Tooltip(r.Root)
 					}
-					if len(d.logs) == 0 {
-						native.Text(c, d.text("history.empty"))
-					} else {
-						native.Text(c, fmt.Sprintf("%d–%d", d.offset+1, d.offset+len(d.logs)))
-					}
-					if native.Button(c, d.text("next")).Disabled(d.busy || len(d.logs) < 100).Clicked() {
-						d.offset += 100
-						d.refresh()
-					}
-				})
-			case 3:
-				native.TextArea(c, &d.detail).Grow(1).FillWidth().ReadOnly(true)
-				native.TextInput(c, &d.branch).Placeholder(d.text("branch.name")).FillWidth()
-				native.Row(c).Gap(8).Children(func() {
-					for _, op := range []struct{ label, action string }{{d.text("branch.create"), "create"}, {d.text("branch.switch"), "switch"}, {d.text("branch.delete"), "delete"}, {d.text("branch.merge"), "merge"}} {
-						if native.Button(c, op.label).Disabled(d.busy || d.branch == "").Clicked() {
-							d.mutate("git.branch", ipc.Params{Action: op.action, Name: d.branch})
+				}).Grow(1).Disabled(d.busy).OnChange(func() {
+					for _, repo := range d.repos {
+						if repo.ID == choice {
+							d.open(repo.Root)
+							break
 						}
 					}
 				})
-			case 5:
-				native.Text(c, d.text("clone.title")).Bold()
-				native.TextInput(c, &d.cloneURL).Placeholder(d.text("clone.url")).FillWidth()
-				native.TextInput(c, &d.cloneDestination).Placeholder(d.text("clone.destination")).FillWidth()
-				if native.PrimaryButton(c, d.text("clone.run")).Disabled(d.busy || strings.TrimSpace(d.cloneURL) == "" || !filepath.IsAbs(d.cloneDestination)).Clicked() {
-					url, dest := d.cloneURL, d.cloneDestination
+				if native.Button(c, d.text("repo.remove")).FillWidth().Disabled(d.busy || d.selected == "").Clicked() {
+					id := d.selected
 					d.task(func(ctx context.Context) (func(), error) {
-						var repo repository.Info
-						e := d.Client.Call(ctx, "git.clone", ipc.Params{URL: url, Destination: dest}, &repo)
-						return func() { d.repos = append(d.repos, repo); d.selected = repo.ID; d.page = 0; d.refresh() }, e
+						e := d.Client.Call(ctx, "repo.unregister", ipc.Params{RepoID: id}, nil)
+						if e != nil {
+							return nil, e
+						}
+						var repos []repository.Info
+						e = d.Client.Call(ctx, "repo.list", ipc.Params{}, &repos)
+						return func() {
+							d.repos = repos
+							d.selected = ""
+							d.snapshot = status.Snapshot{}
+							if len(repos) > 0 {
+								d.selected = repos[0].ID
+								d.refresh()
+							}
+						}, e
 					})
 				}
-			case 6:
-				native.Text(c, d.text("remote."+d.branch)).Bold()
-				if native.PrimaryButton(c, d.text("remote."+d.branch)).Disabled(d.busy).Clicked() {
-					action := d.branch
-					d.page = 0
-					d.mutate("git.remote", ipc.Params{Action: action})
+			})
+			native.Column(c).Grow(1).FillHeight().Gap(6).Children(func() {
+
+				if d.busy {
+					native.Row(c).Gap(8).AlignItems(native.Center).Children(func() {
+						if d.operation == "" {
+							native.Text(c, d.text("busy")).TextColor(t.TextMuted)
+						} else {
+							OperationIcon(c, 32, d.operationFrame)
+							native.Text(c, d.text(d.operation)).TextColor(t.TextMuted)
+						}
+					})
 				}
-			}
+				if d.update.Available {
+					label := fmt.Sprintf(d.text("update.install"), d.update.Latest)
+					if d.updateInstalling {
+						label = d.text("update.downloading")
+					}
+					if native.Button(c, label).Disabled(d.updateInstalling).Clicked() {
+						d.installUpdate()
+					}
+				}
+				if d.err != "" {
+					native.Text(c, d.text("error")+": "+d.err).TextColor(native.Hex("#bf3030"))
+				}
+				if d.selected == "" && d.page != 4 && d.page != 5 {
+					native.Column(c).Grow(1).FillWidth().Center().Gap(16).Children(func() {
+						native.Text(c, "MyGittu").FontSize(32).Bold()
+						native.Text(c, d.text("repo.drop")).TextColor(t.TextMuted)
+						if iconButton(c, d.text("repo.open")+"…", "open", true).Disabled(d.busy).Clicked() {
+							d.chooseRepository()
+						}
+					})
+					return
+				}
+				switch d.page {
+				case 0, 2:
+					d.workspace(c, t)
+				case 1:
+					native.Row(c).Gap(8).Children(func() {
+						native.TextInput(c, &d.query).Placeholder(d.text("history.search")).Grow(1).Disabled(d.busy)
+						if iconButton(c, d.text("search"), "search", false).Disabled(d.busy).Clicked() {
+							d.offset = 0
+							d.refresh()
+						}
+					})
+					d.history.Selected = &d.logRow
+					native.Table(c, &d.history, []native.TableColumn{{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190}}, len(d.logs), func(row, col int) {
+						l := d.logs[row]
+						values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
+						native.Text(c, values[col])
+					}).Grow(1).FillWidth()
+					if native.Button(c, d.text("commit.details")).Disabled(d.busy || d.logRow < 0 || d.logRow >= len(d.logs)).Clicked() {
+						id, hash := d.selected, d.logs[d.logRow].Hash
+						d.task(func(ctx context.Context) (func(), error) {
+							var detail string
+							e := d.Client.Call(ctx, "git.show", ipc.Params{RepoID: id, Hash: hash}, &detail)
+							return func() { d.detail = detail }, e
+						})
+					}
+					if d.detail != "" {
+						native.TextArea(c, &d.detail).Height(180).FillWidth().ReadOnly(true)
+					}
+					native.Row(c).Gap(8).Children(func() {
+						if native.Button(c, d.text("previous")).Disabled(d.busy || d.offset == 0).Clicked() {
+							d.offset = max(0, d.offset-100)
+							d.refresh()
+						}
+						if len(d.logs) == 0 {
+							native.Text(c, d.text("history.empty"))
+						} else {
+							native.Text(c, fmt.Sprintf("%d–%d", d.offset+1, d.offset+len(d.logs)))
+						}
+						if native.Button(c, d.text("next")).Disabled(d.busy || len(d.logs) < 100).Clicked() {
+							d.offset += 100
+							d.refresh()
+						}
+					})
+				case 3:
+					native.TextArea(c, &d.detail).Grow(1).FillWidth().ReadOnly(true)
+					native.TextInput(c, &d.branch).Placeholder(d.text("branch.name")).FillWidth()
+					native.Row(c).Gap(8).Children(func() {
+						for _, op := range []struct{ label, action string }{{d.text("branch.create"), "create"}, {d.text("branch.switch"), "switch"}, {d.text("branch.delete"), "delete"}, {d.text("branch.merge"), "merge"}} {
+							if native.Button(c, op.label).Disabled(d.busy || d.branch == "").Clicked() {
+								d.mutate("git.branch", ipc.Params{Action: op.action, Name: d.branch})
+							}
+						}
+					})
+				case 5:
+					native.Text(c, d.text("clone.title")).Bold()
+					native.TextInput(c, &d.cloneURL).Placeholder(d.text("clone.url")).FillWidth()
+					native.TextInput(c, &d.cloneDestination).Placeholder(d.text("clone.destination")).FillWidth()
+					if native.PrimaryButton(c, d.text("clone.run")).Disabled(d.busy || strings.TrimSpace(d.cloneURL) == "" || !filepath.IsAbs(d.cloneDestination)).Clicked() {
+						url, dest := d.cloneURL, d.cloneDestination
+						d.operationTask("clone.running", func(ctx context.Context) (func(), error) {
+							var repo repository.Info
+							e := d.Client.Call(ctx, "git.clone", ipc.Params{URL: url, Destination: dest}, &repo)
+							return func() { d.repos = append(d.repos, repo); d.selected = repo.ID; d.page = 0; d.refresh() }, e
+						})
+					}
+				case 6:
+					native.Text(c, d.text("remote."+d.branch)).Bold()
+					if native.PrimaryButton(c, d.text("remote."+d.branch)).Disabled(d.busy).Clicked() {
+						action := d.branch
+						d.page = 0
+						d.mutate("git.remote", ipc.Params{Action: action})
+					}
+				}
+			})
 		})
 	})
 	d.settingsDialog(c)

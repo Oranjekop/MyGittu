@@ -38,19 +38,24 @@ Name: "zh_CN"; MessagesFile: "{#RepoRoot}\packaging\windows\languages\ChineseSim
 [Tasks]
 Name: desktopicon; Description: "创建桌面快捷方式"; Flags: unchecked
 Name: shell; Description: "启用资源管理器右键菜单"; Flags: unchecked
-Name: overlays; Description: "启用 Git 文件状态图标（可能需要重新启动资源管理器）"; Flags: unchecked
+Name: overlays; Description: "启用 Git 文件状态图标"; Flags: unchecked
 
 [Files]
 Source: "dist\windows\x64\*"; DestDir: "{app}"; Flags: ignoreversion; Check: UseX64
 Source: "dist\windows\arm64\*"; DestDir: "{app}"; Flags: ignoreversion; Check: UseArm64
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+#ifdef ModernShellPackage
+Source: "{#ModernShellPackage}"; DestDir: "{app}"; DestName: "MyGittuShell.msix"; Tasks: shell
+Source: "packaging\windows\register-modern.ps1"; DestDir: "{app}"; Tasks: shell
+#endif
 
 [Icons]
 Name: "{group}\MyGittu"; Filename: "{app}\desktop.exe"
 Name: "{autodesktop}\MyGittu"; Filename: "{app}\desktop.exe"; Tasks: desktopicon
 
 [Registry]
+Root: HKLM; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "MyGittuAgent"; ValueData: """{app}\agent.exe"""; Flags: uninsdeletevalue; Check: RestartExplorer
 Root: HKLM; Subkey: "Software\Classes\CLSID\{{29810E41-632A-4A9B-A190-4D6593668101}\InprocServer32"; ValueType: string; ValueData: "{app}\MyGittuShell.dll"; Flags: uninsdeletekey; Tasks: shell
 Root: HKLM; Subkey: "Software\Classes\CLSID\{{29810E41-632A-4A9B-A190-4D6593668101}\InprocServer32"; ValueType: string; ValueName: ThreadingModel; ValueData: Apartment; Tasks: shell
 Root: HKLM; Subkey: "Software\Classes\*\shellex\ContextMenuHandlers\MyGittu"; ValueType: string; ValueData: "{{29810E41-632A-4A9B-A190-4D6593668101}"; Flags: uninsdeletekey; Tasks: shell
@@ -58,13 +63,30 @@ Root: HKLM; Subkey: "Software\Classes\Directory\shellex\ContextMenuHandlers\MyGi
 Root: HKLM; Subkey: "Software\Classes\Directory\Background\shellex\ContextMenuHandlers\MyGittu"; ValueType: string; ValueData: "{{29810E41-632A-4A9B-A190-4D6593668101}"; Flags: uninsdeletekey; Tasks: shell
 
 [Run]
+Filename: "{app}\agent.exe"; Flags: nowait runhidden runasoriginaluser; Check: RestartExplorer
+#ifdef ModernShellPackage
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\register-modern.ps1"" -PackagePath ""{app}\MyGittuShell.msix"" -InstallPath ""{app}"""; Flags: runhidden runasoriginaluser; Tasks: shell; MinVersion: 10.0.22000
+#endif
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -Command ""$session = (Get-Process -Id $PID).SessionId; $shell = @(Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session); if ($shell.Count) {{ $shell | Stop-Process -Force -ErrorAction Stop; $shell | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue; if (-not (Get-Process explorer -ErrorAction SilentlyContinue | Where-Object SessionId -eq $session)) {{ Start-Process (Join-Path $env:WINDIR 'explorer.exe') } }"""; StatusMsg: "正在重新启动资源管理器…"; Flags: runhidden runasoriginaluser; Check: RestartExplorer
 Filename: "{app}\desktop.exe"; Description: "启动 MyGittu"; Flags: nowait postinstall skipifsilent runasoriginaluser
+
+#ifdef ModernShellPackage
+[UninstallRun]
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\register-modern.ps1"" -Remove"; Flags: runhidden skipifdoesntexist; RunOnceId: MyGittuModernMenu
+#endif
 
 [Code]
 function UseArm64: Boolean;
 begin Result := IsArm64; end;
 function UseX64: Boolean;
 begin Result := not IsArm64; end;
+
+function RestartExplorer: Boolean;
+begin
+  Result := WizardIsTaskSelected('shell') or WizardIsTaskSelected('overlays') or
+    RegKeyExists(HKLM, 'Software\Classes\Directory\shellex\ContextMenuHandlers\MyGittu') or
+    RegKeyExists(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers\MyGittu Clean');
+end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var I: Integer; Key, Id, LabelText: String;

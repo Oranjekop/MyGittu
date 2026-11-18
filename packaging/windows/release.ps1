@@ -10,7 +10,7 @@ try {
   $env:GOARCH=$arch
   New-Item -ItemType Directory -Force "dist/windows/$folder" | Out-Null
   $flags="-s -w -X mygittu/internal/buildinfo.Version=$Version"
-  go build -trimpath -ldflags $flags -o "dist/windows/$folder/agent.exe" ./cmd/agent
+  go build -trimpath -ldflags "-H=windowsgui $flags" -o "dist/windows/$folder/agent.exe" ./cmd/agent
   if($LASTEXITCODE){throw "Agent $arch build failed"}
   go build -trimpath -ldflags "-H=windowsgui $flags" -o "dist/windows/$folder/desktop.exe" ./cmd/desktop
   if($LASTEXITCODE){throw "Desktop $arch build failed"}
@@ -24,6 +24,11 @@ try {
  }
  $iscc=(Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
  if(!$iscc){$iscc=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'}
- & $iscc "/DAppVersion=$Version" packaging/windows/installer.iss
+ $setupArgs=@("/DAppVersion=$Version")
+ if($env:MYGITTU_CERT_PATH){
+  & "$PSScriptRoot/build-sparse.ps1" -Version $Version -CertificatePath $env:MYGITTU_CERT_PATH
+  $setupArgs+= "/DModernShellPackage=dist\release\MyGittu-$Version-Shell.msix"
+ }
+ & $iscc @setupArgs packaging/windows/installer.iss
  if($LASTEXITCODE){throw 'Installer compilation failed'}
 }finally{$env:GOARCH=$previousArch;Pop-Location}

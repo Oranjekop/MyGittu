@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	native "github.com/egoist/mygo/ui"
 	"strings"
 )
@@ -40,6 +41,15 @@ func (d *Desktop) settingsContents(c *native.Context) {
 			native.Text(c, d.text("busy"))
 		}
 	})
+	if d.update.Available {
+		label := fmt.Sprintf(d.text("update.install"), d.update.Latest)
+		if d.updateInstalling {
+			label = d.text("update.downloading")
+		}
+		if native.Button(c, label).Disabled(d.updateInstalling).Clicked() {
+			d.installUpdate()
+		}
+	}
 	if d.updateError != "" {
 		native.Text(c, d.updateError)
 	}

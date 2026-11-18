@@ -4,7 +4,7 @@
 
 ## 构建及安装
 
-新版菜单除 COM DLL 外还需要应用身份。实现依据 [Microsoft 官方集成说明](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/integrate-packaged-app-with-file-explorer)。当前没有发布者签名证书，因此默认 EXE 安装包不宣称启用 Windows 11 现代菜单。CI 会构建 unsigned sparse package 验证清单；未签名包不能作为正式安装包部署。
+新版菜单除 COM DLL 外还需要应用身份。实现依据 [Microsoft 官方集成说明](https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/integrate-packaged-app-with-file-explorer)。发布工作流可从 `MYGITTU_CERT_BASE64` 和 `MYGITTU_CERT_PASSWORD` 读取 PFX 与密码。本地运行 `release.ps1` 时可用 `MYGITTU_CERT_PATH` 指定 PFX，证书 Subject 应为 `CN=Oranjekop`。安装器在 Windows 11 上启用右键菜单任务时注册随包提供的签名身份。未配置证书的构建提供传统菜单。
 
 在 Windows SDK 环境运行：
 

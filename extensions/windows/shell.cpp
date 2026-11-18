@@ -198,7 +198,8 @@ static int cachedQuery(const std::wstring &path) {
   int state = query(path);
   if (cache.size() >= 2048)
     cache.clear();
-  cache[path] = {state, now + 500};
+  if (state != 0)
+    cache[path] = {state, now + 500};
   return state;
 }
 // CommandLineToArgvW compatible quoting; the executable is never supplied by

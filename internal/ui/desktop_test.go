@@ -62,6 +62,30 @@ func TestNativePages(t *testing.T) {
 		})
 	}
 }
+
+func TestCommitAndCloneProgress(t *testing.T) {
+	for _, operation := range []struct {
+		action, key, label string
+	}{
+		{"commit", "commit.running", "正在提交…"},
+		{"clone", "clone.running", "正在克隆…"},
+	} {
+		t.Run(operation.action, func(t *testing.T) {
+			d := New(nil, "", operation.action)
+			d.busy, d.operation = true, operation.key
+			tester := native.NewTester(d.view, 1160, 740)
+			if !tester.HasText(operation.label) {
+				t.Fatal("operation progress is missing")
+			}
+			d.busy, d.operation = false, ""
+			d.err = "operation failed"
+			tester.Frame()
+			if tester.HasText(operation.label) {
+				t.Fatal("operation progress remains after failure")
+			}
+		})
+	}
+}
 func TestLanguageSwitchAndEmptySettings(t *testing.T) {
 	d := New(nil, "", "")
 	d.settingsOpen = true

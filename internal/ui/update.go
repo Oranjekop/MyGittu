@@ -59,3 +59,23 @@ func (d *Desktop) checkUpdate(showError bool) {
 		})
 	}()
 }
+
+func (d *Desktop) installUpdate() {
+	d.updateInstalling = true
+	d.updateError = ""
+	version := d.update.Latest
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		err := app.InstallUpdate(ctx, version)
+		mygo.RunOnMain(func() {
+			d.updateInstalling = false
+			if err != nil {
+				d.updateError = err.Error()
+			}
+			if d.win != nil && !d.win.IsDestroyed() {
+				d.win.Invalidate()
+			}
+		})
+	}()
+}
