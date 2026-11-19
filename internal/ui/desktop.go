@@ -43,7 +43,6 @@ type Desktop struct {
 	filePaneChanged                    bool
 	captionStyled, captionDark         bool
 	staged                             bool
-	offset                             int
 	query                              string
 	cloneURL, cloneDestination         string
 	cloneOpen                          bool
@@ -57,6 +56,12 @@ type Desktop struct {
 	historyCurrentOnly                 bool
 	historyGraph                       []commitGraphRow
 	historyGraphWidth                  float32
+	historyGraphBuilder                commitGraphBuilder
+	historyQuery                       string
+	historyAllBranches                 bool
+	historyMore, historyLoading        bool
+	historyLoadError                   string
+	historyGeneration                  uint64
 	historyShown                       app.Commit
 	historyPatch                       patchView
 	historyMode                        int
@@ -312,10 +317,13 @@ func (d *Desktop) operationTask(operation string, work func(context.Context) (fu
 	}()
 }
 func (d *Desktop) refresh() {
-	id, page, query, offset := d.selected, d.page, d.query, d.offset
+	id, page, query := d.selected, d.page, d.query
 	allBranches := !d.historyCurrentOnly
 	if id == "" {
 		return
+	}
+	if page == 1 && !d.busy {
+		d.invalidateHistoryLoad()
 	}
 	d.task(func(ctx context.Context) (func(), error) {
 		var snap status.Snapshot
@@ -333,7 +341,7 @@ func (d *Desktop) refresh() {
 				e = d.Client.Call(ctx, "identity.get", ipc.Params{RepoID: id, Scope: "local"}, &identity)
 			}
 		case 1:
-			e = d.Client.Call(ctx, "git.log", ipc.Params{RepoID: id, Limit: 100, Offset: offset, Query: query, AllBranches: allBranches}, &logs)
+			e = d.Client.Call(ctx, "git.log", ipc.Params{RepoID: id, Limit: historyBatchSize + 1, Query: query, AllBranches: allBranches}, &logs)
 		case 3:
 			e = d.Client.Call(ctx, "git.branch.entries", ipc.Params{RepoID: id}, &branches)
 			for _, branch := range branches {
@@ -399,9 +407,13 @@ func (d *Desktop) refresh() {
 				}
 			}
 			if page == 1 {
-				d.logs = logs
-				d.historyGraph, d.historyGraphWidth = buildCommitGraph(logs, query != "")
-				d.logRow = slices.IndexFunc(logs, func(commit app.Commit) bool { return commit.Hash == d.historyShown.Hash })
+				d.historyQuery, d.historyAllBranches = query, allBranches
+				d.historyMore = len(logs) > historyBatchSize
+				d.logs = logs[:min(len(logs), historyBatchSize)]
+				d.historyGraphBuilder = commitGraphBuilder{}
+				d.historyGraph, d.historyGraphWidth = d.historyGraphBuilder.appendRows(d.logs, query != "")
+				d.history.ScrollTo(0, native.Start)
+				d.logRow = slices.IndexFunc(d.logs, func(commit app.Commit) bool { return commit.Hash == d.historyShown.Hash })
 				if d.logRow < 0 {
 					d.historySummary = nil
 					d.historyShown = app.Commit{}
@@ -733,7 +745,7 @@ func (d *Desktop) view(c *native.Context) {
 					label := d.text(item.label)
 					active := d.page == item.page || item.page == 0 && d.page == 2
 					if IconButton(c, "", item.icon, active).Label(label).Tooltip(label).FillWidth().Disabled(d.busy).Clicked() {
-						d.page, d.offset = item.page, 0
+						d.page = item.page
 						d.refresh()
 					}
 				}

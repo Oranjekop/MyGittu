@@ -94,26 +94,49 @@ func (d *Desktop) showProjectTabs(c *native.Context) {
 		return
 	}
 	d.rememberProjectTab()
-	native.ScrollHorizontal(c).FillWidth().Height(controlHeight(c) + 4).Gap(detailSpacing).Children(func() {
-		for _, tab := range tabs {
-			native.Row(c).Gap(2).AlignItems(native.Center).Children(func() {
+	active := slices.IndexFunc(tabs, func(tab *projectTab) bool { return tab.path == d.projectShownPath })
+	selected := max(0, active)
+	native.ScrollHorizontal(c).FillWidth().Height(controlHeight(c) + 6).Children(func() {
+		parts := native.TabsBase(c, &selected, len(tabs))
+		parts.List.Gap(detailSpacing).Children(func() {
+			for i, tab := range tabs {
 				name := path.Base(tab.path)
 				label := name
 				if tab.dirty() {
-					label += " •"
-				}
-				if IconButton(c, label, projectFileIcon(name), tab.path == d.projectShownPath).Tooltip(tab.path).Disabled(d.busy).Clicked() {
-					d.openProjectTab(tab.path)
+					label += "*"
 				}
 				closeLabel := d.copy("关闭 ", "Close ") + tab.path
-				if IconButton(c, "", "close", false).Label(closeLabel).Tooltip(closeLabel).Disabled(d.busy).Clicked() {
-					if tab.dirty() {
-						d.askAction(d.copy("放弃未保存的修改？", "Discard unsaved edits?"), tab.path, func() { d.closeProjectTab(tab) })
-					} else {
-						d.closeProjectTab(tab)
-					}
+				item := parts.Tab(i).Label(label).Tooltip(tab.path).Height(controlHeight(c)).
+					Padding(0, 4, 0, 8).Gap(6).AlignItems(native.Center).Radius(c.Theme().Radius).Disabled(d.busy)
+				switch {
+				case i == active:
+					item.Background(c.Theme().SurfacePressed)
+				case item.Hovered():
+					item.Background(c.Theme().SurfaceHover)
 				}
-			})
+				item.Children(func() {
+					native.Icon(c, icons[projectFileIcon(name)]).Size(14, 14)
+					native.Text(c, label).MaxWidth(180).SingleLine().Ellipsis("…")
+					close := native.ButtonBase(c).Label(closeLabel).Tooltip(closeLabel).Size(22, 22).Center().Radius(c.Theme().Radius)
+					if close.Hovered() {
+						close.Background(c.Theme().SurfaceHover)
+					}
+					close.Children(func() { native.Icon(c, icons["close"]).Size(12, 12) })
+					if close.Clicked() {
+						if tab.dirty() {
+							d.askAction(d.copy("放弃未保存的修改？", "Discard unsaved edits?"), tab.path, func() { d.closeProjectTab(tab) })
+						} else {
+							d.closeProjectTab(tab)
+						}
+					}
+				})
+				if !d.busy && item.Clicked() && active < 0 && i == 0 {
+					d.openProjectTab(tab.path)
+				}
+			}
+		})
+		if parts.List.Changed() && active != selected && !d.busy {
+			d.openProjectTab(tabs[selected].path)
 		}
 	})
 }

@@ -20,6 +20,9 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.detail, d.comparison, d.binary = "", nil, false
 		d.logs, d.logRow, d.historySummary, d.historyShown = nil, -1, nil, app.Commit{}
 		d.historyGraph, d.historyGraphWidth = nil, 0
+		d.historyGraphBuilder = commitGraphBuilder{}
+		d.invalidateHistoryLoad()
+		d.historyMore = false
 		d.projectSearch, d.projectCollapsed = "", nil
 		d.resetProjectFiles()
 		d.hunksOpen = false

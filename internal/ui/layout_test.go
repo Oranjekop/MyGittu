@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -38,6 +39,9 @@ func TestProjectTabsKeepUnsavedText(t *testing.T) {
 	}
 	d.projectCode.Buffer.Set("unsaved text")
 	tt.Frame()
+	if !tt.HasText("one.txt*") {
+		t.Fatal("modified tab lacks the asterisk")
+	}
 	if err := tt.Click("two.txt"); err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +53,24 @@ func TestProjectTabsKeepUnsavedText(t *testing.T) {
 	}
 	if !d.repositoryTools.confirmOpen || d.findProjectTab("one.txt") == nil {
 		t.Fatal("closing an edited tab must ask before discarding")
+	}
+}
+
+func TestHistoryScrollRequestsMoreWithoutPageButtons(t *testing.T) {
+	d := New(&ipc.Client{Dial: func(context.Context) (net.Conn, error) {
+		return nil, context.Canceled
+	}}, "", "")
+	d.selected, d.page, d.historyMore = "demo", 1, true
+	for i := range historyBatchSize {
+		d.logs = append(d.logs, app.Commit{Hash: fmt.Sprintf("%04d", i), Subject: "commit"})
+	}
+	tt := native.NewTester(d.view, 960, 680)
+	if d.historyLoading || tt.HasText(d.text("previous")) || tt.HasText(d.text("next")) {
+		t.Fatal("history showed pagination or loaded without scrolling")
+	}
+	tt.Scroll(500, 300, 0, 4000)
+	if !d.historyLoading {
+		t.Fatal("scrolling near the bottom did not request more commits")
 	}
 }
 

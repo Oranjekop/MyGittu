@@ -31,7 +31,17 @@ var graphColors = [...]native.Color{
 	native.Hex("#9b65d5"), native.Hex("#d15374"), native.Hex("#1b9aa2"),
 }
 
+type commitGraphBuilder struct {
+	lanes     []graphLane
+	nextColor int
+}
+
 func buildCommitGraph(commits []app.Commit, filtered bool) ([]commitGraphRow, float32) {
+	var builder commitGraphBuilder
+	return builder.appendRows(commits, filtered)
+}
+
+func (b *commitGraphBuilder) appendRows(commits []app.Commit, filtered bool) ([]commitGraphRow, float32) {
 	rows := make([]commitGraphRow, len(commits))
 	visible := make(map[string]bool, len(commits))
 	if filtered {
@@ -39,8 +49,7 @@ func buildCommitGraph(commits []app.Commit, filtered bool) ([]commitGraphRow, fl
 			visible[commit.Hash] = true
 		}
 	}
-	var lanes []graphLane
-	nextColor, maxLanes := 0, 0
+	lanes, nextColor := b.lanes, b.nextColor
 	find := func(hash string) int {
 		for i, lane := range lanes {
 			if lane.hash == hash {
@@ -90,10 +99,10 @@ func buildCommitGraph(commits []app.Commit, filtered bool) ([]commitGraphRow, fl
 			}
 			row.outgoing = append(row.outgoing, graphEdge{lane, dest, lanes[dest].color})
 		}
-		maxLanes = max(maxLanes, len(lanes))
 		rows[i] = row
 	}
-	return rows, max(56, float32(maxLanes*graphLaneSpacing+14))
+	b.lanes, b.nextColor = lanes, nextColor
+	return rows, max(56, float32(len(lanes)*graphLaneSpacing+14))
 }
 
 func (g commitGraphRow) draw(p *native.Painter, r native.Rect) {

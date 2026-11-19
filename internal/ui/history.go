@@ -2,14 +2,66 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"strings"
+	"time"
 
+	"github.com/egoist/mygo"
 	native "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"mygittu/internal/app"
 	"mygittu/internal/ipc"
 )
+
+const historyBatchSize = 100
+
+func (d *Desktop) invalidateHistoryLoad() {
+	d.historyGeneration++
+	d.historyLoading, d.historyLoadError = false, ""
+}
+
+func (d *Desktop) loadMoreHistory() {
+	if d.Client == nil || d.busy || d.historyLoading || !d.historyMore || len(d.logs) == 0 {
+		return
+	}
+	generation := d.historyGeneration
+	last := d.logs[len(d.logs)-1].Hash
+	params := ipc.Params{RepoID: d.selected, Offset: len(d.logs) - 1, Limit: historyBatchSize + 2,
+		Query: d.historyQuery, AllBranches: d.historyAllBranches}
+	d.historyLoading, d.historyLoadError = true, ""
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		var more []app.Commit
+		err := d.Client.Call(ctx, "git.log", params, &more)
+		mygo.RunOnMain(func() {
+			if generation != d.historyGeneration || d.win != nil && d.win.IsDestroyed() {
+				return
+			}
+			d.historyLoading = false
+			if err != nil {
+				d.historyLoadError = err.Error()
+			} else if len(more) == 0 || more[0].Hash != last {
+				d.historyMore = false
+				d.historyLoadError = d.copy("提交历史已变化，请刷新。", "Commit history changed. Refresh to continue.")
+			} else {
+				more = more[1:]
+				d.historyMore = len(more) > historyBatchSize
+				batch := more[:min(len(more), historyBatchSize)]
+				d.logs = append(d.logs, batch...)
+				if d.historyQuery != "" {
+					d.historyGraph, d.historyGraphWidth = buildCommitGraph(d.logs, true)
+				} else {
+					rows, width := d.historyGraphBuilder.appendRows(batch, false)
+					d.historyGraph = append(d.historyGraph, rows...)
+					d.historyGraphWidth = width
+				}
+			}
+			if d.win != nil {
+				d.win.Invalidate()
+			}
+		})
+	}()
+}
 
 func (d *Desktop) setHistoryPatch(patch string) {
 	files, _ := editor.ParsePatch(patch)
@@ -68,16 +120,20 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		currentOnly := d.historyCurrentOnly
 		native.Checkbox(c, &d.historyCurrentOnly, d.copy("仅当前分支", "Current branch only")).Disabled(d.busy)
 		if currentOnly != d.historyCurrentOnly {
-			d.offset = 0
 			d.refresh()
 		}
 		native.TextInput(c, &d.query).Placeholder(d.text("history.search")).Grow(1).Disabled(d.busy)
 		if IconButton(c, d.text("search"), "search", false).Disabled(d.busy).Clicked() {
-			d.offset = 0
 			d.refresh()
 		}
 	})
 	d.history.Selected = &d.logRow
+	d.history.NearEnd = 12
+	d.history.EndReached = func(_ int) {
+		if d.historyLoadError == "" {
+			d.loadMoreHistory()
+		}
+	}
 	d.history.HeaderCell = func(cell native.Element, col int) {
 		if col == 0 {
 			cell.Tooltip(d.copy("圆点表示普通提交，菱形表示合并提交。", "Circles are commits; diamonds are merge commits."))
@@ -126,7 +182,7 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 	}
 	native.Row(c).Gap(controlSpacing).Children(func() {
 		valid := d.logRow >= 0 && d.logRow < len(d.logs)
-		if IconButton(c, d.text("recover.undo"), "undo", false).Disabled(d.busy || !valid || d.offset != 0 || d.query != "" || !d.isHistoryHead()).Clicked() && valid {
+		if IconButton(c, d.text("recover.undo"), "undo", false).Disabled(d.busy || !valid || d.historyQuery != "" || !d.isHistoryHead()).Clicked() && valid {
 			d.confirmRecovery("undo", d.logs[d.logRow].Hash)
 		}
 		if IconButton(c, d.text("recover.revert"), "revert", false).Disabled(d.busy || !valid).Clicked() && valid {
@@ -152,19 +208,20 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 			d.showHistoryPatch(c)
 		}
 	}
-	native.Row(c).Gap(controlSpacing).Children(func() {
-		if IconButton(c, d.text("previous"), "left", false).Disabled(d.busy || d.offset == 0).Clicked() {
-			d.offset = max(0, d.offset-100)
-			d.refresh()
-		}
-		if len(d.logs) == 0 {
-			native.Text(c, d.text("history.empty"))
-		} else {
-			native.Text(c, fmt.Sprintf("%d–%d", d.offset+1, d.offset+len(d.logs)))
-		}
-		if IconButton(c, d.text("next"), "right", false).Disabled(d.busy || len(d.logs) < 100).Clicked() {
-			d.offset += 100
-			d.refresh()
-		}
-	})
+	if d.historyLoadError != "" {
+		native.Row(c).Gap(controlSpacing).Children(func() {
+			native.Text(c, d.historyLoadError).Grow(1).TextColor(t.Danger)
+			if IconButton(c, d.text("refresh"), "refresh", false).Disabled(d.busy).Clicked() {
+				if d.historyMore {
+					d.loadMoreHistory()
+				} else {
+					d.refresh()
+				}
+			}
+		})
+	} else if d.historyLoading {
+		native.Text(c, d.text("busy")).TextColor(t.TextMuted)
+	} else if len(d.logs) == 0 && !d.busy {
+		native.Text(c, d.text("history.empty"))
+	}
 }

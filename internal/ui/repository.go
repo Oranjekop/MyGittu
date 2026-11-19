@@ -18,7 +18,6 @@ func (d *Desktop) openWork(ctx context.Context, path string) (func(), error) {
 	return func() {
 		d.repos = repos
 		d.selectRepository(info.ID, info.Root)
-		d.offset = 0
 		if d.page == 6 {
 			d.page = 0
 		}
