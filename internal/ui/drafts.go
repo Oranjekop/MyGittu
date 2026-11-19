@@ -16,6 +16,7 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.message = d.loadDraft(id)
 		d.savedMessage = d.message
 		d.snapshot = status.Snapshot{}
+		d.remoteNotice = ""
 		d.row, d.changes, d.stagedCount = -1, nil, 0
 		d.detail, d.comparison, d.binary = "", nil, false
 		d.logs, d.logRow, d.historySummary, d.historyShown = nil, -1, nil, app.Commit{}

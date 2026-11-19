@@ -735,7 +735,7 @@ func TestFileHistoryShowsPatchAndBlameInColumns(t *testing.T) {
 
 func TestShellActionWindowsAt150Percent(t *testing.T) {
 	for _, tc := range []struct{ action, control string }{
-		{"commit", "提交暂存内容"},
+		{"commit", "提交（1）"},
 		{"log", "搜索"},
 		{"diff", "全部暂存"},
 		{"clone", "开始克隆"},
@@ -786,6 +786,14 @@ func TestShellActionWindowsAt150Percent(t *testing.T) {
 			if os.Getenv("MYGITTU_LAYOUT_PREVIEW") != "" {
 				tt.SetSize(int(options.Width), int(options.Height))
 				saveLayoutPreview(t, tt, "context-menu-"+tc.action+".png")
+			}
+			if tc.action == "commit" {
+				if err := tt.Click("提交选项"); err != nil {
+					t.Fatal(err)
+				}
+				if !tt.HasText("提交并推送") {
+					t.Fatal("missing Commit & Push action")
+				}
 			}
 			if tc.action == "commit" || tc.action == "clone" {
 				d.result = "操作完成"

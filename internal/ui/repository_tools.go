@@ -202,11 +202,15 @@ func (d *Desktop) remoteManager(c *native.Context, w *repositoryTools) {
 		branch := strings.TrimSpace(w.branch)
 		native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
 			for _, b := range []struct{ action, icon, zh, en string }{
-				{"pull", "pull", "拉取（仅快进）", "Pull (fast-forward only)"},
+				{"pull", "pull", "拉取", "Pull"},
 				{"track", "branch", "设置跟踪", "Set upstream"},
 				{"push", "push", "推送并跟踪", "Push and track"},
 			} {
-				if IconButton(c, d.copy(b.zh, b.en), b.icon, false).Disabled(d.busy || !exists || branch == "").Clicked() {
+				button := IconButton(c, d.copy(b.zh, b.en), b.icon, false).Disabled(d.busy || !exists || branch == "")
+				if b.action == "pull" {
+					button.Tooltip(d.text("remote.pull.hint"))
+				}
+				if button.Clicked() {
 					run(b.action, branch)
 				}
 			}

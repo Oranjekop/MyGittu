@@ -1,0 +1,28 @@
+#!/bin/bash
+set -euo pipefail
+
+target="${3:-/}"
+bin="${target%/}/Applications/MyGittu.app/Contents/MacOS"
+
+running() {
+  /bin/ps -ww -axo pid=,comm= | MYGITTU_EXECUTABLE="$1" /usr/bin/awk '
+    { pid = $1; sub(/^[[:space:]]*[0-9]+[[:space:]]+/, ""); if ($0 == ENVIRON["MYGITTU_EXECUTABLE"]) print pid }
+  '
+}
+
+if [[ -n "$(running "$bin/desktop")" ]]; then
+  echo 'Quit MyGittu before installing this update. 请退出 MyGittu 后重试安装。' >&2
+  exit 1
+fi
+
+for pid in $(running "$bin/agent"); do
+  kill -TERM "$pid" 2>/dev/null || true
+done
+
+for attempt in {1..50}; do
+  if [[ -z "$(running "$bin/agent")" ]]; then exit 0; fi
+  sleep 0.1
+done
+
+echo 'MyGittu Agent did not stop. MyGittu 后台进程未退出。' >&2
+exit 1

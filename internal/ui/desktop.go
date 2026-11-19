@@ -40,6 +40,9 @@ type Desktop struct {
 	logs                               []app.Commit
 	row                                int
 	files, history                     native.ListState
+	stagedCollapsed, changesCollapsed  bool
+	remoteRunning, remoteNotice        string
+	pushRetryRepo, pushFailure         string
 	filePane                           float32
 	filePaneChanged                    bool
 	captionStyled, captionDark         bool
@@ -426,26 +429,42 @@ func (d *Desktop) refresh() {
 }
 func (d *Desktop) mutate(method string, p ipc.Params) {
 	p.RepoID = d.selected
-	operation := ""
-	if method == "git.commit" {
-		operation = "commit.running"
-	}
-	d.operationTask(operation, func(ctx context.Context) (func(), error) {
-		e := d.Client.Call(ctx, method, p, nil)
+	d.task(func(ctx context.Context) (func(), error) {
+		err := d.Client.Call(ctx, method, p, nil)
 		return func() {
-			if method == "git.commit" {
-				d.message = ""
-				d.saveDraft()
-				if d.action == "commit" {
-					d.result = d.copy("提交成功", "Commit completed")
-					return
-				}
-			}
 			if method == "git.stage" || method == "git.unstage" {
 				clear(d.tools.batch)
 			}
 			d.refresh()
-		}, e
+		}, err
+	})
+}
+
+func (d *Desktop) commitChanges(push bool) {
+	params := ipc.Params{RepoID: d.selected, Message: d.message}
+	d.operationTask("commit.running", func(ctx context.Context) (func(), error) {
+		if err := d.Client.Call(ctx, "git.commit", params, nil); err != nil {
+			return nil, err
+		}
+		var pushErr error
+		if push {
+			pushErr = d.Client.Call(ctx, "git.remote", ipc.Params{RepoID: params.RepoID, Action: "push"}, nil)
+		}
+		return func() {
+			d.message = ""
+			d.saveDraft()
+			if push {
+				d.recordCommitPush(params.RepoID, pushErr)
+			}
+			if d.action == "commit" && pushErr == nil {
+				d.result = d.copy("提交成功", "Commit completed")
+				if push {
+					d.result = d.text("commit.pushDone")
+				}
+				return
+			}
+			d.refresh()
+		}, nil
 	})
 }
 func (d *Desktop) visible() []git.FileStatus {
@@ -534,45 +553,10 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 					d.confirmRecovery("merge.continue", "")
 				}
 			}
-			d.files.Selected = &d.row
-			previous := d.row
-			d.showStagingActions(c, files)
-			table := roundedTable(c, &d.files, []native.TableColumn{{Title: d.text("file")}, {Title: d.text("index"), Width: 68}, {Title: d.text("worktree"), Width: 68}}, len(files), func(row, col int) {
-				f := files[row]
-				if col == 0 {
-					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-						checked := d.tools.batch[f.Path]
-						native.Checkbox(c, &checked, "").Label(d.copy("批量选择 ", "Select for batch ") + f.Path)
-						if checked != d.tools.batch[f.Path] {
-							if checked {
-								if d.tools.batch == nil {
-									d.tools.batch = map[string]bool{}
-								}
-								d.tools.batch[f.Path] = true
-							} else {
-								delete(d.tools.batch, f.Path)
-							}
-						}
-						native.Icon(c, icons["file"]).Width(14).Height(14).TextColor(t.TextMuted)
-						native.Row(c).Grow(1).MinWidth(0).Gap(detailSpacing).AlignItems(native.Center).Tooltip(f.Path).Children(func() {
-							dir, name := filepath.Split(f.Path)
-							native.Text(c, name).MinWidth(0).SingleLine().Ellipsis("…")
-							if dir != "" {
-								native.Text(c, strings.TrimRight(dir, "/")).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").TextColor(t.TextMuted)
-							}
-						})
-					})
-				} else if col == 1 {
-					native.Text(c, d.text("state."+string(f.Index)))
-				} else {
-					native.Text(c, d.text("state."+string(f.Worktree)))
-				}
-			}).FillWidth().Disabled(d.busy)
-			tableOrEmptyState(c, table, len(files) == 0 && !d.busy && d.err == "", emptyDiffArt, d.copy("暂无变更", "No changes"))
-			if d.row != previous && d.row >= 0 && d.row < len(files) {
-				d.staged = files[d.row].Worktree == git.Clean
-				d.diff(files[d.row].Path)
+			if len(d.tools.batch) > 0 {
+				d.showStagingActions(c, files)
 			}
+			d.workspaceChangeList(c, files)
 			if d.action == "diff" {
 				return
 			}
@@ -597,8 +581,19 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				if IconButton(c, "", "undo", false).Label(d.copy("修正最近提交", "Amend latest commit")).Tooltip(d.copy("修正最近提交", "Amend latest commit")).Disabled(d.busy || d.snapshot.Merging || d.snapshot.CherryPicking).Clicked() {
 					d.prepareAmend()
 				}
-				if IconButton(c, d.text("commit.submit"), "commit", true).Disabled(d.busy || !canCommit || strings.TrimSpace(d.message) == "").Clicked() {
-					d.mutate("git.commit", ipc.Params{Message: d.message})
+				commitLabel := d.text("commit.submit")
+				if d.stagedCount > 0 {
+					commitLabel = fmt.Sprintf(d.text("commit.submitCount"), d.stagedCount)
+				}
+				commit := native.PrimarySplitButton(c, commitLabel)
+				commit.Group.Height(controlHeight(c)).Disabled(d.busy || !canCommit || strings.TrimSpace(d.message) == "")
+				commit.Arrow.Label(d.text("commit.actions")).PopoverMenuButton(func(menu *native.Menu) {
+					if menu.Item(d.text("commit.push")).Chosen() {
+						d.commitChanges(true)
+					}
+				})
+				if commit.Button.Clicked() {
+					d.commitChanges(false)
 				}
 			})
 		})
@@ -677,6 +672,34 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 		}
 	})
 }
+func (d *Desktop) toolbarStatus(c *native.Context) {
+	t := c.Theme()
+	native.Row(c).Grow(1).MinWidth(0).MinHeight(controlHeight(c)).Gap(detailSpacing).AlignItems(native.Center).Children(func() {
+		if d.pushFailure != "" && d.pushRetryRepo == d.selected {
+			native.Text(c, d.pushFailure).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(d.pushFailure).TextColor(t.Danger)
+			label := d.text("remote.push.retry")
+			if IconButton(c, "", "push", false).Label(label).Tooltip(label).Disabled(d.busy).Clicked() {
+				d.remoteAction("push")
+			}
+			return
+		}
+		message, color := d.remoteNotice, t.TextMuted
+		switch {
+		case d.err != "" && !d.cloneOpen:
+			message, color = d.text("error")+": "+d.err, t.Danger
+		case d.busy && d.operation != "" && d.operation != cloneOperation:
+			action, _, _ := strings.Cut(d.operation, ".")
+			OperationIcon(c, 20, d.operationFrame, action)
+			message = d.text(d.operation)
+		case d.busy && d.aiGenerating:
+			message = d.aiActionLabel()
+		}
+		if message != "" {
+			native.Text(c, message).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(message).TextColor(color)
+		}
+	})
+}
+
 func (d *Desktop) view(c *native.Context) {
 	if d.page != projectFilesPage {
 		d.cancelProjectPreview()
@@ -725,10 +748,14 @@ func (d *Desktop) view(c *native.Context) {
 					native.Textf(c, "↑ %d  ↓ %d", tracking.Ahead, tracking.Behind).Tooltip(tracking.Upstream).TextColor(t.TextMuted)
 				}
 			}
-			native.Box(c).Grow(1)
+			d.toolbarStatus(c)
 			if d.selected != "" {
 				for _, op := range []struct{ label, action string }{{"remote.fetch", "fetch"}, {"remote.pull", "pull"}, {"remote.push", "push"}} {
-					if IconButton(c, d.text(op.label), op.label, false).Disabled(d.busy).Clicked() {
+					label := d.text(op.label)
+					if d.remoteRunning == op.action {
+						label = d.text(op.label + ".running")
+					}
+					if IconButton(c, label, op.label, false).Tooltip(d.text(op.label + ".hint")).Disabled(d.busy).Clicked() {
 						d.remoteAction(op.action)
 					}
 				}
@@ -736,9 +763,7 @@ func (d *Desktop) view(c *native.Context) {
 			if d.refreshButton(c).Disabled(d.busy || (d.selected == "" && d.page != 4)).Clicked() {
 				d.refresh()
 			}
-			if IconButton(c, "", "settings", false).Label(d.text("nav.settings")).Tooltip(d.text("nav.settings")).Disabled(d.operation == cloneOperation).Clicked() {
-				d.openSettings()
-			}
+			d.settingsToolbarButton(c)
 		})
 		native.Row(c).Grow(1).FillWidth().Gap(panelSpacing).Children(func() {
 			native.Column(c).Width(sidebarWidth).FillHeight().Gap(detailSpacing).Children(func() {
@@ -769,31 +794,6 @@ func (d *Desktop) view(c *native.Context) {
 				}
 			})
 			native.Column(c).Grow(1).FillHeight().Gap(controlSpacing).Children(func() {
-
-				if d.busy && !d.settingsOpen && d.operation != cloneOperation && (d.operation != "" || d.aiGenerating) {
-					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-						if d.operation == "" {
-							label := d.aiActionLabel()
-							native.Text(c, label).TextColor(t.TextMuted)
-						} else {
-							action, _, _ := strings.Cut(d.operation, ".")
-							OperationIcon(c, 40, d.operationFrame, action)
-							native.Text(c, d.text(d.operation)).TextColor(t.TextMuted)
-						}
-					})
-				}
-				if d.update.Available {
-					label := fmt.Sprintf(d.text("update.install"), d.update.Latest)
-					if d.updateInstalling {
-						label = d.text("update.downloading")
-					}
-					if IconButton(c, label, "download", false).Disabled(d.updateInstalling).Clicked() {
-						d.installUpdate()
-					}
-				}
-				if d.err != "" && !d.cloneOpen {
-					native.Text(c, d.text("error")+": "+d.err).TextColor(native.Hex("#bf3030"))
-				}
 				if d.selected == "" && d.page != 4 {
 					native.Column(c).Grow(1).FillWidth().Center().Gap(16).Children(func() {
 						native.Text(c, "MyGittu").FontSize(28).Bold()

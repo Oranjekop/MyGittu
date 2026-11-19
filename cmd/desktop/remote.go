@@ -40,6 +40,7 @@ func runRemote(client *ipc.Client, path, action string) error {
 	defer cancel()
 	mygo.App.WhenReady(func() {
 		d.win = ui.NewRememberedWindow(d.windowOptions())
+		configureRemoteCaption(d.win.NativeHandle())
 		d.win.OnClosed(cancel)
 		animationCtx, stopAnimation := context.WithCancel(ctx)
 		go d.animate(animationCtx)
@@ -57,7 +58,7 @@ func (d *remoteWindow) windowOptions() mygo.WindowOptions {
 		DisableMinimize:   true,
 		DisableMaximize:   true,
 		DisableFullScreen: true,
-		HideWindowButtons: runtime.GOOS != "windows",
+		HideWindowButtons: runtime.GOOS != "windows" && runtime.GOOS != "darwin",
 		StateKey:          "remote",
 		Width:             400, Height: 234, MinWidth: 360, MinHeight: 220,
 		Content: native.View(d.view),
@@ -87,7 +88,7 @@ func (d *remoteWindow) view(c *native.Context) {
 		d.content(c, t)
 		if d.win != nil {
 			bar := c.TitleBar()
-			if runtime.GOOS == "windows" {
+			if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 				native.Box(c).Absolute().Top(0).Left(bar.Left).Right(bar.Right).Height(bar.Height).DragWindow()
 			} else {
 				native.Box(c).Absolute().Top(0).Left(0).Right(44).Height(34).DragWindow()

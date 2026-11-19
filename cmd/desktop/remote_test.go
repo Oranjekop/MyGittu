@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	native "github.com/egoist/mygo/ui"
@@ -32,6 +33,9 @@ func TestRemoteWindowRemembersPlacementWithOnlyCloseControl(t *testing.T) {
 	if options.StateKey == "" || !options.DisableMinimize || !options.DisableMaximize ||
 		!options.DisableFullScreen || options.DisableClose || options.DisableResize || options.DisableMove {
 		t.Fatalf("unexpected progress window configuration: %+v", options)
+	}
+	if runtime.GOOS == "darwin" && options.HideWindowButtons {
+		t.Fatal("macOS progress windows must expose the native close button")
 	}
 }
 

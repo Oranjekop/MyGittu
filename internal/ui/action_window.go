@@ -113,6 +113,7 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 				}
 			})
 		}
+		d.showCommitPushFailure(c)
 		if d.err != "" && !d.settingsOpen {
 			native.Scroll(c).FillWidth().MinHeight(34).MaxHeight(132).Children(func() {
 				native.Text(c, d.text("error")+": "+d.err).FillWidth().TextColor(t.Danger)

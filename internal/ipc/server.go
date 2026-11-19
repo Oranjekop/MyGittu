@@ -101,7 +101,7 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 	case "health.ping":
 		result = map[string]any{"version": Version, "app_version": buildinfo.Version}
 	case "update.check":
-		result, e = s.Service.CheckUpdate(ctx)
+		result, e = app.CheckUpdate(ctx)
 	case "settings.get":
 		if s.Service.Settings == nil {
 			result = settings.Values{Language: "zh-CN", Theme: "system"}

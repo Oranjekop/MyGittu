@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"syscall"
 )
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 	}
 	service := &app.Service{Runner: r, Registry: registry, Settings: prefs}
 	cache := status.New(service)
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	listener, e := platform.Listen()
 	if e != nil {

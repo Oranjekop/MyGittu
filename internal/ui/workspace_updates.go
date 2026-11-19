@@ -47,10 +47,12 @@ func (d *Desktop) pollWorkspace(ctx context.Context) {
 		err := d.Client.Call(request, "status.poll", ipc.Params{RepoID: id, StatusUpdated: previous}, &snapshot)
 		var comparison app.Comparison
 		var comparisonOK bool
+		comparisonStaged := staged
 		if err == nil && snapshot.Updated.After(previous) && selected.Path != "" {
 			for _, file := range snapshot.Files {
 				if file.Path == selected.Path && file.State != git.Ignored {
-					comparisonOK = d.Client.Call(request, "git.comparison", ipc.Params{RepoID: id, Path: file.Path, OriginalPath: file.OriginalPath, Staged: staged}, &comparison) == nil
+					comparisonStaged = workspaceDiffSide(file, staged)
+					comparisonOK = d.Client.Call(request, "git.comparison", ipc.Params{RepoID: id, Path: file.Path, OriginalPath: file.OriginalPath, Staged: comparisonStaged}, &comparison) == nil
 					break
 				}
 			}
@@ -61,8 +63,9 @@ func (d *Desktop) pollWorkspace(ctx context.Context) {
 				d.selected != id || !d.canPollWorkspace() || !d.snapshot.Updated.Equal(previous) {
 				return
 			}
+			sameSide := d.staged == staged
 			changed := d.applyWorkspaceStatus(snapshot)
-			if comparisonOK && d.staged == staged && d.row >= 0 && d.row < len(d.changes) && d.changes[d.row].Path == selected.Path {
+			if comparisonOK && sameSide && d.staged == comparisonStaged && d.row >= 0 && d.row < len(d.changes) && d.changes[d.row].Path == selected.Path {
 				changed = d.applyComparison(selected.Path, comparison) || changed
 			}
 			if changed {
@@ -96,8 +99,8 @@ func (d *Desktop) applyWorkspaceStatus(snapshot status.Snapshot) bool {
 	d.row = slices.IndexFunc(changes, func(file git.FileStatus) bool { return file.Path == selected.Path })
 	if d.row < 0 {
 		d.comparison, d.binary = nil, false
-	} else if changes[d.row].Index == git.Clean || changes[d.row].Worktree == git.Clean {
-		d.staged = changes[d.row].Worktree == git.Clean
+	} else {
+		d.staged = workspaceDiffSide(changes[d.row], d.staged)
 	}
 	return true
 }

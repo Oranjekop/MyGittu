@@ -26,7 +26,7 @@ type releaseInfo struct {
 	Prerelease bool   `json:"prerelease"`
 }
 
-func (s *Service) CheckUpdate(ctx context.Context) (UpdateInfo, error) {
+func CheckUpdate(ctx context.Context) (UpdateInfo, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	info, err := checkUpdate(ctx, client, "https://api.github.com/repos/Oranjekop/MyGittu/releases/latest", buildinfo.Version)
 	if err == nil {

@@ -15,13 +15,13 @@ import (
 	"mygittu/internal/buildinfo"
 )
 
-func InstallUpdate(ctx context.Context, version string, progress func(int64, int64)) error {
+func DownloadUpdate(ctx context.Context, version string, progress func(int64, int64)) (string, error) {
 	if _, ok := stableVersion(version); !ok || strings.HasPrefix(version, "v") || compareVersions(version, buildinfo.Version) <= 0 {
-		return fmt.Errorf("invalid update version")
+		return "", fmt.Errorf("invalid update version")
 	}
 	suffix := map[string]string{"windows": "-Windows-Setup.exe", "darwin": "-macOS.pkg"}[runtime.GOOS]
 	if suffix == "" {
-		return fmt.Errorf("online installation is unavailable on %s", runtime.GOOS)
+		return "", fmt.Errorf("online installation is unavailable on %s", runtime.GOOS)
 	}
 	name := "MyGittu-" + version + suffix
 	base := "https://github.com/Oranjekop/MyGittu/releases/download/v" + version + "/"
@@ -34,19 +34,21 @@ func InstallUpdate(ctx context.Context, version string, progress func(int64, int
 	}}
 	dir, err := os.MkdirTemp("", "MyGittu-update-")
 	if err != nil {
-		return err
+		return "", err
 	}
 	dest := filepath.Join(dir, name)
-	if err = downloadInstaller(ctx, client, base, name, dest, progress); err == nil {
-		if err = ctx.Err(); err == nil {
-			err = launchInstaller(dest)
-		}
+	if err = downloadInstaller(ctx, client, base, name, dest, progress); err != nil {
+		DiscardUpdate(dest)
+		return "", err
 	}
-	if err != nil {
-		_ = os.Remove(dest)
-		_ = os.Remove(dir)
-	}
-	return err
+	return dest, nil
+}
+
+func OpenUpdateInstaller(path string) error { return launchInstaller(path) }
+
+func DiscardUpdate(path string) {
+	_ = os.Remove(path)
+	_ = os.Remove(filepath.Dir(path))
 }
 
 func downloadInstaller(ctx context.Context, client *http.Client, base, name, dest string, callbacks ...func(int64, int64)) error {

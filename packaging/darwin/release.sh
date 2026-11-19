@@ -62,7 +62,7 @@ plutil -lint "$APP/Contents/Info.plist"
 if [[ "${2:-}" == "--app-only" ]]; then
   exit 0
 fi
-pkgbuild --root dist/macos/root --identifier dev.mygittu.desktop --version "$VERSION" --install-location / --component-plist packaging/darwin/components.plist .work/universal/MyGittu-component.pkg
+pkgbuild --root dist/macos/root --identifier dev.mygittu.desktop --version "$VERSION" --install-location / --component-plist packaging/darwin/components.plist --scripts packaging/darwin/pkg-scripts .work/universal/MyGittu-component.pkg
 sed "s/@VERSION@/$VERSION/g" packaging/darwin/Distribution.xml > .work/universal/Distribution.xml
 productbuild --distribution .work/universal/Distribution.xml --resources packaging/darwin/resources --package-path .work/universal "dist/release/MyGittu-$VERSION-macOS.pkg"
 pkgutil --payload-files .work/universal/MyGittu-component.pkg | grep 'Applications/MyGittu.app/Contents/MacOS/desktop'
