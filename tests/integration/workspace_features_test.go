@@ -3,11 +3,40 @@ package integration
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 )
+
+func TestProjectFileSavePreservesWorktreeAndRejectsStaleVersion(t *testing.T) {
+	s, id, dir := setup(t)
+	ctx := context.Background()
+	const name = "notes.txt"
+	target := filepath.Join(dir, name)
+	write(t, target, "before\r\n")
+	command(t, dir, "add", name)
+	preview, err := s.PreviewFile(ctx, id, name, 0, "")
+	if err != nil || preview.New != "before\r\n" {
+		t.Fatalf("preview = %+v, %v", preview, err)
+	}
+	version, err := s.SaveProjectFile(ctx, id, name, preview.Version, []byte("after\r\n"))
+	if err != nil || version == "" {
+		t.Fatalf("save version = %q, %v", version, err)
+	}
+	if got := strings.TrimSpace(command(t, dir, "show", ":"+name)); got != "before" {
+		t.Fatalf("save changed the Git index: %q", got)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil || string(data) != "after\r\n" {
+		t.Fatalf("worktree contents = %q, %v", data, err)
+	}
+	write(t, target, "external edit\r\n")
+	if _, err := s.SaveProjectFile(ctx, id, name, version, []byte("replacement")); err == nil {
+		t.Fatal("stale save overwrote an external edit")
+	}
+}
 
 func TestTagVersionOrderAndTimestamps(t *testing.T) {
 	service, id, dir := setup(t)

@@ -10,3 +10,6 @@ var SmallPNG []byte
 
 //go:embed remote-rabbit.png
 var RemoteRabbitPNG []byte
+
+//go:embed up-to-date-rabbit.png
+var UpToDateRabbitPNG []byte

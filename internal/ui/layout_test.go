@@ -25,6 +25,33 @@ import (
 	"mygittu/internal/status"
 )
 
+func TestProjectTabsKeepUnsavedText(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.page = "demo", projectFilesPage
+	text := &projectTab{path: "one.txt", preview: app.FilePreview{New: "original", Version: "8:1"}, code: codePreview("one.txt", "original"), loaded: true}
+	other := &projectTab{path: "two.txt", preview: app.FilePreview{New: "other", Version: "5:1"}, code: codePreview("two.txt", "other"), loaded: true}
+	d.projectTabs = map[string][]*projectTab{"demo": {text, other}}
+	d.activateProjectTab(text)
+	tt := native.NewTester(d.view, 960, 680)
+	if d.projectCode.ReadOnly {
+		t.Fatal("regular text did not become editable")
+	}
+	d.projectCode.Buffer.Set("unsaved text")
+	tt.Frame()
+	if err := tt.Click("two.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if d.projectShownPath != "two.txt" || !d.hasUnsavedProjectFiles() {
+		t.Fatal("switching tabs lost the pending edit")
+	}
+	if err := tt.Click("关闭 one.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if !d.repositoryTools.confirmOpen || d.findProjectTab("one.txt") == nil {
+		t.Fatal("closing an edited tab must ask before discarding")
+	}
+}
+
 func TestLargeProjectTextHasOneScrollbar(t *testing.T) {
 	firstText := strings.Repeat("first section\n", 8000)
 	lastText := strings.Repeat("second section\n", 12000) + "最后一行"
@@ -208,6 +235,13 @@ func TestWorkspaceAtNarrow150Percent(t *testing.T) {
 	tt.Move(20, 20)
 	if d.filePane >= 380 {
 		t.Fatal("dragging the file divider did not resize the pane")
+	}
+	layoutPath := filepath.Join(t.TempDir(), "workspace-file-pane.json")
+	d.saveFilePane(layoutPath)
+	reopened := New(nil, "", "")
+	reopened.restoreFilePane(layoutPath)
+	if reopened.filePane != d.filePane {
+		t.Fatalf("reopened divider width = %v, want %v", reopened.filePane, d.filePane)
 	}
 	if d.comparison.Layout != editor.DiffUnified || tt.Image().Bounds().Dx() != 1440 {
 		t.Fatalf("narrow DPI layout not applied: layout=%v size=%v", d.comparison.Layout, tt.Image().Bounds())
@@ -595,6 +629,27 @@ func TestCommitHistoryFormatsTheSameDateInListAndDetails(t *testing.T) {
 	if !tt.HasText(expected) || !tt.HasText("Developer · "+expected) || tt.HasText(timestamp) {
 		t.Fatal("history exposed an unformatted timestamp")
 	}
+}
+
+func TestHistoryGraphShowsMergeAndBranchLanes(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.page = "demo", 1
+	d.logs = []app.Commit{
+		{Hash: "merge", Subject: "Merge feature", Parents: []string{"main", "feature"}, Refs: "HEAD -> main"},
+		{Hash: "feature", Subject: "Feature change", Parents: []string{"base"}, Refs: "feature"},
+		{Hash: "main", Subject: "Main change", Parents: []string{"base"}},
+		{Hash: "base", Subject: "Base"},
+	}
+	d.historyGraph, d.historyGraphWidth = buildCommitGraph(d.logs, false)
+	if merge, feature := d.historyGraph[0], d.historyGraph[1]; !merge.merge || len(merge.outgoing) != 2 || feature.lane == merge.lane || !feature.incoming {
+		t.Fatal("graph lost a merge parent or its branch lane")
+	}
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if !tt.HasText("分支图") || !tt.HasText("HEAD -> main") {
+		t.Fatal("missing graph column or branch label")
+	}
+	saveLayoutPreview(t, tt, "history-graph.png")
 }
 
 func TestFileHistoryShowsPatchAndBlameInColumns(t *testing.T) {

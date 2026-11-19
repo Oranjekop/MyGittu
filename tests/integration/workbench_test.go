@@ -8,6 +8,25 @@ import (
 	"time"
 )
 
+func TestHistoryGraphUsesGitParentsAcrossLocalBranches(t *testing.T) {
+	s, id, dir := setup(t)
+	ctx := context.Background()
+	command(t, dir, "commit", "--allow-empty", "-m", "base")
+	command(t, dir, "switch", "-c", "feature")
+	command(t, dir, "commit", "--allow-empty", "-m", "feature")
+	command(t, dir, "switch", "main")
+	command(t, dir, "commit", "--allow-empty", "-m", "main")
+	all, err := s.History(ctx, id, 100, 0, "", true)
+	if err != nil || len(all) != 3 {
+		t.Fatalf("expected both branch tips and their common parent: %+v, %v", all, err)
+	}
+	command(t, dir, "merge", "--no-ff", "-m", "merge", "feature")
+	current, err := s.History(ctx, id, 100, 0, "", false)
+	if err != nil || len(current) != 4 || len(current[0].Parents) != 2 || !strings.Contains(current[0].Refs, "HEAD -> main") {
+		t.Fatalf("missing merge parents or current branch label: %+v, %v", current, err)
+	}
+}
+
 func TestWorkbenchConflictAndGraph(t *testing.T) {
 	s, id, dir := setup(t)
 	ctx := context.Background()

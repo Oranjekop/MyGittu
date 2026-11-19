@@ -65,6 +65,12 @@ func (d *Desktop) showHistoryPatch(c *native.Context) {
 
 func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 	native.Row(c).Gap(controlSpacing).Children(func() {
+		currentOnly := d.historyCurrentOnly
+		native.Checkbox(c, &d.historyCurrentOnly, d.copy("仅当前分支", "Current branch only")).Disabled(d.busy)
+		if currentOnly != d.historyCurrentOnly {
+			d.offset = 0
+			d.refresh()
+		}
 		native.TextInput(c, &d.query).Placeholder(d.text("history.search")).Grow(1).Disabled(d.busy)
 		if IconButton(c, d.text("search"), "search", false).Disabled(d.busy).Clicked() {
 			d.offset = 0
@@ -72,12 +78,34 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		}
 	})
 	d.history.Selected = &d.logRow
+	d.history.HeaderCell = func(cell native.Element, col int) {
+		if col == 0 {
+			cell.Tooltip(d.copy("圆点表示普通提交，菱形表示合并提交。", "Circles are commits; diamonds are merge commits."))
+		}
+	}
 	previous := d.logRow
-	roundedTable(c, &d.history, []native.TableColumn{{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190}}, len(d.logs), func(row, col int) {
+	roundedTable(c, &d.history, []native.TableColumn{
+		{Title: d.copy("分支图", "Graph"), Width: max(56, d.historyGraphWidth), Fixed: true},
+		{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190},
+	}, len(d.logs), func(row, col int) {
 		l := d.logs[row]
+		if col == 0 {
+			if row < len(d.historyGraph) {
+				graph := d.historyGraph[row]
+				native.Box(c).Absolute().Left(8).Right(0).Top(0).Bottom(0).Draw(graph.draw)
+			}
+			return
+		}
+		if col == 2 && l.Refs != "" {
+			native.Row(c).FillWidth().MinWidth(0).Gap(6).AlignItems(native.Center).Tooltip(l.Refs + " · " + l.Subject).Children(func() {
+				native.Text(c, l.Refs).MaxWidth(140).SingleLine().Ellipsis("…").Bold()
+				native.Text(c, l.Subject).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			})
+			return
+		}
 		values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
-		value := values[col]
-		if col == 3 {
+		value := values[col-1]
+		if col == 4 {
 			value = displayDateTime(value)
 			native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(value)
 		} else {
@@ -98,7 +126,7 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 	}
 	native.Row(c).Gap(controlSpacing).Children(func() {
 		valid := d.logRow >= 0 && d.logRow < len(d.logs)
-		if IconButton(c, d.text("recover.undo"), "undo", false).Disabled(d.busy || !valid || d.offset != 0 || d.query != "" || d.logRow != 0).Clicked() && valid {
+		if IconButton(c, d.text("recover.undo"), "undo", false).Disabled(d.busy || !valid || d.offset != 0 || d.query != "" || !d.isHistoryHead()).Clicked() && valid {
 			d.confirmRecovery("undo", d.logs[d.logRow].Hash)
 		}
 		if IconButton(c, d.text("recover.revert"), "revert", false).Disabled(d.busy || !valid).Clicked() && valid {

@@ -9,8 +9,23 @@ import (
 	"testing"
 
 	native "github.com/egoist/mygo/ui"
+	"mygittu/internal/app"
 	"mygittu/internal/brand"
 )
+
+func TestNothingToPushShowsItsOwnAnimation(t *testing.T) {
+	d := &remoteWindow{action: "push"}
+	d.complete(app.RemoteResult{NothingToPush: true})
+	tester := native.NewTester(d.view, 384, 195)
+	label, ok := tester.Find("当前无内容推送")
+	before := bytes.Clone(tester.Image().Pix)
+	d.frame = 2
+	tester.Frame()
+	after, visible := tester.Find("当前无内容推送")
+	if !ok || !visible || label != after || bytes.Equal(before, tester.Image().Pix) {
+		t.Fatal("expected a moving illustration with a fixed no-op label")
+	}
+}
 
 func TestRemoteWindowRemembersPlacementWithOnlyCloseControl(t *testing.T) {
 	options := (&remoteWindow{}).windowOptions()

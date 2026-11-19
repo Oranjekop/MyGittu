@@ -3,16 +3,21 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
+	git "mygittu/internal/git"
 	"mygittu/internal/repository"
 
 	_ "golang.org/x/image/bmp"
@@ -44,6 +49,85 @@ type FilePreview struct {
 	ImagePNG   []byte `json:"image_png,omitempty"`
 }
 
+// File saves travel as base64 and must fit in one IPC request.
+const MaxEditableFileBytes = 5 << 20
+
+func filePreviewVersion(info os.FileInfo) string {
+	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
+}
+
+func (s *Service) SaveProjectFile(ctx context.Context, id, name, expected string, content []byte) (string, error) {
+	if expected == "" || len(content) > MaxEditableFileBytes || !utf8.Valid(content) || bytes.IndexByte(content, 0) >= 0 {
+		return "", fmt.Errorf("invalid text file save")
+	}
+	var version string
+	_, err := s.writeLocked(ctx, id, func() (git.Result, error) {
+		repo, err := s.Registry.Get(id)
+		if err != nil {
+			return git.Result{}, err
+		}
+		name, err := previewFilePath(repo.Root, name)
+		if err != nil {
+			return git.Result{}, err
+		}
+		root, err := os.OpenRoot(repo.Root)
+		if err != nil {
+			return git.Result{}, err
+		}
+		defer root.Close()
+		for parent := filepath.Dir(name); parent != "."; parent = filepath.Dir(parent) {
+			if info, err := root.Lstat(parent); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+				return git.Result{}, fmt.Errorf("cannot save through a linked directory")
+			}
+		}
+		info, err := root.Lstat(name)
+		if err != nil || !info.Mode().IsRegular() || info.Size() > MaxEditableFileBytes || filePreviewVersion(info) != expected {
+			return git.Result{}, fmt.Errorf("file changed on disk; reopen it before saving")
+		}
+		tmp := filepath.Join(filepath.Dir(name), ".mygittu-edit-"+rand.Text())
+		target, err := root.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
+		if err != nil {
+			return git.Result{}, err
+		}
+		defer root.Remove(tmp)
+		_, writeErr := target.Write(content)
+		closeErr := target.Close()
+		if err := errors.Join(writeErr, closeErr); err != nil {
+			return git.Result{}, err
+		}
+		if err := ctx.Err(); err != nil {
+			return git.Result{}, err
+		}
+		saved, err := root.Lstat(tmp)
+		if err != nil {
+			return git.Result{}, err
+		}
+		current, err := root.Lstat(name)
+		if err != nil || !os.SameFile(info, current) || !current.Mode().IsRegular() || filePreviewVersion(current) != expected {
+			return git.Result{}, fmt.Errorf("file changed on disk; reopen it before saving")
+		}
+		if err := root.Rename(tmp, name); err != nil {
+			return git.Result{}, err
+		}
+		version = filePreviewVersion(saved)
+		return git.Result{}, nil
+	})
+	return version, err
+}
+
+func previewFilePath(root, name string) (string, error) {
+	name, err := repository.Relative(root, name)
+	if err != nil {
+		return "", err
+	}
+	for _, part := range strings.FieldsFunc(name, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if strings.EqualFold(part, ".git") {
+			return "", fmt.Errorf("Git metadata cannot be previewed or edited")
+		}
+	}
+	return name, nil
+}
+
 const (
 	maxPreviewTextBytes = 256 << 10
 	maxPreviewTextLines = 8000
@@ -60,14 +144,9 @@ func (s *Service) PreviewFile(ctx context.Context, id, path string, offset int64
 	if err != nil {
 		return FilePreview{}, err
 	}
-	path, err = repository.Relative(repo.Root, path)
+	path, err = previewFilePath(repo.Root, path)
 	if err != nil {
 		return FilePreview{}, err
-	}
-	for _, part := range strings.FieldsFunc(path, func(r rune) bool { return r == '/' || r == '\\' }) {
-		if strings.EqualFold(part, ".git") {
-			return FilePreview{}, fmt.Errorf("Git metadata cannot be previewed")
-		}
 	}
 	file, link, err := openWorktreeFile(repo.Root, path)
 	if err != nil {
@@ -84,7 +163,7 @@ func (s *Service) PreviewFile(ctx context.Context, id, path string, offset int64
 	if err != nil {
 		return FilePreview{}, err
 	}
-	currentVersion := fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
+	currentVersion := filePreviewVersion(info)
 	if version != "" && version != currentVersion {
 		return FilePreview{}, fmt.Errorf("file changed during preview; reopen it")
 	}
@@ -201,7 +280,7 @@ func previewText(data []byte, offset int64, version string) FilePreview {
 			end = lineEnd
 		}
 	}
-	result := FilePreview{New: strings.ReplaceAll(string(page[:end]), "\r\n", "\n"), Version: version}
+	result := FilePreview{New: string(page[:end]), Version: version}
 	if end < len(data) {
 		result.NextOffset = offset + int64(end)
 	}

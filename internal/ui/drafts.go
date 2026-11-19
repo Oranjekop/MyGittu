@@ -19,12 +19,22 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.row, d.changes, d.stagedCount = -1, nil, 0
 		d.detail, d.comparison, d.binary = "", nil, false
 		d.logs, d.logRow, d.historySummary, d.historyShown = nil, -1, nil, app.Commit{}
+		d.historyGraph, d.historyGraphWidth = nil, 0
 		d.projectSearch, d.projectCollapsed = "", nil
 		d.resetProjectFiles()
 		d.hunksOpen = false
 		d.aiConfirm, d.aiError = false, ""
 		d.tools = workbench{}
 		d.repositoryTools = repositoryTools{}
+		d.selected = id
+		if tabs := d.projectTabs[id]; len(tabs) > 0 {
+			for i := len(tabs) - 1; i >= 0; i-- {
+				if tabs[i].loaded {
+					d.activateProjectTab(tabs[i])
+					break
+				}
+			}
+		}
 	}
 	d.selected, d.path = id, root
 }

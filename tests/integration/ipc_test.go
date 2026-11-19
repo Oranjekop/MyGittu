@@ -211,7 +211,7 @@ func TestLargeFilePreviewsThroughAgent(t *testing.T) {
 		t.Fatal("expected the first 8000 lines")
 	}
 	lineTail := preview("many-lines.txt", nil, manyLines.NextOffset, manyLines.Version)
-	if lineTail.NextOffset != 0 || manyLines.New+lineTail.New != strings.ReplaceAll(lineContent, "\r\n", "\n") {
+	if lineTail.NextOffset != 0 || manyLines.New+lineTail.New != lineContent {
 		t.Fatal("line-limited pages lost content")
 	}
 

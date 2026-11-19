@@ -16,6 +16,27 @@ const (
 	RemoteFrameCount    = 5
 )
 
+var upToDateRabbitFrames = sync.OnceValue(func() [4]*native.Bitmap {
+	atlas, err := png.Decode(bytes.NewReader(brand.UpToDateRabbitPNG))
+	if err != nil {
+		panic(err)
+	}
+	sheet := atlas.(interface {
+		SubImage(image.Rectangle) image.Image
+	})
+	size := atlas.Bounds().Dx() / 2
+	var frames [4]*native.Bitmap
+	for i := range frames {
+		x, y := (i%2)*size, (i/2)*size
+		frames[i] = native.NewBitmap(sheet.SubImage(image.Rect(x, y, x+size, y+size)))
+	}
+	return frames
+})
+
+func UpToDateRabbitFrame(frame int) *native.Bitmap {
+	return upToDateRabbitFrames()[min(frame, 3)]
+}
+
 var remoteRabbitFrames = sync.OnceValue(func() [3][4]*native.Bitmap {
 	atlas, err := png.Decode(bytes.NewReader(brand.RemoteRabbitPNG))
 	if err != nil {

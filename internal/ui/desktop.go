@@ -40,6 +40,7 @@ type Desktop struct {
 	row                                int
 	files, history                     native.ListState
 	filePane                           float32
+	filePaneChanged                    bool
 	captionStyled, captionDark         bool
 	staged                             bool
 	offset                             int
@@ -53,6 +54,9 @@ type Desktop struct {
 	cloneCredentials                   cloneCredentials
 	logRow                             int
 	historySummary                     *string
+	historyCurrentOnly                 bool
+	historyGraph                       []commitGraphRow
+	historyGraphWidth                  float32
 	historyShown                       app.Commit
 	historyPatch                       patchView
 	historyMode                        int
@@ -100,7 +104,10 @@ type Desktop struct {
 	projectFileRow                     int
 	projectFileList                    native.ListState
 	projectPreview                     app.FilePreview
+	projectTabs                        map[string][]*projectTab
+	projectAllowClose                  bool
 	projectShownPath, projectLoadError string
+	projectFailedPath                  string
 	projectLoad                        *projectPreviewRequest
 	projectScroll                      projectWheelScroll
 	projectLargeText                   bool
@@ -156,11 +163,25 @@ func (d *Desktop) Run() error {
 		if dir, err := platform.ConfigDir(); err == nil {
 			d.draftDir = filepath.Join(dir, "drafts")
 		}
-		d.win = NewRememberedWindow(d.windowOptions())
+		options := d.windowOptions()
+		layoutPath := filePanePath(options.StateKey)
+		d.restoreFilePane(layoutPath)
+		d.win = NewRememberedWindow(options)
+		d.win.OnClose(func(e *mygo.CloseEvent) {
+			if !d.projectAllowClose && d.hasUnsavedProjectFiles() {
+				e.PreventDefault()
+				d.askAction(d.copy("关闭窗口并放弃未保存的文件修改？", "Close the window and discard unsaved file edits?"), "", func() {
+					d.projectAllowClose = true
+					d.win.Close()
+				})
+				d.win.Invalidate()
+			}
+		})
 		_ = d.win.SetIcon(brand.PNG)
 		_ = mygo.App.Dock.SetIcon(brand.PNG)
 		updateContext, cancelUpdates := context.WithCancel(context.Background())
 		d.win.OnClosed(func() {
+			d.saveFilePane(layoutPath)
 			d.cancelProjectPreview()
 			cancelUpdates()
 			if d.updateCancel != nil {
@@ -292,6 +313,7 @@ func (d *Desktop) operationTask(operation string, work func(context.Context) (fu
 }
 func (d *Desktop) refresh() {
 	id, page, query, offset := d.selected, d.page, d.query, d.offset
+	allBranches := !d.historyCurrentOnly
 	if id == "" {
 		return
 	}
@@ -311,7 +333,7 @@ func (d *Desktop) refresh() {
 				e = d.Client.Call(ctx, "identity.get", ipc.Params{RepoID: id, Scope: "local"}, &identity)
 			}
 		case 1:
-			e = d.Client.Call(ctx, "git.log", ipc.Params{RepoID: id, Limit: 100, Offset: offset, Query: query}, &logs)
+			e = d.Client.Call(ctx, "git.log", ipc.Params{RepoID: id, Limit: 100, Offset: offset, Query: query, AllBranches: allBranches}, &logs)
 		case 3:
 			e = d.Client.Call(ctx, "git.branch.entries", ipc.Params{RepoID: id}, &branches)
 			for _, branch := range branches {
@@ -351,16 +373,7 @@ func (d *Desktop) refresh() {
 				d.projectFiles = projectFiles
 				path := d.selectedProjectPath()
 				d.rebuildProjectTree()
-				if d.projectShownPath != "" {
-					if _, exists := slices.BinarySearch(projectFiles, d.projectShownPath); !exists {
-						d.projectShownPath, d.projectLoadError = "", ""
-						d.projectPreview, d.projectCode, d.projectBitmap = app.FilePreview{}, nil, nil
-						d.projectScroll = projectWheelScroll{}
-					}
-				}
-				if d.projectFileRow >= 0 {
-					d.loadProjectPreview(path)
-				} else if path != "" {
+				if d.projectFileRow < 0 && path != "" {
 					d.cancelProjectPreview()
 				}
 				return
@@ -387,6 +400,7 @@ func (d *Desktop) refresh() {
 			}
 			if page == 1 {
 				d.logs = logs
+				d.historyGraph, d.historyGraphWidth = buildCommitGraph(logs, query != "")
 				d.logRow = slices.IndexFunc(logs, func(commit app.Commit) bool { return commit.Hash == d.historyShown.Hash })
 				if d.logRow < 0 {
 					d.historySummary = nil
@@ -640,8 +654,9 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	native.Themed(c, &dividerTheme).Grow(1).FillWidth().Background(t.Surface).Children(func() {
 		split := native.Split(c, &fileWidth, func() { pane(false, filesPane) }, func() { pane(true, diffPane) }).
 			Grow(1).FillWidth().SplitReset(310)
-		if split.Changed() {
+		if split.Changed() && d.filePane != fileWidth {
 			d.filePane = fileWidth
+			d.filePaneChanged = true
 		}
 	})
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/egoist/mygo"
 	native "github.com/egoist/mygo/ui"
+	"mygittu/internal/app"
 	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
@@ -26,6 +27,7 @@ type remoteWindow struct {
 	lang                       string
 	frame                      int
 	finished                   bool
+	upToDate                   bool
 	captionStyled, captionDark bool
 }
 
@@ -105,7 +107,11 @@ func (d *remoteWindow) content(c *native.Context, t *native.Theme) {
 			message = d.runningStatus()
 		}
 		native.Column(c).Fill().Background(t.Background).Padding(12).Center().Gap(8).Children(func() {
-			native.Image(c, ui.RemoteRabbitFrame(d.action, d.frame)).Width(116).Height(116)
+			if d.upToDate {
+				native.Image(c, ui.UpToDateRabbitFrame(d.frame)).Size(116, 116)
+			} else {
+				native.Image(c, ui.RemoteRabbitFrame(d.action, d.frame)).Width(116).Height(116)
+			}
 			native.Text(c, message).FontSize(17 + t.FontSize - 12.5).TextAlign(native.Center).Bold()
 		})
 		return
@@ -123,7 +129,7 @@ func (d *remoteWindow) runningStatus() string {
 	case "fetch":
 		return d.text("正在获取远程更新…", "Fetching remote updates…")
 	case "push":
-		return d.text("正在推送本地提交…", "Pushing local commits…")
+		return d.text("正在检查推送状态…", "Checking push status…")
 	default:
 		return d.text("正在拉取远程更新…", "Pulling remote updates…")
 	}
@@ -138,7 +144,13 @@ func (d *remoteWindow) animate(ctx context.Context) {
 			return
 		case <-ticker.C:
 			mygo.RunOnMain(func() {
-				if !d.finished && !d.win.IsDestroyed() {
+				if d.win.IsDestroyed() {
+					return
+				}
+				if d.upToDate && d.frame < 3 {
+					d.frame++
+					d.win.Invalidate()
+				} else if !d.finished {
 					d.frame = (d.frame + 1) % ui.RemoteFrameCount
 					d.win.Invalidate()
 				}
@@ -162,21 +174,42 @@ func (d *remoteWindow) execute(ctx context.Context) {
 		d.fail(err)
 		return
 	}
-	if err := d.client.Call(ctx, "git.remote", ipc.Params{RepoID: repo.ID, Action: d.action}, nil); err != nil {
+	var result app.RemoteResult
+	if err := d.client.Call(ctx, "git.remote", ipc.Params{RepoID: repo.ID, Action: d.action}, &result); err != nil {
 		d.fail(err)
 		return
 	}
 	d.win.Update(func() {
-		d.finished, d.frame = true, 3
-		d.status = d.text("已完成", "Completed")
+		d.complete(result)
 	})
-	time.AfterFunc(900*time.Millisecond, func() {
-		mygo.RunOnMain(func() {
-			if !d.win.IsDestroyed() {
-				d.win.Close()
-			}
-		})
-	})
+	duration := 900 * time.Millisecond
+	if result.NothingToPush || result.UpToDate {
+		duration = 1800 * time.Millisecond
+	}
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		d.win.Close()
+	case <-ctx.Done():
+	}
+}
+
+func (d *remoteWindow) complete(result app.RemoteResult) {
+	d.finished, d.frame = true, 3
+	d.status = d.text("已完成", "Completed")
+	d.upToDate = result.NothingToPush || result.UpToDate
+	if d.upToDate {
+		d.frame = 0
+	}
+	switch {
+	case result.NothingToPush:
+		d.status = d.text("当前无内容推送", "Nothing to push")
+	case result.UpToDate && d.action == "pull":
+		d.status = d.text("当前分支已是最新", "Current branch is up to date")
+	case result.UpToDate:
+		d.status = d.text("没有远程更新", "No remote updates")
+	}
 }
 
 func (d *remoteWindow) fail(err error) {

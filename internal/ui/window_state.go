@@ -54,7 +54,11 @@ func (f windowStateFile) SaveWindowStates(states map[string]mygo.WindowState) er
 	if err != nil {
 		return err
 	}
-	dir := filepath.Dir(f.path)
+	return writeWindowPreference(f.path, data)
+}
+
+func writeWindowPreference(path string, data []byte) error {
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
@@ -68,5 +72,5 @@ func (f windowStateFile) SaveWindowStates(states map[string]mygo.WindowState) er
 	if err := errors.Join(writeErr, closeErr); err != nil {
 		return err
 	}
-	return os.Rename(temp.Name(), f.path)
+	return os.Rename(temp.Name(), path)
 }

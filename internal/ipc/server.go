@@ -20,6 +20,8 @@ import (
 )
 
 type Params struct {
+	AllBranches    bool            `json:"all_branches,omitempty"`
+	FileContent    []byte          `json:"file_content,omitempty"`
 	PreviewOffset  int64           `json:"preview_offset,omitempty"`
 	PreviewVersion string          `json:"preview_version,omitempty"`
 	CloneAuth      git.CloneAuth   `json:"clone_auth,omitempty"`
@@ -163,7 +165,7 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		if p.Limit == 0 {
 			p.Limit = 100
 		}
-		result, e = s.Service.LogSearch(ctx, p.RepoID, p.Limit, p.Offset, p.Query)
+		result, e = s.Service.History(ctx, p.RepoID, p.Limit, p.Offset, p.Query, p.AllBranches)
 	case "git.show":
 		result, e = s.Service.Show(ctx, p.RepoID, p.Hash)
 	case "git.commit.details":
@@ -218,6 +220,11 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.Files(ctx, p.RepoID)
 	case "git.file.preview":
 		result, e = s.Service.PreviewFile(ctx, p.RepoID, p.Path, p.PreviewOffset, p.PreviewVersion)
+	case "git.file.save":
+		result, e = s.Service.SaveProjectFile(ctx, p.RepoID, p.Path, p.PreviewVersion, p.FileContent)
+		if e == nil && s.Cache != nil {
+			s.Cache.ScheduleRefresh(p.RepoID)
+		}
 	case "git.diff.staged-for-message":
 		var patch string
 		patch, e = s.Service.Diff(ctx, p.RepoID, "", true)
@@ -237,7 +244,7 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 	case "git.branch":
 		e = s.Service.Branch(ctx, p.RepoID, p.Action, p.Name)
 	case "git.remote":
-		e = s.Service.Remote(ctx, p.RepoID, p.Action)
+		result, e = s.Service.RemoteWithResult(ctx, p.RepoID, p.Action)
 	case "git.github.authorize":
 		e = s.Service.Runner.AuthorizeGitHub(ctx, p.Name)
 	case "git.github.repositories":

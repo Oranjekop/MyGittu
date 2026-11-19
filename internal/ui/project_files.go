@@ -107,10 +107,11 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 					d.rebuildProjectTree()
 					return
 				}
-				d.loadProjectPreview(entry.path)
+				d.openProjectTab(entry.path)
 			}
 		})
 		native.Column(c).Grow(1).FillHeight().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
+			d.showProjectTabs(c)
 			filename := d.projectShownPath
 			if filename == "" && d.projectLoad == nil {
 				filename = d.selectedProjectPath()
@@ -122,7 +123,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			} else {
 				native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 					native.Text(c, filename).Bold().Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(filename)
-					if failed := d.selectedProjectPath(); d.projectLoadError != "" && failed != "" && IconButton(c, d.text("refresh"), "refresh", false).Disabled(d.busy).Clicked() {
+					if failed := d.projectFailedPath; d.projectLoadError != "" && failed != "" && IconButton(c, d.text("refresh"), "refresh", false).Disabled(d.busy).Clicked() {
 						d.loadProjectPreview(failed)
 					}
 					if IconButton(c, d.text("file.history"), "history", false).Disabled(d.busy).Clicked() {
@@ -145,6 +146,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 }
 
 type projectPreviewRequest struct {
+	path   string
 	cancel context.CancelFunc
 }
 
@@ -156,9 +158,10 @@ func (d *Desktop) cancelProjectPreview() {
 }
 
 func (d *Desktop) resetProjectFiles() {
+	d.rememberProjectTab()
 	d.cancelProjectPreview()
 	d.projectFiles, d.projectTree, d.projectFileRow = nil, nil, -1
-	d.projectShownPath, d.projectLoadError = "", ""
+	d.projectShownPath, d.projectLoadError, d.projectFailedPath = "", "", ""
 	d.projectPreview, d.projectBitmap, d.projectCode = app.FilePreview{}, nil, nil
 	d.projectLargeText = false
 	d.projectScroll = projectWheelScroll{}
@@ -175,8 +178,8 @@ func (d *Desktop) loadProjectPreview(path string) {
 		shownVersion = d.projectPreview.Version
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	request := &projectPreviewRequest{cancel: cancel}
-	d.projectLoad, d.projectLoadError = request, ""
+	request := &projectPreviewRequest{path: path, cancel: cancel}
+	d.projectLoad, d.projectLoadError, d.projectFailedPath = request, "", ""
 	go func() {
 		defer cancel()
 		preview, bitmap, code, err := fetchProjectPreview(ctx, d.Client, params, shownVersion)
@@ -186,14 +189,22 @@ func (d *Desktop) loadProjectPreview(path string) {
 			}
 			d.projectLoad = nil
 			if err != nil {
-				d.projectLoadError = err.Error()
+				d.projectLoadError, d.projectFailedPath = err.Error(), path
 			} else if d.projectShownPath != path || preview.Version == "" || preview.Version != d.projectPreview.Version {
+				d.rememberProjectTab()
 				d.projectShownPath = path
 				d.projectPreview, d.projectBitmap = preview, bitmap
 				d.projectCode, d.projectLargeText = code, preview.NextOffset != 0
 				d.projectScroll = projectWheelScroll{}
 				d.projectCodePath, d.projectCodeSource = path, preview.New
 				d.projectFormatted, d.projectFormatError = false, ""
+				if d.findProjectTab(path) == nil {
+					if d.projectTabs == nil {
+						d.projectTabs = make(map[string][]*projectTab)
+					}
+					d.projectTabs[d.selected] = append(d.projectTabs[d.selected], &projectTab{path: path})
+				}
+				d.rememberProjectTab()
 			}
 			if d.win != nil {
 				d.win.Invalidate()
@@ -286,18 +297,28 @@ func codePreview(filename, source string) *editor.State {
 
 func (d *Desktop) showCodePreview(c *native.Context, filename string) {
 	source := d.projectPreview.New
-	if d.projectCode == nil || d.projectCodePath != filename || d.projectCodeSource != source {
+	if d.projectCode == nil || d.projectCodePath != filename {
 		d.projectCode = codePreview(filename, source)
 		d.projectCodePath, d.projectCodeSource = filename, source
 		d.projectFormatted, d.projectFormatError = false, ""
 	}
 	native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+		if d.projectEditable() {
+			if IconButton(c, d.copy("保存", "Save"), "save", false).Disabled(d.busy || !d.projectDirty()).Clicked() {
+				d.saveProjectTab()
+			}
+			if !d.busy && d.projectDirty() && !d.settingsOpen && !d.repositoryTools.confirmOpen && c.Shortcut(native.Cmd, native.KeyS) {
+				d.saveProjectTab()
+			}
+		} else if d.projectPreview.Version != "" {
+			native.Text(c, d.copy("只读 · 超过 5 MiB", "Read-only · Over 5 MiB")).TextColor(c.Theme().TextMuted)
+		}
 		native.Checkbox(c, &d.projectWrap, d.copy("自动换行", "Wrap lines"))
 		if lang := d.projectCode.Buffer.Language(); lang != nil {
 			native.Text(c, lang.Name).TextColor(c.Theme().TextMuted)
 		}
 		ext := strings.ToLower(path.Ext(filename))
-		if d.projectLargeText || ext != ".go" && ext != ".json" {
+		if d.projectLargeText || d.projectDirty() || ext != ".go" && ext != ".json" {
 			return
 		}
 		label := d.copy("格式化预览", "Format preview")
@@ -333,6 +354,7 @@ func (d *Desktop) showCodePreview(c *native.Context, filename string) {
 		native.Text(c, d.copy("格式化失败", "Formatting failed")+" · "+d.projectFormatError).FillWidth().TextColor(c.Theme().Danger)
 	}
 	d.projectCode.SoftWrap = d.projectWrap
+	d.projectCode.ReadOnly = d.busy || d.projectFormatted || !d.projectEditable()
 	d.projectCode.Font.Size = c.Theme().FontSize - 0.5
 	d.projectScroll.update(c, d.projectCode)
 	editor.View(c, d.projectCode).Grow(1).FillWidth()

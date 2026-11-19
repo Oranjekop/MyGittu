@@ -134,17 +134,23 @@ func (s *Service) Commit(ctx context.Context, id, message string) (string, error
 }
 
 type Commit struct {
-	Hash    string `json:"hash"`
-	Author  string `json:"author"`
-	Date    string `json:"date"`
-	Subject string `json:"subject"`
+	Hash    string   `json:"hash"`
+	Author  string   `json:"author"`
+	Date    string   `json:"date"`
+	Subject string   `json:"subject"`
+	Parents []string `json:"parents,omitempty"`
+	Refs    string   `json:"refs,omitempty"`
 }
 
 func (s *Service) Log(ctx context.Context, id string, limit, offset int) ([]Commit, error) {
 	return s.LogSearch(ctx, id, limit, offset, "")
 }
 func (s *Service) LogSearch(ctx context.Context, id string, limit, offset int, query string) ([]Commit, error) {
-	return s.log(ctx, id, limit, offset, query, "")
+	return s.History(ctx, id, limit, offset, query, false)
+}
+
+func (s *Service) History(ctx context.Context, id string, limit, offset int, query string, allBranches bool) ([]Commit, error) {
+	return s.log(ctx, id, limit, offset, query, "", allBranches)
 }
 func (s *Service) FileLog(ctx context.Context, id, path string, limit, offset int) ([]Commit, error) {
 	repo, err := s.Registry.Get(id)
@@ -155,16 +161,22 @@ func (s *Service) FileLog(ctx context.Context, id, path string, limit, offset in
 	if err != nil {
 		return nil, err
 	}
-	return s.log(ctx, id, limit, offset, "", path)
+	return s.log(ctx, id, limit, offset, "", path, false)
 }
-func (s *Service) log(ctx context.Context, id string, limit, offset int, query, path string) ([]Commit, error) {
+func (s *Service) log(ctx context.Context, id string, limit, offset int, query, path string, allBranches bool) ([]Commit, error) {
 	if limit < 1 || limit > 500 || offset < 0 {
 		return nil, fmt.Errorf("invalid log page")
 	}
 	if len(query) > 1024 {
 		return nil, fmt.Errorf("search text too long")
 	}
-	args := []string{"log", "-z", "--format=%H%x00%an%x00%aI%x00%s", "--max-count=" + strconv.Itoa(limit), "--skip=" + strconv.Itoa(offset)}
+	args := []string{"log", "-z", "--format=%H%x00%an%x00%aI%x00%s%x00%P%x00%D", "--decorate=short", "--max-count=" + strconv.Itoa(limit), "--skip=" + strconv.Itoa(offset)}
+	if path == "" {
+		args = append(args, "--topo-order")
+	}
+	if allBranches {
+		args = append(args, "--branches", "--ignore-missing", "HEAD")
+	}
 	if query != "" {
 		args = append(args, "--fixed-strings", "--regexp-ignore-case", "--grep="+query)
 	}
@@ -180,8 +192,9 @@ func (s *Service) log(ctx context.Context, id string, limit, offset int, query, 
 	}
 	fields := bytes.Split(bytes.TrimSuffix(r.Stdout, []byte{0}), []byte{0})
 	out := []Commit{}
-	for i := 0; i+3 < len(fields); i += 4 {
-		out = append(out, Commit{string(fields[i]), string(fields[i+1]), string(fields[i+2]), string(fields[i+3])})
+	for i := 0; i+5 < len(fields); i += 6 {
+		out = append(out, Commit{Hash: string(fields[i]), Author: string(fields[i+1]), Date: string(fields[i+2]),
+			Subject: string(fields[i+3]), Parents: strings.Fields(string(fields[i+4])), Refs: string(fields[i+5])})
 	}
 	return out, nil
 }
@@ -260,6 +273,16 @@ func (s *Service) Branch(ctx context.Context, id, action, name string) error {
 	return e
 }
 func (s *Service) Remote(ctx context.Context, id, action string) error {
+	_, err := s.RemoteWithResult(ctx, id, action)
+	return err
+}
+
+type RemoteResult struct {
+	NothingToPush bool `json:"nothing_to_push"`
+	UpToDate      bool `json:"up_to_date,omitempty"`
+}
+
+func (s *Service) RemoteWithResult(ctx context.Context, id, action string) (RemoteResult, error) {
 	var args []string
 	switch action {
 	case "fetch":
@@ -267,12 +290,44 @@ func (s *Service) Remote(ctx context.Context, id, action string) error {
 	case "pull":
 		args = []string{"pull", "--ff-only"}
 	case "push":
-		args = []string{"push"}
+		args = []string{"push", "--porcelain"}
 	default:
-		return fmt.Errorf("unsupported remote operation")
+		return RemoteResult{}, fmt.Errorf("unsupported remote operation")
 	}
-	_, e := s.Write(ctx, id, args...)
-	return e
+	if action != "push" {
+		probe := []string{"rev-parse", "--verify", "HEAD"}
+		if action == "fetch" {
+			probe = []string{"for-each-ref", "--sort=refname", "--format=%(refname) %(objectname)"}
+		}
+		unchanged := false
+		_, err := s.writeLocked(ctx, id, func() (git.Result, error) {
+			before, beforeErr := s.Read(ctx, id, probe...)
+			result, err := s.Read(ctx, id, args...)
+			if err == nil && beforeErr == nil {
+				after, afterErr := s.Read(ctx, id, probe...)
+				unchanged = afterErr == nil && bytes.Equal(before.Stdout, after.Stdout)
+			}
+			return result, err
+		})
+		return RemoteResult{UpToDate: unchanged}, err
+	}
+	result, err := s.Write(ctx, id, args...)
+	if err != nil {
+		return RemoteResult{}, err
+	}
+	// Git porcelain reports one tab-delimited row per ref; '=' is up to date.
+	seen := false
+	for line := range strings.SplitSeq(string(result.Stdout), "\n") {
+		flag, rest, ok := strings.Cut(line, "\t")
+		if !ok || len(flag) != 1 || !strings.Contains(rest, "\t") {
+			continue
+		}
+		if flag != "=" {
+			return RemoteResult{}, nil
+		}
+		seen = true
+	}
+	return RemoteResult{NothingToPush: seen}, nil
 }
 func (s *Service) Clone(ctx context.Context, url, destination string, credentials ...git.CloneAuth) (repository.Info, error) {
 	if strings.TrimSpace(url) == "" || strings.HasPrefix(url, "-") || strings.Contains(url, "::") {

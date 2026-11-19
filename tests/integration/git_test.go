@@ -86,9 +86,23 @@ func TestLocalRemoteWorkflow(t *testing.T) {
 	command(t, dir, "push", "-u", "origin", "main")
 	write(t, filepath.Join(dir, "a"), "b")
 	command(t, dir, "commit", "-am", "next")
-	for _, action := range []string{"push", "fetch", "pull"} {
-		if e := s.Remote(ctx, id, action); e != nil {
-			t.Fatalf("remote %s: %v", action, e)
+	pushed, err := s.RemoteWithResult(ctx, id, "push")
+	if err != nil || pushed.NothingToPush {
+		t.Fatalf("push with a new commit: %+v, %v", pushed, err)
+	}
+	unchanged, err := s.RemoteWithResult(ctx, id, "push")
+	if err != nil || !unchanged.NothingToPush {
+		t.Fatalf("up-to-date push: %+v, %v", unchanged, err)
+	}
+	command(t, dir, "update-ref", "-d", "refs/remotes/origin/main")
+	fetched, err := s.RemoteWithResult(ctx, id, "fetch")
+	if err != nil || fetched.UpToDate {
+		t.Fatalf("fetch restoring a tracking ref: %+v, %v", fetched, err)
+	}
+	for _, action := range []string{"fetch", "pull"} {
+		result, err := s.RemoteWithResult(ctx, id, action)
+		if err != nil || !result.UpToDate {
+			t.Fatalf("up-to-date %s: %+v, %v", action, result, err)
 		}
 	}
 }
