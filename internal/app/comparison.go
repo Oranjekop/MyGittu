@@ -102,27 +102,36 @@ func (s *Service) Comparison(ctx context.Context, id, path, original string, sta
 }
 
 func readWorktreeFile(directory, path string) ([]byte, bool, error) {
-	root, err := os.OpenRoot(directory)
+	file, link, err := openWorktreeFile(directory, path)
 	if err != nil {
 		return nil, false, err
 	}
-	defer root.Close()
-	info, err := root.Lstat(path)
-	if err != nil {
-		return nil, false, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		target, err := root.Readlink(path)
-		return []byte(target), false, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, true, nil
-	}
-	file, err := root.Open(path)
-	if err != nil {
-		return nil, false, err
+	if file == nil {
+		return []byte(link), link == "", nil
 	}
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, (256<<10)+1))
 	return data, false, err
+}
+
+// Keep symlinks as text and never open special files for preview.
+func openWorktreeFile(directory, path string) (*os.File, string, error) {
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return nil, "", err
+	}
+	defer root.Close()
+	info, err := root.Lstat(path)
+	if err != nil {
+		return nil, "", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := root.Readlink(path)
+		return nil, target, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, "", nil
+	}
+	file, err := root.Open(path)
+	return file, "", err
 }

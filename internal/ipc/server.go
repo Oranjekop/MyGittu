@@ -20,25 +20,27 @@ import (
 )
 
 type Params struct {
-	CloneAuth     git.CloneAuth   `json:"clone_auth,omitempty"`
-	RepoID        string          `json:"repo_id"`
-	Path          string          `json:"path"`
-	Paths         []string        `json:"paths"`
-	Message       string          `json:"message"`
-	Action        string          `json:"action"`
-	Name          string          `json:"name"`
-	Staged        bool            `json:"staged"`
-	Limit         int             `json:"limit"`
-	Offset        int             `json:"offset"`
-	Query         string          `json:"query"`
-	Hash          string          `json:"hash"`
-	URL           string          `json:"url"`
-	Destination   string          `json:"destination"`
-	OriginalPath  string          `json:"original_path"`
-	StatusUpdated time.Time       `json:"status_updated,omitempty"`
-	Settings      settings.Values `json:"settings"`
-	Identity      app.Identity    `json:"identity"`
-	Scope         string          `json:"scope"`
+	PreviewOffset  int64           `json:"preview_offset,omitempty"`
+	PreviewVersion string          `json:"preview_version,omitempty"`
+	CloneAuth      git.CloneAuth   `json:"clone_auth,omitempty"`
+	RepoID         string          `json:"repo_id"`
+	Path           string          `json:"path"`
+	Paths          []string        `json:"paths"`
+	Message        string          `json:"message"`
+	Action         string          `json:"action"`
+	Name           string          `json:"name"`
+	Staged         bool            `json:"staged"`
+	Limit          int             `json:"limit"`
+	Offset         int             `json:"offset"`
+	Query          string          `json:"query"`
+	Hash           string          `json:"hash"`
+	URL            string          `json:"url"`
+	Destination    string          `json:"destination"`
+	OriginalPath   string          `json:"original_path"`
+	StatusUpdated  time.Time       `json:"status_updated,omitempty"`
+	Settings       settings.Values `json:"settings"`
+	Identity       app.Identity    `json:"identity"`
+	Scope          string          `json:"scope"`
 }
 type Server struct {
 	Service   *app.Service
@@ -215,7 +217,7 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 	case "git.files":
 		result, e = s.Service.Files(ctx, p.RepoID)
 	case "git.file.preview":
-		result, e = s.Service.PreviewFile(p.RepoID, p.Path)
+		result, e = s.Service.PreviewFile(ctx, p.RepoID, p.Path, p.PreviewOffset, p.PreviewVersion)
 	case "git.diff.staged-for-message":
 		var patch string
 		patch, e = s.Service.Diff(ctx, p.RepoID, "", true)

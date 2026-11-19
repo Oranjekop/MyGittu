@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"go/format"
+	"image/png"
 	"path"
 	"strings"
 
@@ -55,7 +57,10 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			before := d.projectSearch
 			native.TextInput(c, &d.projectSearch).Placeholder(d.text("files.search")).FillWidth().Disabled(d.busy)
 			if before != d.projectSearch {
-				d.projectFileRow, d.projectPreview = -1, app.Comparison{}
+				d.projectFileRow, d.projectPreview = -1, app.FilePreview{}
+				d.projectBitmap = nil
+				d.projectLargeText = false
+				d.projectCode = nil
 				d.rebuildProjectTree()
 			}
 			if len(d.projectFiles) == 0 && !d.busy {
@@ -65,15 +70,23 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			previous := d.projectFileRow
 			native.Table(c, &d.projectFileList, []native.TableColumn{{Title: d.text("nav.files")}}, len(d.projectTree), func(row, _ int) {
 				entry := d.projectTree[row]
-				label := path.Base(entry.path)
-				if entry.dir {
-					prefix := "▾ "
-					if d.projectSearch == "" && d.projectCollapsed[entry.path] {
-						prefix = "▸ "
+				name := path.Base(entry.path)
+				native.Row(c).FillWidth().MinWidth(0).Gap(detailSpacing).AlignItems(native.Center).
+					PaddingStart(float32(strings.Count(entry.path, "/") * 12)).Tooltip(entry.path).Children(func() {
+					icon := "open"
+					if entry.dir {
+						arrow := "down"
+						if d.projectSearch == "" && d.projectCollapsed[entry.path] {
+							icon, arrow = "folder", "right"
+						}
+						native.Icon(c, icons[arrow]).Width(12).Height(12)
+					} else {
+						native.Box(c).Width(12)
+						icon = projectFileIcon(name)
 					}
-					label = prefix + label
-				}
-				native.Text(c, label).Padding(0, 0, 0, float32(strings.Count(entry.path, "/")*12)).Tooltip(entry.path)
+					native.Icon(c, icons[icon]).Width(15).Height(15)
+					native.Text(c, name).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				})
 			}).Grow(1).FillWidth().Disabled(d.busy)
 			if row := d.projectFileRow; row != previous && row >= 0 && row < len(d.projectTree) && !d.busy {
 				entry := d.projectTree[row]
@@ -82,18 +95,18 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 						d.projectCollapsed = make(map[string]bool)
 					}
 					d.projectCollapsed[entry.path] = !d.projectCollapsed[entry.path]
-					d.projectFileRow, d.projectPreview = -1, app.Comparison{}
+					d.projectFileRow, d.projectPreview = -1, app.FilePreview{}
+					d.projectBitmap = nil
+					d.projectLargeText = false
+					d.projectCode = nil
 					d.rebuildProjectTree()
 					return
 				}
-				id, path := d.selected, entry.path
-				d.projectPreview = app.Comparison{}
+				d.projectPreview = app.FilePreview{}
+				d.projectBitmap = nil
 				d.projectCode = nil
-				d.task(func(ctx context.Context) (func(), error) {
-					var preview app.Comparison
-					err := d.Client.Call(ctx, "git.file.preview", ipc.Params{RepoID: id, Path: path}, &preview)
-					return func() { d.projectPreview = preview }, err
-				})
+				d.projectLargeText = false
+				d.loadProjectPreview(entry.path)
 			}
 		})
 		native.Column(c).Grow(1).FillHeight().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
@@ -103,11 +116,16 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 				filename := d.projectTree[row].path
 				native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 					native.Text(c, filename).Bold().Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(filename)
+					if d.err != "" && IconButton(c, d.text("refresh"), "refresh", false).Disabled(d.busy).Clicked() {
+						d.loadProjectPreview(filename)
+					}
 					if IconButton(c, d.text("file.history"), "history", false).Disabled(d.busy).Clicked() {
 						d.openFileHistory(filename)
 					}
 				})
-				if d.projectPreview.Binary {
+				if d.projectBitmap != nil {
+					native.Image(c, d.projectBitmap).Grow(1).MinHeight(0).FillWidth().Fit(native.Contain).Label(filename)
+				} else if d.projectPreview.Binary {
 					native.Text(c, d.text("diff.binary")).TextColor(t.TextMuted)
 				} else if !d.busy && d.err == "" {
 					d.showCodePreview(c, filename)
@@ -115,6 +133,85 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			}
 		})
 	})
+}
+
+func (d *Desktop) loadProjectPreview(path string) {
+	params := ipc.Params{RepoID: d.selected, Path: path}
+	d.task(func(ctx context.Context) (func(), error) {
+		var preview app.FilePreview
+		if err := d.Client.Call(ctx, "git.file.preview", params, &preview); err != nil {
+			return nil, err
+		}
+		var bitmap *native.Bitmap
+		var code *editor.State
+		if len(preview.ImagePNG) != 0 {
+			decoded, err := png.Decode(bytes.NewReader(preview.ImagePNG))
+			if err != nil {
+				return nil, err
+			}
+			bitmap = native.NewBitmap(decoded)
+			preview.ImagePNG = nil
+		} else if preview.NextOffset != 0 {
+			var err error
+			code, err = readProjectText(ctx, d.Client, params, preview)
+			if err != nil {
+				return nil, err
+			}
+			preview = app.FilePreview{}
+		}
+		return func() {
+			d.projectPreview, d.projectBitmap = preview, bitmap
+			d.projectCode, d.projectLargeText = code, code != nil
+			d.projectCodePath, d.projectCodeSource = path, ""
+			d.projectFormatted, d.projectFormatError = false, ""
+		}, nil
+	})
+}
+
+// IPC still transfers bounded chunks. The editor receives one document and
+// lays out only the visible lines as the user scrolls.
+func readProjectText(ctx context.Context, client *ipc.Client, params ipc.Params, first app.FilePreview) (*editor.State, error) {
+	var text strings.Builder
+	text.WriteString(first.New)
+	params.PreviewVersion = first.Version
+	for next := first.NextOffset; next != 0; {
+		params.PreviewOffset = next
+		var part app.FilePreview
+		if err := client.Call(ctx, "git.file.preview", params, &part); err != nil {
+			return nil, err
+		}
+		if part.Binary || part.Version != first.Version || part.NextOffset != 0 && part.NextOffset <= next {
+			return nil, fmt.Errorf("file could not be read as one text document")
+		}
+		text.WriteString(part.New)
+		next = part.NextOffset
+	}
+	return codePreview(params.Path, text.String()), nil
+}
+
+func projectFileIcon(name string) string {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".md", ".mdx", ".rst", ".txt", ".pdf", ".rtf", ".doc", ".docx":
+		return "changes"
+	case ".json", ".jsonc", ".yaml", ".yml", ".toml", ".xml", ".ini", ".csv", ".tsv", ".env", ".lock", ".mod", ".sum":
+		return "file-data"
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".bmp", ".avif", ".tiff":
+		return "file-image"
+	case ".mp3", ".wav", ".ogg", ".flac", ".mp4", ".mov", ".webm", ".mkv":
+		return "file-media"
+	case ".zip", ".gz", ".tar", ".tgz", ".xz", ".7z", ".rar":
+		return "file-archive"
+	}
+	switch strings.ToLower(name) {
+	case "readme", "license", "copying", "changelog":
+		return "changes"
+	case ".gitignore", ".gitattributes", ".editorconfig", ".gitmodules":
+		return "file-data"
+	}
+	if editor.LanguageFor(name) != nil {
+		return "file-code"
+	}
+	return "file"
 }
 
 func codePreview(filename, source string) *editor.State {
@@ -132,11 +229,11 @@ func (d *Desktop) showCodePreview(c *native.Context, filename string) {
 	}
 	native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 		native.Checkbox(c, &d.projectWrap, d.copy("自动换行", "Wrap lines"))
-		if lang := editor.LanguageForText(filename, source); lang != nil {
+		if lang := d.projectCode.Buffer.Language(); lang != nil {
 			native.Text(c, lang.Name).TextColor(c.Theme().TextMuted)
 		}
 		ext := strings.ToLower(path.Ext(filename))
-		if ext != ".go" && ext != ".json" {
+		if d.projectLargeText || ext != ".go" && ext != ".json" {
 			return
 		}
 		label := d.copy("格式化预览", "Format preview")

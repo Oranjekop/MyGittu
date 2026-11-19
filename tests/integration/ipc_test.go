@@ -1,19 +1,25 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/png"
+	"math/rand/v2"
 	"mygittu/internal/app"
 	git "mygittu/internal/git"
 	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
 	"mygittu/internal/status"
 	"net"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestFramedAgentWorkflow(t *testing.T) {
@@ -130,4 +136,89 @@ func TestUnopenedRepositoryStartsOverlayRefresh(t *testing.T) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Fatal("unopened repository did not produce a cached clean overlay")
+}
+
+func TestLargeFilePreviewsThroughAgent(t *testing.T) {
+	service, id, dir := setup(t)
+	server := &ipc.Server{Service: service}
+	preview := func(name string, data []byte, offset int64, version string) app.FilePreview {
+		t.Helper()
+		if data != nil {
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		params, err := json.Marshal(ipc.Params{RepoID: id, Path: name, PreviewOffset: offset, PreviewVersion: version})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := server.Handle(context.Background(), ipc.Request{
+			Version: ipc.Version, ID: "preview", Method: "git.file.preview", Params: params,
+		})
+		if !response.OK {
+			t.Fatalf("preview %s: %+v", name, response.Error)
+		}
+		var frame bytes.Buffer
+		if err := ipc.WriteFrame(&frame, response); err != nil {
+			t.Fatal(err)
+		}
+		var decoded ipc.Response
+		if err := ipc.ReadFrame(&frame, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		var result app.FilePreview
+		if err := json.Unmarshal(decoded.Result, &result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+
+	src := image.NewNRGBA(image.Rect(0, 0, 1600, 900))
+	rng := rand.New(rand.NewPCG(1, 2))
+	for i := 0; i < len(src.Pix); i += 4 {
+		rgb := rng.Uint32()
+		src.Pix[i], src.Pix[i+1], src.Pix[i+2], src.Pix[i+3] = byte(rgb), byte(rgb>>8), byte(rgb>>16), 255
+	}
+	var original bytes.Buffer
+	if err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&original, src); err != nil {
+		t.Fatal(err)
+	}
+	if original.Len() <= 256<<10 {
+		t.Fatal("fixture must exceed the old preview limit")
+	}
+	// Content detection works even with a misleading extension.
+	thumb := preview("large.dat", original.Bytes(), 0, "")
+	size, err := png.DecodeConfig(bytes.NewReader(thumb.ImagePNG))
+	if err != nil || size.Width != 1024 || size.Height != 576 || thumb.Binary {
+		t.Fatalf("expected a 1024x576 thumbnail, got %+v, %v", size, err)
+	}
+	largeText := strings.Repeat("a", (256<<10)-1) + "汉字"
+	text := preview("large.txt", []byte(largeText), 0, "")
+	if text.NextOffset != (256<<10)-1 || text.Binary || !utf8.ValidString(text.New) {
+		t.Fatal("expected valid text ending before the split UTF-8 character")
+	}
+	last := preview("large.txt", nil, text.NextOffset, text.Version)
+	if last.NextOffset != 0 || text.New+last.New != largeText {
+		t.Fatal("byte-limited pages did not cover the complete text")
+	}
+	if firstAgain := preview("large.txt", nil, 0, last.Version); firstAgain.New != text.New || firstAgain.NextOffset != text.NextOffset {
+		t.Fatal("the first page changed when navigating backward")
+	}
+
+	lineContent := strings.Repeat("line\r\n", 9000)
+	manyLines := preview("many-lines.txt", []byte(lineContent), 0, "")
+	if manyLines.NextOffset != int64(len("line\r\n")*8000) || strings.Count(manyLines.New, "\n") != 8000 {
+		t.Fatal("expected the first 8000 lines")
+	}
+	lineTail := preview("many-lines.txt", nil, manyLines.NextOffset, manyLines.Version)
+	if lineTail.NextOffset != 0 || manyLines.New+lineTail.New != strings.ReplaceAll(lineContent, "\r\n", "\n") {
+		t.Fatal("line-limited pages lost content")
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "large.txt"), []byte("changed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PreviewFile(context.Background(), id, "large.txt", text.NextOffset, text.Version); err == nil {
+		t.Fatal("server accepted a cursor from before the file changed")
+	}
 }

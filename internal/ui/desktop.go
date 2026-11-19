@@ -95,7 +95,9 @@ type Desktop struct {
 	projectCollapsed                   map[string]bool
 	projectFileRow                     int
 	projectFileList                    native.ListState
-	projectPreview                     app.Comparison
+	projectPreview                     app.FilePreview
+	projectLargeText                   bool
+	projectBitmap                      *native.Bitmap
 	projectCode                        *editor.State
 	projectCodePath, projectCodeSource string
 	projectWrap, projectFormatted      bool
@@ -290,7 +292,10 @@ func (d *Desktop) refresh() {
 	d.detail = ""
 	d.comparison = nil
 	if page == projectFilesPage {
-		d.projectFiles, d.projectFileRow, d.projectPreview = nil, -1, app.Comparison{}
+		d.projectFiles, d.projectFileRow, d.projectPreview = nil, -1, app.FilePreview{}
+		d.projectBitmap = nil
+		d.projectLargeText = false
+		d.projectCode = nil
 		d.projectTree = nil
 	}
 	d.task(func(ctx context.Context) (func(), error) {
@@ -346,7 +351,7 @@ func (d *Desktop) refresh() {
 				return
 			}
 			if page == projectFilesPage {
-				d.projectFiles, d.projectFileRow, d.projectPreview = projectFiles, -1, app.Comparison{}
+				d.projectFiles, d.projectFileRow, d.projectPreview = projectFiles, -1, app.FilePreview{}
 				d.rebuildProjectTree()
 				return
 			}

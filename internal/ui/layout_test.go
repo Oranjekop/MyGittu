@@ -1,9 +1,16 @@
 package ui
 
 import (
+	"context"
+	"encoding/json"
+	"image"
+	"image/color"
+	"image/draw"
 	"image/png"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	native "github.com/egoist/mygo/ui"
@@ -11,10 +18,65 @@ import (
 	"mygittu/internal/app"
 	"mygittu/internal/buildinfo"
 	git "mygittu/internal/git"
+	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
 	"mygittu/internal/status"
 )
+
+func TestLargeProjectTextHasOneScrollbar(t *testing.T) {
+	firstText := strings.Repeat("first section\n", 8000)
+	lastText := strings.Repeat("second section\n", 12000) + "最后一行"
+	client := &ipc.Client{Dial: func(context.Context) (net.Conn, error) {
+		reader, writer := net.Pipe()
+		go func() {
+			defer writer.Close()
+			var request ipc.Request
+			if err := ipc.ReadFrame(writer, &request); err != nil {
+				t.Error(err)
+				return
+			}
+			var params ipc.Params
+			if err := json.Unmarshal(request.Params, &params); err != nil {
+				t.Error(err)
+				return
+			}
+			if params.PreviewOffset != int64(len(firstText)) || params.PreviewVersion != "same-file" {
+				t.Errorf("unexpected document cursor: %+v", params)
+			}
+			payload, err := json.Marshal(app.FilePreview{New: lastText, Version: "same-file"})
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if err := ipc.WriteFrame(writer, ipc.Response{Version: ipc.Version, ID: request.ID, OK: true, Result: payload}); err != nil {
+				t.Error(err)
+			}
+		}()
+		return reader, nil
+	}}
+	code, err := readProjectText(context.Background(), client, ipc.Params{Path: "large.txt"}, app.FilePreview{
+		New: firstText, NextOffset: int64(len(firstText)), Version: "same-file",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := code.Buffer.Line(code.Buffer.LineCount() - 1); got != "最后一行" || code.Buffer.LineCount() != 20001 {
+		t.Fatalf("the editor lost content: %q, %d lines", got, code.Buffer.LineCount())
+	}
+	d := New(nil, "D:/Projects/MyGittu", "")
+	d.selected, d.page, d.projectFileRow = "demo", projectFilesPage, 0
+	d.projectFiles = []string{"large.txt"}
+	d.rebuildProjectTree()
+	d.projectCode, d.projectCodePath, d.projectLargeText = code, "large.txt", true
+	tt := native.NewTester(d.view, 960, 680)
+	tt.Press(935, 126)
+	tt.Move(935, 658)
+	tt.Release(935, 658)
+	if code.ScrollY() < 100000 {
+		t.Fatalf("scrollbar did not travel beyond the first data chunk: %f", code.ScrollY())
+	}
+}
 
 func TestWorkspaceAtNarrow150Percent(t *testing.T) {
 	d := New(nil, "", "")
@@ -505,5 +567,63 @@ func TestShellActionWindowsAt150Percent(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestProjectFileTypeIcons(t *testing.T) {
+	for name, want := range map[string]string{
+		"main.go": "file-code", "Makefile": "file-code", "README.md": "changes",
+		".gitignore": "file-data", "config.YAML": "file-data", "banner.PNG": "file-image",
+		"demo.mp4": "file-media", "export.tar.gz": "file-archive", "unknown.bin": "file",
+	} {
+		if got := projectFileIcon(name); got != want || icons[got] == nil {
+			t.Errorf("%s icon = %q, want %q", name, got, want)
+		}
+	}
+	d := New(nil, "D:/Projects/MyGittu", "")
+	d.selected, d.page = "demo", projectFilesPage
+	d.projectFiles = []string{
+		"Makefile", "README.md", "assets/banner.PNG", "assets/demo.mp4",
+		"config/settings.yaml", "dist/export.zip", "src/main.go",
+	}
+	d.projectCollapsed = map[string]bool{"dist": true}
+	d.rebuildProjectTree()
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if !tt.HasText("banner.PNG") || !tt.HasText("main.go") || tt.HasText("export.zip") {
+		t.Fatal("file rows were clipped or a collapsed folder exposed its contents")
+	}
+	saveLayoutPreview(t, tt, "project-file-type-icons.png")
+	if err := tt.Click("dist"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("export.zip") {
+		t.Fatal("folder row did not expand")
+	}
+}
+
+func TestProjectImagePreviewFitsPane(t *testing.T) {
+	d := New(nil, "D:/Projects/MyGittu", "")
+	d.selected, d.page, d.projectFileRow = "demo", projectFilesPage, 0
+	d.projectFiles = []string{"wide.png"}
+	d.rebuildProjectTree()
+	source := image.NewRGBA(image.Rect(0, 0, 1024, 256))
+	ink := color.RGBA{R: 241, G: 47, B: 31, A: 255}
+	draw.Draw(source, source.Bounds(), &image.Uniform{C: ink}, image.Point{}, draw.Src)
+	d.projectBitmap = native.NewBitmap(source)
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	rendered := tt.Image()
+	var painted image.Rectangle
+	for y := rendered.Bounds().Min.Y; y < rendered.Bounds().Max.Y; y++ {
+		for x := rendered.Bounds().Min.X; x < rendered.Bounds().Max.X; x++ {
+			if rendered.RGBAAt(x, y) == ink {
+				painted = painted.Union(image.Rect(x, y, x+1, y+1))
+			}
+		}
+	}
+	aspectError := painted.Dx() - 4*painted.Dy()
+	if painted.Dx() < 400 || painted.Min.X < 590 || aspectError < -8 || aspectError > 8 {
+		t.Fatalf("image did not fit the preview pane at its original aspect ratio: %v", painted)
 	}
 }
