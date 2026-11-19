@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	native "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -68,13 +69,46 @@ func TestLargeProjectTextHasOneScrollbar(t *testing.T) {
 	d.selected, d.page, d.projectFileRow = "demo", projectFilesPage, 0
 	d.projectFiles = []string{"large.txt"}
 	d.rebuildProjectTree()
+	d.projectFileRow = 0
 	d.projectCode, d.projectCodePath, d.projectLargeText = code, "large.txt", true
 	tt := native.NewTester(d.view, 960, 680)
+	tt.Wheel(650, 250, 0, 180)
+	tt.Advance(35 * time.Millisecond)
+	if y := code.ScrollY(); y <= 0 || y >= 180 {
+		t.Fatalf("wheel did not animate through an intermediate position: %f", y)
+	}
+	tt.Advance(160 * time.Millisecond)
+	if y := code.ScrollY(); y != 180 {
+		t.Fatalf("wheel stopped at %f, want 180", y)
+	}
+	code.SetScrollY(0)
+	tt.Frame()
 	tt.Press(935, 126)
 	tt.Move(935, 658)
 	tt.Release(935, 658)
 	if code.ScrollY() < 100000 {
 		t.Fatalf("scrollbar did not travel beyond the first data chunk: %f", code.ScrollY())
+	}
+}
+
+func TestProjectPreviewStaysVisibleDuringSelection(t *testing.T) {
+	d := New(nil, "D:/Projects/MyGittu", "")
+	d.selected, d.page = "demo", projectFilesPage
+	d.projectFiles = []string{"first.txt", "second.txt"}
+	d.rebuildProjectTree()
+	d.projectFileRow, d.projectShownPath = 0, "first.txt"
+	d.projectPreview.New = "The first file stays visible."
+	tt := native.NewTester(d.view, 960, 680)
+	editor := d.projectCode
+	before, ok := tt.Find("自动换行")
+	if !ok || editor == nil {
+		t.Fatal("missing initial editor")
+	}
+	d.projectFileRow = 1
+	d.projectLoad = &projectPreviewRequest{cancel: func() {}}
+	tt.Frame()
+	if after, ok := tt.Find("自动换行"); !ok || after != before || d.projectCode != editor || d.projectCodePath != "first.txt" {
+		t.Fatal("loading a different file removed, relabeled or moved the current editor")
 	}
 }
 
@@ -607,6 +641,7 @@ func TestProjectImagePreviewFitsPane(t *testing.T) {
 	d.selected, d.page, d.projectFileRow = "demo", projectFilesPage, 0
 	d.projectFiles = []string{"wide.png"}
 	d.rebuildProjectTree()
+	d.projectFileRow = 0
 	source := image.NewRGBA(image.Rect(0, 0, 1024, 256))
 	ink := color.RGBA{R: 241, G: 47, B: 31, A: 255}
 	draw.Draw(source, source.Bounds(), &image.Uniform{C: ink}, image.Point{}, draw.Src)

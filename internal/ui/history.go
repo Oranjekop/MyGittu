@@ -79,12 +79,12 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		native.Text(c, values[col])
 	}).Grow(1).MinHeight(110).FillWidth().Disabled(d.busy)
 	if previous != d.logRow && d.logRow >= 0 && d.logRow < len(d.logs) && !d.busy && d.Client != nil {
-		id, hash := d.selected, d.logs[d.logRow].Hash
-		d.historySummary = nil
+		id, commit := d.selected, d.logs[d.logRow]
 		d.task(func(ctx context.Context) (func(), error) {
 			var detail app.CommitDetails
-			e := d.Client.Call(ctx, "git.commit.details", ipc.Params{RepoID: id, Hash: hash}, &detail)
+			e := d.Client.Call(ctx, "git.commit.details", ipc.Params{RepoID: id, Hash: commit.Hash}, &detail)
 			return func() {
+				d.historyShown = commit
 				d.historySummary = &detail.Summary
 				d.setHistoryPatch(detail.Patch)
 			}, e
@@ -104,12 +104,16 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		}
 	})
 	if d.historySummary != nil && d.logRow >= 0 && d.logRow < len(d.logs) {
+		commit := d.historyShown
+		if commit.Hash == "" {
+			commit = d.logs[d.logRow]
+		}
 		native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 			native.Segmented(c, &d.historyMode, d.text("commit.details"), d.copy("提交差异", "Commit diff"))
-			native.Text(c, d.logs[d.logRow].Hash).TextColor(t.TextMuted)
+			native.Text(c, commit.Hash).TextColor(t.TextMuted)
 		})
 		if d.historyMode == 0 {
-			d.showCommitSummary(c, d.logs[d.logRow])
+			d.showCommitSummary(c, commit)
 		} else {
 			d.showHistoryPatch(c)
 		}

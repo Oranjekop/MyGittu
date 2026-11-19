@@ -52,6 +52,7 @@ type Desktop struct {
 	cloneCredentials                   cloneCredentials
 	logRow                             int
 	historySummary                     *string
+	historyShown                       app.Commit
 	historyPatch                       patchView
 	historyMode                        int
 	historyFiles                       []editor.FilePatch
@@ -85,6 +86,8 @@ type Desktop struct {
 	repositoriesOpen                   bool
 	repositorySearch                   string
 	comparison                         *editor.DiffState
+	comparisonPath                     string
+	comparisonStaged                   bool
 	diffLayout                         int
 	diffWrap, diffExpand               bool
 	workspacePatch                     *editor.State
@@ -96,6 +99,9 @@ type Desktop struct {
 	projectFileRow                     int
 	projectFileList                    native.ListState
 	projectPreview                     app.FilePreview
+	projectShownPath, projectLoadError string
+	projectLoad                        *projectPreviewRequest
+	projectScroll                      projectWheelScroll
 	projectLargeText                   bool
 	projectBitmap                      *native.Bitmap
 	projectCode                        *editor.State
@@ -153,6 +159,7 @@ func (d *Desktop) Run() error {
 		_ = mygo.App.Dock.SetIcon(brand.PNG)
 		updateContext, cancelUpdates := context.WithCancel(context.Background())
 		d.win.OnClosed(func() {
+			d.cancelProjectPreview()
 			cancelUpdates()
 			if d.updateCancel != nil {
 				d.updateCancel()
@@ -286,18 +293,6 @@ func (d *Desktop) refresh() {
 	if id == "" {
 		return
 	}
-	if page != 2 {
-		d.row = -1
-	}
-	d.detail = ""
-	d.comparison = nil
-	if page == projectFilesPage {
-		d.projectFiles, d.projectFileRow, d.projectPreview = nil, -1, app.FilePreview{}
-		d.projectBitmap = nil
-		d.projectLargeText = false
-		d.projectCode = nil
-		d.projectTree = nil
-	}
 	d.task(func(ctx context.Context) (func(), error) {
 		var snap status.Snapshot
 		var logs []app.Commit
@@ -305,7 +300,6 @@ func (d *Desktop) refresh() {
 		var references app.References
 		var branchTargets []string
 		var branches []app.BranchEntry
-		var detail string
 		var e error
 		var identity app.Identity
 		switch page {
@@ -351,15 +345,27 @@ func (d *Desktop) refresh() {
 				return
 			}
 			if page == projectFilesPage {
-				d.projectFiles, d.projectFileRow, d.projectPreview = projectFiles, -1, app.FilePreview{}
+				d.projectFiles = projectFiles
+				path := d.selectedProjectPath()
 				d.rebuildProjectTree()
+				if d.projectShownPath != "" {
+					if _, exists := slices.BinarySearch(projectFiles, d.projectShownPath); !exists {
+						d.projectShownPath, d.projectLoadError = "", ""
+						d.projectPreview, d.projectCode, d.projectBitmap = app.FilePreview{}, nil, nil
+						d.projectScroll = projectWheelScroll{}
+					}
+				}
+				if d.projectFileRow >= 0 {
+					d.loadProjectPreview(path)
+				} else if path != "" {
+					d.cancelProjectPreview()
+				}
 				return
 			}
 			if page == 0 || page == 2 {
 				d.identity = editableIdentity(identity)
 				d.commitIdentity = identity
-				oldMode := d.staged
-				changed := d.applyWorkspaceStatus(snap)
+				d.applyWorkspaceStatus(snap)
 				if d.initialDiffPath != "" {
 					target := d.initialDiffPath
 					d.initialDiffPath = ""
@@ -368,17 +374,22 @@ func (d *Desktop) refresh() {
 					})
 					if d.row >= 0 {
 						d.staged = d.changes[d.row].Worktree == git.Clean
-						changed = true
 					}
 				}
-				if d.row >= 0 && (page == 2 || changed || d.staged != oldMode) {
+				if d.row >= 0 {
 					d.diff(d.changes[d.row].Path)
+				} else {
+					d.detail, d.comparison, d.binary = "", nil, false
 				}
 			}
-			d.logs = logs
-			d.detail = detail
-			d.logRow = -1
-			d.historySummary = nil
+			if page == 1 {
+				d.logs = logs
+				d.logRow = slices.IndexFunc(logs, func(commit app.Commit) bool { return commit.Hash == d.historyShown.Hash })
+				if d.logRow < 0 {
+					d.historySummary = nil
+					d.historyShown = app.Commit{}
+				}
+			}
 		}, e
 	})
 }
@@ -422,7 +433,6 @@ func (d *Desktop) diff(path string) {
 		var comparison app.Comparison
 		e := d.Client.Call(ctx, "git.comparison", ipc.Params{RepoID: id, Path: path, OriginalPath: original, Staged: staged}, &comparison)
 		return func() {
-			d.comparison = nil
 			d.applyComparison(path, comparison)
 		}, e
 	})
@@ -430,7 +440,8 @@ func (d *Desktop) diff(path string) {
 func (d *Desktop) applyComparison(path string, comparison app.Comparison) bool {
 	changed := d.binary != comparison.Binary
 	d.binary = comparison.Binary
-	if d.comparison == nil {
+	if d.comparison == nil || d.comparisonPath != path || d.comparisonStaged != d.staged {
+		d.comparisonPath, d.comparisonStaged = path, d.staged
 		old, next := editor.NewBuffer(comparison.Old), editor.NewBuffer(comparison.New)
 		old.SetLanguage(editor.LanguageForText(path, comparison.Old))
 		next.SetLanguage(editor.LanguageForText(path, comparison.New))
@@ -632,6 +643,9 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	})
 }
 func (d *Desktop) view(c *native.Context) {
+	if d.page != projectFilesPage {
+		d.cancelProjectPreview()
+	}
 	if d.action == "" && !d.settingsOpen && !d.repositoriesOpen && c.Shortcut(native.Cmd, native.KeyO) {
 		d.chooseRepository()
 	}

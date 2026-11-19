@@ -20,6 +20,7 @@ func (d *Desktop) openFileHistory(path string) {
 			w := &d.tools
 			w.filePath, w.fileCommits, w.fileRow, w.fileLoaded, w.fileOpen = path, list, 0, "", true
 			w.filePatch, w.fileMode = patchView{}, 0
+			w.fileShown = ""
 			w.blameRows, w.blameLoaded = nil, false
 			w.fileList, w.blameList = native.ListState{}, native.ListState{}
 		}, err
@@ -76,11 +77,15 @@ func (d *Desktop) showFileHistory(c *native.Context) {
 			if w.fileLoaded != commit.Hash && d.Client != nil && !d.busy {
 				d.loadFilePatch(commit.Hash)
 			}
-			native.Text(c, commit.Hash).SingleLine().Tooltip(commit.Hash).TextColor(c.Theme().TextMuted)
-			if d.busy {
-				native.Text(c, d.text("busy")).TextColor(c.Theme().TextMuted)
-			} else if len(w.filePatch.lines) > 0 {
+			shown := w.fileShown
+			if shown == "" {
+				shown = commit.Hash
+			}
+			native.Text(c, shown).SingleLine().Tooltip(shown).TextColor(c.Theme().TextMuted)
+			if len(w.filePatch.lines) > 0 {
 				d.showPatch(c, &w.filePatch).Height(min(280, height*.43))
+			} else if d.busy && w.fileShown == "" {
+				native.Text(c, d.text("busy")).TextColor(c.Theme().TextMuted)
 			} else if d.err == "" {
 				native.Text(c, d.text("diff.empty")).TextColor(c.Theme().TextMuted)
 			}
@@ -97,7 +102,7 @@ func commitDate(date string) string {
 
 func (d *Desktop) loadFilePatch(hash string) {
 	w := &d.tools
-	w.fileLoaded, w.filePatch = hash, patchView{}
+	w.fileLoaded = hash
 	params := ipc.Params{RepoID: d.selected, Path: w.filePath, Action: "diff", Hash: hash}
 	d.task(func(ctx context.Context) (func(), error) {
 		var patch string
@@ -106,7 +111,10 @@ func (d *Desktop) loadFilePatch(hash string) {
 		if err == nil {
 			err = parseErr
 		}
-		return func() { w.filePatch.lines = d.patchRows(files, false) }, err
+		return func() {
+			w.fileShown = hash
+			w.filePatch = patchView{lines: d.patchRows(files, false)}
+		}, err
 	})
 }
 
@@ -121,7 +129,7 @@ func (d *Desktop) showFileBlame(c *native.Context, height float32) {
 			return func() { w.blameRows = lines }, err
 		})
 	}
-	if d.busy {
+	if d.busy && len(w.blameRows) == 0 {
 		native.Text(c, d.text("busy")).TextColor(c.Theme().TextMuted)
 		return
 	}

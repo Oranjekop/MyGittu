@@ -15,7 +15,7 @@ type workbench struct {
 	conflictOpen, fileOpen, confirmOpen bool
 	conflict                            app.Conflict
 	conflictPath, resolution            string
-	filePath, fileLoaded                string
+	filePath, fileLoaded, fileShown     string
 	filePatch                           patchView
 	fileCommits                         []app.Commit
 	fileRow                             int
