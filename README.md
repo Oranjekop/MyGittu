@@ -85,7 +85,7 @@ go build -o bin/desktop ./cmd/desktop
 
 | 平台 | 命令 | 额外依赖 |
 | --- | --- | --- |
-| Windows | `./packaging/windows/release.ps1` | Visual Studio C++ x64 和 ARM64 工具链、CMake、Inno Setup。签名右键组件还需 Windows SDK 与签名证书。 |
+| Windows | `./packaging/windows/release.ps1` | Visual Studio C++ x64 和 ARM64 工具链、CMake、NSIS 3.13。可用 `MAKENSIS` 指定编译器。签名右键组件还需 Windows SDK 与签名证书。 |
 | macOS | `bash packaging/darwin/release.sh` | Xcode Command Line Tools |
 
 ## 发布

@@ -99,7 +99,9 @@ func (d *Desktop) repositoryDialog(c *native.Context) {
 						})
 					}
 					if !found {
-						native.Text(c, d.text("repo.noMatches")).TextColor(c.Theme().TextMuted).Padding(controlSpacing)
+						if !d.busy {
+							emptyState(c, emptyPreviewArt, 64, d.text("repo.noMatches")).Padding(controlSpacing)
+						}
 					}
 				})
 			})

@@ -58,7 +58,9 @@ func (d *Desktop) showFileHistory(c *native.Context) {
 				return
 			}
 			if len(w.fileCommits) == 0 {
-				native.Text(c, d.text("history.empty")).TextColor(c.Theme().TextMuted)
+				if !d.busy && d.err == "" {
+					emptyState(c, emptyPreviewArt, 72, d.text("history.empty"))
+				}
 				return
 			}
 			w.fileList.Selected = &w.fileRow
@@ -89,7 +91,7 @@ func (d *Desktop) showFileHistory(c *native.Context) {
 			} else if d.busy && w.fileShown == "" {
 				native.Text(c, d.text("busy")).TextColor(c.Theme().TextMuted)
 			} else if d.err == "" {
-				native.Text(c, d.text("diff.empty")).TextColor(c.Theme().TextMuted)
+				emptyState(c, emptyDiffArt, 72, d.copy("没有文件差异", "No file differences"))
 			}
 		})
 	})
@@ -130,7 +132,7 @@ func (d *Desktop) showFileBlame(c *native.Context, height float32) {
 	}
 	if len(w.blameRows) == 0 {
 		if d.err == "" {
-			native.Text(c, d.copy("没有可追溯的行。", "No lines to annotate.")).TextColor(c.Theme().TextMuted)
+			emptyState(c, emptyPreviewArt, 72, d.copy("没有可追溯的行。", "No lines to annotate."))
 		}
 		return
 	}

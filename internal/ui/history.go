@@ -90,7 +90,7 @@ func (d *Desktop) showCommitSummary(c *native.Context, commit app.Commit) {
 
 func (d *Desktop) showHistoryPatch(c *native.Context) {
 	if len(d.historyFiles) == 0 {
-		native.Text(c, d.copy("此提交没有文件差异。", "This commit has no file changes.")).TextColor(c.Theme().TextMuted)
+		emptyState(c, emptyDiffArt, 88, d.copy("此提交没有文件差异。", "This commit has no file changes.")).Grow(1)
 		return
 	}
 	native.Row(c).Grow(1).MinHeight(100).FillWidth().Gap(panelSpacing).Children(func() {
@@ -140,7 +140,7 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		}
 	}
 	previous := d.logRow
-	roundedTable(c, &d.history, []native.TableColumn{
+	table := roundedTable(c, &d.history, []native.TableColumn{
 		{Title: d.copy("分支图", "Graph"), Width: max(56, d.historyGraphWidth), Fixed: true},
 		{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190},
 	}, len(d.logs), func(row, col int) {
@@ -167,7 +167,12 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		} else {
 			native.Text(c, value)
 		}
-	}).Grow(1).MinHeight(110).FillWidth().Disabled(d.busy)
+	}).FillWidth().Disabled(d.busy)
+	noCommits := len(d.logs) == 0 && !d.busy && !d.historyLoading && d.historyLoadError == "" && d.err == ""
+	tableOrEmptyState(c, table, noCommits, emptyPreviewArt, d.text("history.empty"))
+	if !noCommits {
+		table.MinHeight(110)
+	}
 	if previous != d.logRow && d.logRow >= 0 && d.logRow < len(d.logs) && !d.busy && d.Client != nil {
 		id, commit := d.selected, d.logs[d.logRow]
 		d.task(func(ctx context.Context) (func(), error) {
@@ -221,7 +226,5 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		})
 	} else if d.historyLoading {
 		native.Text(c, d.text("busy")).TextColor(t.TextMuted)
-	} else if len(d.logs) == 0 && !d.busy {
-		native.Text(c, d.text("history.empty"))
 	}
 }

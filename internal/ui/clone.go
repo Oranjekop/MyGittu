@@ -244,7 +244,9 @@ func (d *Desktop) githubRepositoryPicker(c *native.Context, account string, enab
 		}
 	}
 	if len(matches) == 0 {
-		native.Text(c, d.copy("没有匹配的仓库。", "No matching repositories.")).TextColor(c.Theme().TextMuted)
+		if !d.busy && d.err == "" {
+			emptyState(c, emptyPreviewArt, 64, d.copy("没有匹配的仓库。", "No matching repositories."))
+		}
 		return
 	}
 	label := d.copy("选择 GitHub 仓库", "Select a GitHub repository")

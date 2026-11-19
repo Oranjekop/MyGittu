@@ -17,10 +17,11 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 	native.Row(c).Grow(1).FillWidth().Gap(panelSpacing).Children(func() {
 		native.Column(c).Grow(1).FillHeight().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
 			d.stashList.Selected = &d.stashRow
-			roundedTable(c, &d.stashList, []native.TableColumn{{Title: d.text("stash.title")}}, len(d.references.Stashes), func(row, _ int) {
+			table := roundedTable(c, &d.stashList, []native.TableColumn{{Title: d.text("stash.title")}}, len(d.references.Stashes), func(row, _ int) {
 				_, label, _ := strings.Cut(d.references.Stashes[row], "\t")
 				native.Text(c, label)
-			}).Grow(1).FillWidth().Disabled(d.busy)
+			}).FillWidth().Disabled(d.busy)
+			tableOrEmptyState(c, table, len(d.references.Stashes) == 0 && !d.busy && d.err == "", emptyPreviewArt, d.copy("暂无储藏", "No stashes"))
 			native.TextInput(c, &d.stashMessage).Placeholder(d.text("stash.message")).FillWidth().Disabled(d.busy)
 			native.Row(c).Gap(controlSpacing).Children(func() {
 				if IconButton(c, d.text("stash.save"), "stash", true).Disabled(d.busy).Clicked() {
@@ -37,7 +38,7 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 			tags := d.sortedTagNames()
 			d.tagList.Selected = &d.tagRow
 			d.tagList.Sort = &d.tagSort
-			roundedTable(c, &d.tagList, []native.TableColumn{
+			table := roundedTable(c, &d.tagList, []native.TableColumn{
 				{ID: "name", Title: d.text("tag.title"), Sortable: true},
 				{ID: "time", Title: d.text("tag.time"), Width: 214, Sortable: true},
 			}, len(tags), func(row, col int) {
@@ -55,7 +56,8 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 				} else {
 					native.Text(c, "—")
 				}
-			}).Grow(1).FillWidth().Disabled(d.busy)
+			}).FillWidth().Disabled(d.busy)
+			tableOrEmptyState(c, table, len(tags) == 0 && !d.busy && d.err == "", emptyPreviewArt, d.copy("暂无标签", "No tags"))
 			native.TextInput(c, &d.tagName).Placeholder(d.text("tag.name")).FillWidth().Disabled(d.busy)
 			native.Row(c).Gap(controlSpacing).Children(func() {
 				if IconButton(c, d.text("tag.create"), "tag", true).Disabled(d.busy || strings.TrimSpace(d.tagName) == "").Clicked() {

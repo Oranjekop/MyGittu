@@ -145,7 +145,7 @@ func (d *Desktop) remoteManager(c *native.Context, w *repositoryTools) {
 		d.toolError(c, w)
 		previous := w.remoteRow
 		w.remoteList.Selected = &w.remoteRow
-		roundedTable(c, &w.remoteList, []native.TableColumn{{Title: d.copy("名称", "Name"), Width: 105}, {Title: "URL"}}, len(w.remotes), func(row, col int) {
+		table := roundedTable(c, &w.remoteList, []native.TableColumn{{Title: d.copy("名称", "Name"), Width: 105}, {Title: "URL"}}, len(w.remotes), func(row, col int) {
 			item := w.remotes[row]
 			if col == 0 {
 				native.Text(c, item.Name)
@@ -153,6 +153,10 @@ func (d *Desktop) remoteManager(c *native.Context, w *repositoryTools) {
 				native.Text(c, item.URL).SingleLine().Ellipsis("…").Tooltip(item.URL)
 			}
 		}).Height(130).FillWidth().Disabled(d.busy)
+		if len(w.remotes) == 0 && !d.busy && w.err == "" {
+			table.Height(28)
+			emptyState(c, emptyPreviewArt, 64, d.copy("暂无远程仓库", "No remotes"))
+		}
 		if w.remoteRow >= 0 && w.remoteRow < len(w.remotes) && previous != w.remoteRow {
 			w.name, w.url = w.remotes[w.remoteRow].Name, w.remotes[w.remoteRow].URL
 		}
@@ -216,7 +220,7 @@ func (d *Desktop) worktreeManager(c *native.Context, w *repositoryTools) {
 		native.Text(c, d.copy("工作树", "Worktrees")).Bold()
 		d.toolError(c, w)
 		w.treeList.Selected = &w.treeRow
-		roundedTable(c, &w.treeList, []native.TableColumn{{Title: d.copy("分支", "Branch"), Width: 130}, {Title: d.copy("目录", "Folder")}}, len(w.trees), func(row, col int) {
+		table := roundedTable(c, &w.treeList, []native.TableColumn{{Title: d.copy("分支", "Branch"), Width: 130}, {Title: d.copy("目录", "Folder")}}, len(w.trees), func(row, col int) {
 			item := w.trees[row]
 			if col == 0 {
 				native.Text(c, item.Branch)
@@ -224,6 +228,10 @@ func (d *Desktop) worktreeManager(c *native.Context, w *repositoryTools) {
 				native.Text(c, item.Path).SingleLine().Ellipsis("…").Tooltip(item.Path)
 			}
 		}).Height(160).FillWidth().Disabled(d.busy)
+		if len(w.trees) == 0 && !d.busy && w.err == "" {
+			table.Height(28)
+			emptyState(c, emptyPreviewArt, 64, d.copy("暂无工作树", "No worktrees"))
+		}
 		if w.treeRow >= 0 && w.treeRow < len(w.trees) {
 			item := w.trees[w.treeRow]
 			native.Row(c).Gap(controlSpacing).Children(func() {

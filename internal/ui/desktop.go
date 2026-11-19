@@ -535,7 +535,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			d.files.Selected = &d.row
 			previous := d.row
 			d.showStagingActions(c, files)
-			roundedTable(c, &d.files, []native.TableColumn{{Title: d.text("file")}, {Title: d.text("index"), Width: 68}, {Title: d.text("worktree"), Width: 68}}, len(files), func(row, col int) {
+			table := roundedTable(c, &d.files, []native.TableColumn{{Title: d.text("file")}, {Title: d.text("index"), Width: 68}, {Title: d.text("worktree"), Width: 68}}, len(files), func(row, col int) {
 				f := files[row]
 				if col == 0 {
 					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
@@ -565,7 +565,8 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				} else {
 					native.Text(c, d.text("state."+string(f.Worktree)))
 				}
-			}).Grow(1).FillWidth().Disabled(d.busy)
+			}).FillWidth().Disabled(d.busy)
+			tableOrEmptyState(c, table, len(files) == 0 && !d.busy && d.err == "", emptyDiffArt, d.copy("暂无变更", "No changes"))
 			if d.row != previous && d.row >= 0 && d.row < len(files) {
 				d.staged = files[d.row].Worktree == git.Clean
 				d.diff(files[d.row].Path)
@@ -637,7 +638,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				}
 			})
 			if d.binary {
-				native.Text(c, d.text("diff.binary")).TextColor(t.TextMuted)
+				emptyState(c, emptyDiffArt, 128, d.text("diff.binary")).Grow(1)
 			} else if d.comparison != nil {
 				native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
 					native.Segmented(c, &d.diffLayout, d.copy("自动", "Auto"), d.copy("并排", "Side by side"), d.copy("统一", "Unified"))
@@ -653,8 +654,10 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				d.comparison.ExpandUnchanged = d.diffExpand
 				d.comparison.KeepScrollbars = true
 				editor.DiffView(c, d.comparison).Grow(1).FillWidth()
-			} else if d.detail == "" {
-				native.Column(c).Grow(1).FillWidth().Center().Children(func() { native.Text(c, d.text("diff.empty")).TextColor(t.TextMuted) })
+			} else if d.detail == "" || d.detail == d.text("diff.empty") {
+				if !d.busy && d.err == "" {
+					emptyState(c, emptyDiffArt, 128, d.text("diff.empty")).Grow(1)
+				}
 			} else {
 				if d.workspacePatch == nil || d.workspacePatch.Buffer.String() != d.detail {
 					d.workspacePatch = codePreview("changes.diff", d.detail)
@@ -787,7 +790,9 @@ func (d *Desktop) view(c *native.Context) {
 				if d.selected == "" && d.page != 4 {
 					native.Column(c).Grow(1).FillWidth().Center().Gap(16).Children(func() {
 						native.Text(c, "MyGittu").FontSize(28).Bold()
-						native.Text(c, d.text("repo.drop")).TextColor(t.TextMuted)
+						if !d.busy && d.err == "" {
+							emptyState(c, emptyPreviewArt, 128, d.text("repo.drop"))
+						}
 						if IconButton(c, d.text("repo.open")+"…", "open", true).Disabled(d.busy).Clicked() {
 							d.chooseRepository()
 						}

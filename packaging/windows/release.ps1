@@ -4,6 +4,17 @@ if($Version -notmatch '^\d+\.\d+\.\d+$'){throw 'Invalid release version'}
 Push-Location "$PSScriptRoot/../.."
 $previousArch=$env:GOARCH
 try {
+ $makensis=$env:MAKENSIS
+ if(!$makensis){$makensis=(Get-Command makensis.exe -ErrorAction SilentlyContinue).Source}
+ if(!$makensis){
+  $makensis=@(
+   "${env:ProgramFiles(x86)}/NSIS/makensis.exe"
+   "$env:ProgramFiles/NSIS/makensis.exe"
+   Get-ChildItem "$env:LOCALAPPDATA/MyGo/nsis-*/makensis.exe" -ErrorAction SilentlyContinue |
+    ForEach-Object FullName
+  ) | Where-Object {Test-Path -LiteralPath $_ -PathType Leaf} | Select-Object -First 1
+ }
+ if(!$makensis -or !(Test-Path -LiteralPath $makensis -PathType Leaf)){throw 'NSIS is missing. Install NSIS or set MAKENSIS to makensis.exe.'}
  foreach($arch in @('amd64','arm64')) {
   $folder=if($arch -eq 'amd64'){'x64'}else{'arm64'}
   $native=if($arch -eq 'amd64'){'x64'}else{'ARM64'}
@@ -22,9 +33,8 @@ try {
   if($LASTEXITCODE){throw "Shell $arch build failed"}
   Copy-Item ".work/release-$arch/Release/MyGittuShell.dll" "dist/windows/$folder/"
  }
- $iscc=(Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
- if(!$iscc){$iscc=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'}
- $setupArgs=@("/DAppVersion=$Version")
+ New-Item -ItemType Directory -Force dist/release | Out-Null
+ $setupArgs=@('/NOCD','/INPUTCHARSET','UTF8',"/DAppVersion=$Version")
  if($env:MYGITTU_CERT_PATH){
   & "$PSScriptRoot/build-sparse.ps1" -Version $Version -CertificatePath $env:MYGITTU_CERT_PATH
   $setupArgs+= "/DModernShellPackage=dist\release\MyGittu-$Version-Shell.msix"
@@ -36,6 +46,6 @@ try {
    $setupArgs+= "/DModernShellThumbprint=$($cert.Thumbprint)"
   }
  }
- & $iscc @setupArgs packaging/windows/installer.iss
+ & $makensis @setupArgs packaging/windows/installer.nsi
  if($LASTEXITCODE){throw 'Installer compilation failed'}
 }finally{$env:GOARCH=$previousArch;Pop-Location}

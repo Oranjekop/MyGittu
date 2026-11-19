@@ -59,7 +59,9 @@ func (d *Desktop) hunkDialog(c *native.Context) {
 				native.Text(c, d.err).FillWidth().TextColor(c.Theme().Danger)
 			}
 			if len(d.hunks) == 0 {
-				native.Text(c, d.text("hunk.empty")).TextColor(c.Theme().TextMuted)
+				if !d.busy && d.err == "" {
+					emptyState(c, emptyDiffArt, 72, d.text("hunk.empty"))
+				}
 				return
 			}
 			native.Row(c).Height(min(340, height-166)).FillWidth().Gap(panelSpacing).Children(func() {

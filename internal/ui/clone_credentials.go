@@ -84,8 +84,8 @@ func (d *Desktop) cloneCredentialList(c *native.Context, f *cloneCredentials) {
 		if row != before && row >= 0 && row < len(profiles) {
 			f.edit(profiles, profiles[row].ID)
 		}
-	} else {
-		native.Text(c, d.copy("暂无凭据", "No saved credentials")).TextColor(c.Theme().TextMuted)
+	} else if !d.busy && d.err == "" {
+		emptyState(c, emptyPreviewArt, 72, d.copy("暂无凭据", "No saved credentials"))
 	}
 }
 

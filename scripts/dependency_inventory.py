@@ -58,7 +58,10 @@ for name, module in sorted(modules.items()):
 
 goroot = Path(subprocess.check_output(["go", "env", "GOROOT"], text=True).strip())
 notices["Go standard library/LICENSE"] = (goroot / "LICENSE").read_text(encoding="utf-8")
-notices["Inno Setup Chinese translation/LICENSE"] = (ROOT / "packaging/windows/languages/LICENSE.inno-setup.txt").read_text(encoding="utf-8")
+notices["NSIS/LICENSE"] = (
+    "NSIS source code is available from https://nsis.sourceforge.io/Download.\n\n"
+    + (ROOT / "packaging/windows/LICENSE.nsis.txt").read_text(encoding="utf-8")
+)
 sbom = {"bomFormat": "CycloneDX", "specVersion": "1.6", "version": 1,
         "metadata": {"component": {"type": "application", "name": "MyGittu", "version": "0.0.1"}},
         "components": components}

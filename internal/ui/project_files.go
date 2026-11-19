@@ -71,12 +71,9 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			if before != d.projectSearch {
 				d.rebuildProjectTree()
 			}
-			if len(d.projectFiles) == 0 && !d.busy {
-				native.Text(c, d.text("files.empty")).TextColor(t.TextMuted)
-			}
 			d.projectFileList.Selected = &d.projectFileRow
 			previous := d.projectFileRow
-			roundedTable(c, &d.projectFileList, []native.TableColumn{{Title: d.text("nav.files")}}, len(d.projectTree), func(row, _ int) {
+			table := roundedTable(c, &d.projectFileList, []native.TableColumn{{Title: d.text("nav.files")}}, len(d.projectTree), func(row, _ int) {
 				entry := d.projectTree[row]
 				name := path.Base(entry.path)
 				native.Row(c).FillWidth().MinWidth(0).Gap(detailSpacing).AlignItems(native.Center).
@@ -95,7 +92,12 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 					native.Icon(c, icons[icon]).Width(15).Height(15)
 					native.Text(c, name).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
-			}).Grow(1).FillWidth().Disabled(d.busy)
+			}).FillWidth().Disabled(d.busy)
+			message := d.text("files.empty")
+			if len(d.projectFiles) > 0 {
+				message = d.copy("没有匹配的文件", "No matching files")
+			}
+			tableOrEmptyState(c, table, len(d.projectTree) == 0 && !d.busy && d.err == "", emptyPreviewArt, message)
 			if row := d.projectFileRow; row != previous && row >= 0 && row < len(d.projectTree) && !d.busy {
 				entry := d.projectTree[row]
 				if entry.dir {
@@ -119,7 +121,9 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			if filename == "" && d.projectLoad != nil {
 				native.Text(c, d.text("busy")).TextColor(t.TextMuted)
 			} else if filename == "" {
-				native.Text(c, d.text("files.select")).TextColor(t.TextMuted)
+				if !d.busy && d.projectLoadError == "" && d.err == "" {
+					emptyState(c, emptyPreviewArt, 128, d.text("files.select")).Grow(1)
+				}
 			} else {
 				native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 					native.Text(c, filename).Bold().Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(filename)
@@ -133,7 +137,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 				if d.projectBitmap != nil {
 					native.Image(c, d.projectBitmap).Grow(1).MinHeight(0).FillWidth().Fit(native.Contain).Label(filename)
 				} else if d.projectPreview.Binary {
-					native.Text(c, d.text("diff.binary")).TextColor(t.TextMuted)
+					emptyState(c, emptyPreviewArt, 128, d.text("diff.binary")).Grow(1)
 				} else if d.projectShownPath != "" || d.projectLoadError == "" {
 					d.showCodePreview(c, filename)
 				}

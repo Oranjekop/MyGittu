@@ -50,8 +50,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           go vet ./...
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Install Inno Setup
-        run: choco upgrade innosetup --no-progress -y
+      - name: Install NSIS
+        run: choco upgrade nsis --no-progress -y
       - name: Test Explorer restart paths
         run: ./packaging/windows/test-restart-explorer.ps1
       - name: Build Chinese multi-architecture installer

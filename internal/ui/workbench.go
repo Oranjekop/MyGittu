@@ -184,7 +184,7 @@ func (d *Desktop) showBranches(c *native.Context) {
 			}
 			previous := row
 			w.branchList.Selected = &row
-			roundedTable(c, &w.branchList, []native.TableColumn{{Title: d.text("nav.branches")}}, len(w.branches), func(i, _ int) {
+			table := roundedTable(c, &w.branchList, []native.TableColumn{{Title: d.text("nav.branches")}}, len(w.branches), func(i, _ int) {
 				branch := w.branches[i]
 				name := strings.TrimPrefix(branch.Name, "refs/remotes/")
 				native.Column(c).Gap(detailSpacing).Children(func() {
@@ -196,7 +196,8 @@ func (d *Desktop) showBranches(c *native.Context) {
 						native.Text(c, "↗ "+branch.Upstream).FontSize(11).Ellipsis("…")
 					}
 				})
-			}).Grow(1).FillWidth().Disabled(d.busy)
+			}).FillWidth().Disabled(d.busy)
+			tableOrEmptyState(c, table, len(w.branches) == 0 && !d.busy && d.err == "", emptyPreviewArt, d.copy("暂无分支", "No branches"))
 			if row != previous && row >= 0 && row < len(w.branches) {
 				selected = w.branches[row]
 				w.branchSelected = selected.Name
@@ -254,17 +255,17 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 		}
 	})
 	if w.compared && len(w.comparison.Commits) == 0 && w.comparison.Files == "" {
-		native.Text(c, d.text("compare.same"))
+		emptyState(c, emptyDiffArt, 128, d.text("compare.same")).Grow(1)
 	} else if w.compared {
 		native.Segmented(c, &w.compareTab, d.copy("独有提交", "Unique commits"), d.text("compare.files"))
 		if w.compareTab == 1 {
 			if len(w.comparisonPatch.lines) == 0 {
-				native.Text(c, d.text("diff.empty")).TextColor(c.Theme().TextMuted)
+				emptyState(c, emptyDiffArt, 128, d.copy("没有文件差异", "No file differences")).Grow(1)
 			} else {
 				d.showPatch(c, &w.comparisonPatch).Grow(1)
 			}
 		} else if len(w.comparison.Commits) == 0 {
-			native.Text(c, d.copy("两个分支没有独有提交。", "Neither branch has unique commits.")).TextColor(c.Theme().TextMuted)
+			emptyState(c, emptyDiffArt, 128, d.copy("两个分支没有独有提交。", "Neither branch has unique commits.")).Grow(1)
 		} else {
 			roundedTable(c, &w.comparisonCommits, []native.TableColumn{
 				{Title: d.copy("所属分支", "Branch"), Width: 145}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 125}, {Title: d.text("date"), Width: dateColumnWidth},
@@ -283,6 +284,8 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 				native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(tooltip)
 			}).Grow(1).FillWidth()
 		}
+	} else if !d.busy && d.err == "" {
+		emptyState(c, emptyDiffArt, 128, d.copy("选择分支进行对比", "Select branches to compare")).Grow(1)
 	}
 }
 
