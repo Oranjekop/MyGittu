@@ -114,7 +114,6 @@ type Desktop struct {
 	projectShownPath, projectLoadError string
 	projectFailedPath                  string
 	projectLoad                        *projectPreviewRequest
-	projectScroll                      projectWheelScroll
 	projectLargeText                   bool
 	projectBitmap                      *native.Bitmap
 	projectCode                        *editor.State

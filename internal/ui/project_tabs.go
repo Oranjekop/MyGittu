@@ -64,7 +64,6 @@ func (d *Desktop) activateProjectTab(tab *projectTab) {
 	d.projectLargeText = tab.preview.NextOffset != 0
 	d.projectCodePath, d.projectCodeSource = tab.path, tab.preview.New
 	d.projectFormatted, d.projectFormatError = tab.formatted, ""
-	d.projectScroll = projectWheelScroll{}
 	d.projectFileRow = slices.IndexFunc(d.projectTree, func(entry projectEntry) bool { return !entry.dir && entry.path == tab.path })
 }
 
@@ -96,7 +95,7 @@ func (d *Desktop) showProjectTabs(c *native.Context) {
 	d.rememberProjectTab()
 	active := slices.IndexFunc(tabs, func(tab *projectTab) bool { return tab.path == d.projectShownPath })
 	selected := max(0, active)
-	native.ScrollHorizontal(c).FillWidth().Height(controlHeight(c) + 6).Children(func() {
+	native.ScrollHorizontal(c).FillWidth().Height(controlHeight(c) + detailSpacing).Children(func() {
 		parts := native.TabsBase(c, &selected, len(tabs))
 		parts.List.Gap(detailSpacing).Children(func() {
 			for i, tab := range tabs {
@@ -157,7 +156,6 @@ func (d *Desktop) closeProjectTab(tab *projectTab) {
 	d.cancelProjectPreview()
 	d.projectShownPath, d.projectLoadError, d.projectFailedPath = "", "", ""
 	d.projectPreview, d.projectCode, d.projectBitmap = app.FilePreview{}, nil, nil
-	d.projectScroll = projectWheelScroll{}
 	d.projectFileRow = -1
 	if remaining := d.projectTabs[d.selected]; len(remaining) > 0 {
 		d.openProjectTab(remaining[min(i, len(remaining)-1)].path)

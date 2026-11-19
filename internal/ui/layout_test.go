@@ -29,11 +29,14 @@ import (
 func TestProjectTabsKeepUnsavedText(t *testing.T) {
 	d := New(nil, "", "")
 	d.selected, d.page = "demo", projectFilesPage
+	d.projectFiles = []string{".gitattributes", "docs/README.md"}
+	d.rebuildProjectTree()
 	text := &projectTab{path: "one.txt", preview: app.FilePreview{New: "original", Version: "8:1"}, code: codePreview("one.txt", "original"), loaded: true}
 	other := &projectTab{path: "two.txt", preview: app.FilePreview{New: "other", Version: "5:1"}, code: codePreview("two.txt", "other"), loaded: true}
 	d.projectTabs = map[string][]*projectTab{"demo": {text, other}}
 	d.activateProjectTab(text)
 	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
 	if d.projectCode.ReadOnly {
 		t.Fatal("regular text did not become editable")
 	}
@@ -41,6 +44,23 @@ func TestProjectTabsKeepUnsavedText(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("one.txt*") {
 		t.Fatal("modified tab lacks the asterisk")
+	}
+	tab, tabOK := tt.Find("one.txt*")
+	filename, pathOK := tt.Find("one.txt")
+	save, saveOK := tt.Find("保存")
+	history, historyOK := tt.Find(d.text("file.history"))
+	if !tabOK || !pathOK || !saveOK || !historyOK ||
+		filename.Y < tab.Y+tab.H+controlSpacing ||
+		save.Y <= filename.Y || history.Y != save.Y {
+		t.Fatalf("tab %v (%t), path %v (%t), save %v (%t), history %v (%t)", tab, tabOK, filename, pathOK, save, saveOK, history, historyOK)
+	}
+	saveLayoutPreview(t, tt, "project-files-960-150.png")
+	if err := tt.Click("docs"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !d.projectCollapsed["docs"] || tt.HasText("README.md") {
+		t.Fatal("clicking a folder in the file list should collapse its children")
 	}
 	if err := tt.Click("two.txt"); err != nil {
 		t.Fatal(err)
@@ -121,14 +141,17 @@ func TestLargeProjectTextHasOneScrollbar(t *testing.T) {
 	d.projectFileRow = 0
 	d.projectCode, d.projectCodePath, d.projectLargeText = code, "large.txt", true
 	tt := native.NewTester(d.view, 960, 680)
-	tt.Wheel(650, 250, 0, 180)
-	tt.Advance(35 * time.Millisecond)
-	if y := code.ScrollY(); y <= 0 || y >= 180 {
-		t.Fatalf("wheel did not animate through an intermediate position: %f", y)
+	for notch := 1; notch <= 12; notch++ {
+		tt.Wheel(650, 250, 0, 180)
+		tt.Frame()
+		if y := code.ScrollY(); y != float64(notch*180) {
+			t.Fatalf("wheel event %d moved to %f, want %d immediately", notch, y, notch*180)
+		}
 	}
-	tt.Advance(160 * time.Millisecond)
-	if y := code.ScrollY(); y != 180 {
-		t.Fatalf("wheel stopped at %f, want 180", y)
+	tt.Scroll(650, 250, 0, -40)
+	tt.Frame()
+	if y := code.ScrollY(); y != 2120 {
+		t.Fatalf("precise scroll moved to %f, want 2120", y)
 	}
 	code.SetScrollY(0)
 	tt.Frame()

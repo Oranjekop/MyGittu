@@ -71,13 +71,17 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			if before != d.projectSearch {
 				d.rebuildProjectTree()
 			}
+			native.Text(c, d.text("nav.files")).Bold().TextColor(t.TextMuted).PaddingStart(controlSpacing)
+			native.Divider(c)
 			d.projectFileList.Selected = &d.projectFileRow
+			d.projectFileList.RoundRows = true
 			previous := d.projectFileRow
-			table := roundedTable(c, &d.projectFileList, []native.TableColumn{{Title: d.text("nav.files")}}, len(d.projectTree), func(row, _ int) {
+			list := native.List(c, &d.projectFileList, len(d.projectTree), func(row int) {
 				entry := d.projectTree[row]
 				name := path.Base(entry.path)
-				native.Row(c).FillWidth().MinWidth(0).Gap(detailSpacing).AlignItems(native.Center).
-					PaddingStart(float32(strings.Count(entry.path, "/") * 12)).Tooltip(entry.path).Children(func() {
+				native.Row(c).FillWidth().MinWidth(0).Height(controlHeight(c)).Gap(detailSpacing).AlignItems(native.Center).
+					PaddingStart(controlSpacing + float32(strings.Count(entry.path, "/")*12)).
+					PaddingEnd(controlSpacing).Tooltip(entry.path).Children(func() {
 					icon := "open"
 					if entry.dir {
 						arrow := "down"
@@ -97,7 +101,12 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			if len(d.projectFiles) > 0 {
 				message = d.copy("没有匹配的文件", "No matching files")
 			}
-			tableOrEmptyState(c, table, len(d.projectTree) == 0 && !d.busy && d.err == "", emptyPreviewArt, message)
+			if len(d.projectTree) == 0 && !d.busy && d.err == "" {
+				list.Height(0)
+				emptyState(c, emptyPreviewArt, 88, message).Grow(1)
+			} else {
+				list.Grow(1)
+			}
 			if row := d.projectFileRow; row != previous && row >= 0 && row < len(d.projectTree) && !d.busy {
 				entry := d.projectTree[row]
 				if entry.dir {
@@ -112,41 +121,54 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 				d.openProjectTab(entry.path)
 			}
 		})
-		native.Column(c).Grow(1).FillHeight().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
+		native.Column(c).Grow(1).MinWidth(0).FillHeight().Gap(controlSpacing).Children(func() {
 			d.showProjectTabs(c)
-			filename := d.projectShownPath
-			if filename == "" && d.projectLoad == nil {
-				filename = d.selectedProjectPath()
-			}
-			if filename == "" && d.projectLoad != nil {
-				native.Text(c, d.text("busy")).TextColor(t.TextMuted)
-			} else if filename == "" {
-				if !d.busy && d.projectLoadError == "" && d.err == "" {
-					emptyState(c, emptyPreviewArt, 128, d.text("files.select")).Grow(1)
-				}
-			} else {
-				native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-					native.Text(c, filename).Bold().Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(filename)
-					if failed := d.projectFailedPath; d.projectLoadError != "" && failed != "" && IconButton(c, d.text("refresh"), "refresh", false).Disabled(d.busy).Clicked() {
-						d.loadProjectPreview(failed)
-					}
-					if IconButton(c, d.text("file.history"), "history", false).Disabled(d.busy).Clicked() {
-						d.openFileHistory(filename)
-					}
-				})
-				if d.projectBitmap != nil {
-					native.Image(c, d.projectBitmap).Grow(1).MinHeight(0).FillWidth().Fit(native.Contain).Label(filename)
-				} else if d.projectPreview.Binary {
-					emptyState(c, emptyPreviewArt, 128, d.text("diff.binary")).Grow(1)
-				} else if d.projectShownPath != "" || d.projectLoadError == "" {
-					d.showCodePreview(c, filename)
-				}
-			}
-			if d.projectLoadError != "" {
-				native.Text(c, d.projectLoadError).FillWidth().TextColor(t.Danger)
-			}
+			native.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
+				d.showProjectPreview(c, t)
+			})
 		})
 	})
+}
+
+func (d *Desktop) showProjectPreview(c *native.Context, t *native.Theme) {
+	filename := d.projectShownPath
+	if filename == "" && d.projectLoad == nil {
+		filename = d.selectedProjectPath()
+	}
+	switch {
+	case filename == "" && d.projectLoad != nil:
+		native.Text(c, d.text("busy")).TextColor(t.TextMuted)
+	case filename == "":
+		if !d.busy && d.projectLoadError == "" && d.err == "" {
+			emptyState(c, emptyPreviewArt, 128, d.text("files.select")).Grow(1)
+		}
+	default:
+		native.Text(c, filename).Bold().FillWidth().MinWidth(0).SingleLine().Ellipsis("…").Tooltip(filename)
+		if d.projectBitmap == nil && !d.projectPreview.Binary && (d.projectShownPath != "" || d.projectLoadError == "") {
+			d.showCodePreview(c, filename)
+		} else {
+			native.Row(c).FillWidth().Gap(controlSpacing).Wrap().Children(func() {
+				d.projectFileActions(c, filename)
+			})
+			if d.projectBitmap != nil {
+				native.Image(c, d.projectBitmap).Grow(1).MinHeight(0).FillWidth().Fit(native.Contain).Label(filename)
+			} else if d.projectPreview.Binary {
+				emptyState(c, emptyPreviewArt, 128, d.text("diff.binary")).Grow(1)
+			}
+		}
+	}
+	if d.projectLoadError != "" {
+		native.Text(c, d.projectLoadError).FillWidth().TextColor(t.Danger)
+	}
+}
+
+func (d *Desktop) projectFileActions(c *native.Context, filename string) {
+	if failed := d.projectFailedPath; d.projectLoadError != "" && failed != "" && IconButton(c, d.text("refresh"), "refresh", false).Disabled(d.busy).Clicked() {
+		d.loadProjectPreview(failed)
+	}
+	if IconButton(c, d.text("file.history"), "history", false).Disabled(d.busy).Clicked() {
+		d.openFileHistory(filename)
+	}
 }
 
 type projectPreviewRequest struct {
@@ -168,7 +190,6 @@ func (d *Desktop) resetProjectFiles() {
 	d.projectShownPath, d.projectLoadError, d.projectFailedPath = "", "", ""
 	d.projectPreview, d.projectBitmap, d.projectCode = app.FilePreview{}, nil, nil
 	d.projectLargeText = false
-	d.projectScroll = projectWheelScroll{}
 }
 
 func (d *Desktop) loadProjectPreview(path string) {
@@ -199,7 +220,6 @@ func (d *Desktop) loadProjectPreview(path string) {
 				d.projectShownPath = path
 				d.projectPreview, d.projectBitmap = preview, bitmap
 				d.projectCode, d.projectLargeText = code, preview.NextOffset != 0
-				d.projectScroll = projectWheelScroll{}
 				d.projectCodePath, d.projectCodeSource = path, preview.New
 				d.projectFormatted, d.projectFormatError = false, ""
 				if d.findProjectTab(path) == nil {
@@ -306,7 +326,7 @@ func (d *Desktop) showCodePreview(c *native.Context, filename string) {
 		d.projectCodePath, d.projectCodeSource = filename, source
 		d.projectFormatted, d.projectFormatError = false, ""
 	}
-	native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+	native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Wrap().Children(func() {
 		if d.projectEditable() {
 			if IconButton(c, d.copy("保存", "Save"), "save", false).Disabled(d.busy || !d.projectDirty()).Clicked() {
 				d.saveProjectTab()
@@ -317,6 +337,7 @@ func (d *Desktop) showCodePreview(c *native.Context, filename string) {
 		} else if d.projectPreview.Version != "" {
 			native.Text(c, d.copy("只读 · 超过 5 MiB", "Read-only · Over 5 MiB")).TextColor(c.Theme().TextMuted)
 		}
+		d.projectFileActions(c, filename)
 		native.Checkbox(c, &d.projectWrap, d.copy("自动换行", "Wrap lines"))
 		if lang := d.projectCode.Buffer.Language(); lang != nil {
 			native.Text(c, lang.Name).TextColor(c.Theme().TextMuted)
@@ -360,63 +381,5 @@ func (d *Desktop) showCodePreview(c *native.Context, filename string) {
 	d.projectCode.SoftWrap = d.projectWrap
 	d.projectCode.ReadOnly = d.busy || d.projectFormatted || !d.projectEditable()
 	d.projectCode.Font.Size = c.Theme().FontSize - 0.5
-	d.projectScroll.update(c, d.projectCode)
 	editor.View(c, d.projectCode).Grow(1).FillWidth()
-}
-
-type projectWheelScroll struct {
-	code         *editor.State
-	start        time.Time
-	from, target float64
-	reduced      bool
-}
-
-func (s *projectWheelScroll) update(c *native.Context, code *editor.State) {
-	const duration = 140 * time.Millisecond
-	if s.code != code {
-		*s = projectWheelScroll{code: code}
-		services := c.Services()
-		code.OnInput = func(ev native.InputEvent) bool { return s.input(ev, code, services) }
-	}
-	s.reduced = c.Preferences().ReduceMotion
-	if !s.start.IsZero() {
-		progress := min(1, max(0, float64(c.Now().Sub(s.start))/float64(duration)))
-		if s.reduced || progress >= 1 {
-			code.SetScrollY(s.target)
-			s.start = time.Time{}
-		} else {
-			remaining := 1 - progress
-			code.SetScrollY(s.target - (s.target-s.from)*remaining*remaining*remaining)
-			c.After(time.Second / 60)
-		}
-	}
-}
-
-func (s *projectWheelScroll) input(ev native.InputEvent, code *editor.State, services native.Services) bool {
-	if s.code != code {
-		return false
-	}
-	if ev.Kind == native.InputPointerDown || ev.Kind == native.InputKeyDown {
-		s.start = time.Time{}
-	}
-	if ev.Kind != native.InputScroll {
-		return false
-	}
-	if s.reduced || ev.Precise || ev.DX != 0 || ev.DY == 0 || ev.Mods != 0 {
-		s.start = time.Time{}
-		return false
-	}
-	current := code.ScrollY()
-	target := current
-	if !s.start.IsZero() {
-		target = s.target
-	}
-	limit := max(0, code.LineTop(code.Buffer.LineCount())-code.ViewportHeight())
-	target = min(limit, max(0, target+float64(ev.DY)))
-	if target == current && s.start.IsZero() {
-		return false
-	}
-	s.from, s.target, s.start = current, target, ev.Time
-	services.Invalidate()
-	return true
 }
