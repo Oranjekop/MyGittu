@@ -9,4 +9,7 @@
   <choices-outline><line choice="default"/></choices-outline>
   <choice id="default" visible="false" title="MyGittu"><pkg-ref id="dev.mygittu.desktop"/></choice>
   <pkg-ref id="dev.mygittu.desktop" version="@VERSION@" onConclusion="none">MyGittu-component.pkg</pkg-ref>
+  <pkg-ref id="dev.mygittu.desktop">
+    <must-close><app id="dev.mygittu.desktop"/></must-close>
+  </pkg-ref>
 </installer-gui-script>
