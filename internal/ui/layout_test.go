@@ -583,6 +583,20 @@ func TestHunkDialogShowsCodeAndConfirmsDiscard(t *testing.T) {
 	}
 }
 
+func TestCommitHistoryFormatsTheSameDateInListAndDetails(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.page, d.logRow = "demo", 1, 0
+	const timestamp = "2026-11-18T16:00:21+08:00"
+	d.logs = []app.Commit{{Hash: "abc", Author: "Developer", Subject: "Commit", Date: timestamp}}
+	summary := "Commit"
+	d.historySummary = &summary
+	tt := native.NewTester(d.view, 960, 680)
+	expected := time.Date(2026, 11, 18, 8, 0, 21, 0, time.UTC).Local().Format(time.DateTime)
+	if !tt.HasText(expected) || !tt.HasText("Developer · "+expected) || tt.HasText(timestamp) {
+		t.Fatal("history exposed an unformatted timestamp")
+	}
+}
+
 func TestFileHistoryShowsPatchAndBlameInColumns(t *testing.T) {
 	d := New(nil, "", "")
 	w := &d.tools
@@ -590,17 +604,18 @@ func TestFileHistoryShowsPatchAndBlameInColumns(t *testing.T) {
 	w.fileCommits = []app.Commit{{Hash: "abcdef", Subject: "Update release", Author: "Alex", Date: "2026-11-18T09:00:00+08:00"}}
 	w.filePatch.lines = []patchLine{{next: 8, kind: '+', text: "  release: true"}}
 	w.blameLoaded = true
-	w.blameRows = []app.BlameLine{{Number: 8, Author: "Alex", Date: "2026-11-18", Text: "  release: true"}}
+	w.blameRows = []app.BlameLine{{Number: 8, Author: "Alex", Date: "2026-11-18T09:00:00+08:00", Text: "  release: true"}}
+	expected := time.Date(2026, 11, 18, 1, 0, 0, 0, time.UTC).Local().Format(time.DateTime)
 	tt := native.NewTester(d.view, 960, 680)
 	tt.SetScale(1.5)
-	if !tt.HasText("Update release") || !tt.HasText("新行") || !tt.HasText("2026-11-18") {
+	if !tt.HasText("Update release") || !tt.HasText("新行") || !tt.HasText(expected) {
 		t.Fatal("missing file commit metadata or diff")
 	}
 	saveLayoutPreview(t, tt, "structured-file-history-150.png")
 	if err := tt.Click(d.text("file.blame")); err != nil {
 		t.Fatal(err)
 	}
-	if !tt.HasText("代码") || !tt.HasText("Alex") || tt.HasText("Update release") {
+	if !tt.HasText("代码") || !tt.HasText("Alex") || !tt.HasText(expected) || tt.HasText("Update release") {
 		t.Fatal("expected structured line annotations")
 	}
 }

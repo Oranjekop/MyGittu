@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"strconv"
-	"time"
 
 	native "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
@@ -64,11 +63,14 @@ func (d *Desktop) showFileHistory(c *native.Context) {
 			}
 			w.fileList.Selected = &w.fileRow
 			roundedTable(c, &w.fileList, []native.TableColumn{
-				{Title: d.text("subject")}, {Title: d.text("author"), Width: 120}, {Title: d.text("date"), Width: 112},
+				{Title: d.text("subject")}, {Title: d.text("author"), Width: 120}, {Title: d.text("date"), Width: dateColumnWidth},
 			}, len(w.fileCommits), func(row, col int) {
 				commit := w.fileCommits[row]
-				text := []string{commit.Subject, commit.Author, commitDate(commit.Date)}[col]
-				native.Text(c, text).SingleLine().Tooltip(text)
+				text := []string{commit.Subject, commit.Author, commit.Date}[col]
+				if col == 2 {
+					text = displayDateTime(text)
+				}
+				native.Text(c, text).SingleLine().Ellipsis("…").Tooltip(text)
 			}).Height(min(150, height*.23, 28*float32(len(w.fileCommits)+1))).FillWidth().Disabled(d.busy)
 			if w.fileRow < 0 || w.fileRow >= len(w.fileCommits) {
 				return
@@ -91,13 +93,6 @@ func (d *Desktop) showFileHistory(c *native.Context) {
 			}
 		})
 	})
-}
-
-func commitDate(date string) string {
-	if stamp, err := time.Parse(time.RFC3339, date); err == nil {
-		return stamp.Format(time.DateOnly)
-	}
-	return date
 }
 
 func (d *Desktop) loadFilePatch(hash string) {
@@ -141,14 +136,17 @@ func (d *Desktop) showFileBlame(c *native.Context, height float32) {
 	}
 	roundedTable(c, &w.blameList, []native.TableColumn{
 		{Title: d.copy("行", "Line"), Width: 55},
-		{Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 110},
+		{Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: dateColumnWidth},
 		{Title: d.copy("代码", "Code")},
 	}, len(w.blameRows), func(row, col int) {
 		line := w.blameRows[row]
 		if col == 3 {
 			native.Text(c, line.Text).Font("monospace").SingleLine().Tooltip(line.Text)
+		} else if col == 2 {
+			stamp := displayDateTime(line.Date)
+			native.Text(c, stamp).SingleLine().Ellipsis("…").Tooltip(stamp)
 		} else {
-			native.Text(c, []string{strconv.Itoa(line.Number), line.Author, line.Date}[col]).SingleLine().Tooltip(line.Hash)
+			native.Text(c, []string{strconv.Itoa(line.Number), line.Author}[col]).SingleLine().Tooltip(line.Hash)
 		}
 	}).Height(height).FillWidth()
 }

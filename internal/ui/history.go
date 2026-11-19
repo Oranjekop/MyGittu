@@ -24,7 +24,7 @@ func (d *Desktop) showCommitSummary(c *native.Context, commit app.Commit) {
 	native.Scroll(c).Grow(1).MinHeight(100).FillWidth().Background(t.Background).Radius(8).Children(func() {
 		native.Column(c).FillWidth().Padding(panelSpacing).Gap(controlSpacing).Children(func() {
 			native.Text(c, commit.Subject).Bold().FillWidth()
-			native.Text(c, commit.Author+" · "+commitDate(commit.Date)).TextColor(t.TextMuted)
+			native.Text(c, commit.Author+" · "+displayDateTime(commit.Date)).TextColor(t.TextMuted)
 			subject, body, _ := strings.Cut(*d.historySummary, "\n")
 			if subject != commit.Subject {
 				body = *d.historySummary
@@ -76,7 +76,13 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 	roundedTable(c, &d.history, []native.TableColumn{{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190}}, len(d.logs), func(row, col int) {
 		l := d.logs[row]
 		values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
-		native.Text(c, values[col])
+		value := values[col]
+		if col == 3 {
+			value = displayDateTime(value)
+			native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(value)
+		} else {
+			native.Text(c, value)
+		}
 	}).Grow(1).MinHeight(110).FillWidth().Disabled(d.busy)
 	if previous != d.logRow && d.logRow >= 0 && d.logRow < len(d.logs) && !d.busy && d.Client != nil {
 		id, commit := d.selected, d.logs[d.logRow]

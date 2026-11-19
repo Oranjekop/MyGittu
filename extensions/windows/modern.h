@@ -189,7 +189,8 @@ public:
   }
   HRESULT STDMETHODCALLTYPE GetIcon(IShellItemArray *, LPWSTR *out) override
       try {
-    return copyText(modulePath() + L",-104", out);
+    return copyText(modulePath() + L",-" +
+                        std::to_wstring(menuIconResource(action)), out);
   } catch (...) {
     return E_OUTOFMEMORY;
   }

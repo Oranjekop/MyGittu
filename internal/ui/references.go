@@ -47,7 +47,7 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 					return
 				}
 				if stamp, ok := d.references.TagTimes[name]; ok {
-					value := time.Unix(stamp.Unix, 0).Local().Format("2006-01-02 15:04:05")
+					value := formatLocalTime(time.Unix(stamp.Unix, 0))
 					if !stamp.Annotated {
 						value += " · " + d.text("tag.commitTime")
 					}

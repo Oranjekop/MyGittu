@@ -1,7 +1,9 @@
 #include <windows.h>
+#include "menu_icons.h"
 #include <shlobj.h>
 #include <iostream>
 #include <chrono>
+#include <iterator>
 #include <string>
 
 using GetClass = HRESULT(__stdcall *)(REFCLSID, REFIID, void **);
@@ -84,6 +86,15 @@ int wmain(int argc, wchar_t **argv) {
   item.fMask = MIIM_BITMAP;
   if (!GetMenuItemInfoW(hmenu, 0, TRUE, &item) || !item.hbmpItem)
     return 17;
+  HBITMAP usedBitmaps[7]{item.hbmpItem};
+  for (int i = 0; i < count; ++i) {
+    if (!GetMenuItemInfoW(submenu, i, TRUE, &item) || !item.hbmpItem)
+      return 30;
+    for (int previous = 0; previous <= i; ++previous)
+      if (usedBitmaps[previous] == item.hbmpItem)
+        return 31;
+    usedBitmaps[i + 1] = item.hbmpItem;
+  }
   if (argc > 4) {
     wchar_t label[128]{};
     GetMenuStringW(hmenu, 0, label, 128, MF_BYPOSITION);
@@ -122,19 +133,42 @@ int wmain(int argc, wchar_t **argv) {
   if (FAILED(modern->EnumSubCommands(&enumerator)))
     return 24;
   int enabled = 0;
+  int childIndex = 0;
+  const int commandIcons[]{IDI_MENU_PULL, IDI_MENU_CHANGES, IDI_MENU_COMMIT,
+                           IDI_MENU_PUSH, IDI_MENU_HISTORY, IDI_MENU_DIFF,
+                           IDI_MENU_CLONE};
   IExplorerCommand *child = nullptr;
   while (enumerator->Next(1, &child, nullptr) == S_OK) {
     LPWSTR icon = nullptr;
     if (FAILED(child->GetIcon(items, &icon)) || !icon)
       return 25;
+    const std::wstring location(icon);
     CoTaskMemFree(icon);
+    const auto comma = location.rfind(L',');
+    const auto resource = comma == std::wstring::npos
+                              ? 0
+                              : -_wtoi(location.c_str() + comma + 1);
+    if (childIndex >= static_cast<int>(std::size(commandIcons)) ||
+        resource != commandIcons[childIndex])
+      return 32;
+    ++childIndex;
+    for (int size : {16, 24, 32, 48, 96, 256}) {
+      const auto loaded = static_cast<HICON>(LoadImageW(
+          dll, MAKEINTRESOURCEW(resource), IMAGE_ICON, size, size, 0));
+      if (!loaded)
+        return 33;
+      DestroyIcon(loaded);
+    }
     if (FAILED(child->GetState(items, TRUE, &state)))
       return 26;
-    if (state == ECS_ENABLED)
+    if (state == ECS_ENABLED) {
+      if ((count == 1) != (resource == IDI_MENU_CLONE))
+        return 34;
       enabled++;
+    }
     child->Release();
   }
-  if (enabled != count)
+  if (enabled != count || childIndex != static_cast<int>(std::size(commandIcons)))
     return 27;
   IEnumExplorerCommand *clone = nullptr;
   if (FAILED(enumerator->Clone(&clone)))

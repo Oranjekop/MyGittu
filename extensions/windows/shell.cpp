@@ -11,6 +11,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include "menu_icons.h"
 
 // Independently implemented COM handlers; no Git process runs inside Explorer.
 static const CLSID ids[] = {{0x29810e41,
@@ -275,6 +276,13 @@ static bool repositoryPath(const std::wstring &path) {
 }
 static const wchar_t *actions[] = {L"status", L"commit", L"log",  L"diff",
                                    L"pull",   L"push",   L"clone"};
+static constexpr int menuIconIDs[] = {
+    IDI_MENU_CHANGES, IDI_MENU_COMMIT, IDI_MENU_HISTORY, IDI_MENU_DIFF,
+    IDI_MENU_PULL, IDI_MENU_PUSH, IDI_MENU_CLONE};
+static_assert(std::size(actions) == std::size(menuIconIDs));
+static int menuIconResource(int action) {
+  return action < 0 ? IDI_MENU_ROOT : menuIconIDs[action];
+}
 static constexpr int repositoryCommands[] = {4, 0, 1, 5, 2, 3};
 static constexpr int cloneCommand = 6;
 static const wchar_t *commandTitle(int action) {
@@ -304,16 +312,16 @@ static HRESULT launch(const std::wstring &path, int action) {
   CloseHandle(pi.hProcess);
   return S_OK;
 }
-static HBITMAP menuBitmap() {
+static HBITMAP menuBitmap(int resource, int size) {
   auto icon =
-      static_cast<HICON>(LoadImageW(moduleHandle, MAKEINTRESOURCEW(104),
-                                    IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
+      static_cast<HICON>(LoadImageW(moduleHandle, MAKEINTRESOURCEW(resource),
+                                    IMAGE_ICON, size, size, LR_DEFAULTCOLOR));
   if (!icon)
     return nullptr;
   BITMAPINFO info{};
   info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  info.bmiHeader.biWidth = 16;
-  info.bmiHeader.biHeight = -16;
+  info.bmiHeader.biWidth = size;
+  info.bmiHeader.biHeight = -size;
   info.bmiHeader.biPlanes = 1;
   info.bmiHeader.biBitCount = 32;
   info.bmiHeader.biCompression = BI_RGB;
@@ -321,15 +329,28 @@ static HBITMAP menuBitmap() {
   auto bitmap =
       CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
   if (bitmap) {
-    ZeroMemory(bits, 16 * 16 * 4);
+    ZeroMemory(bits, static_cast<size_t>(size) * size * 4);
     auto dc = CreateCompatibleDC(nullptr);
-    auto old = SelectObject(dc, bitmap);
-    DrawIconEx(dc, 0, 0, icon, 16, 16, 0, nullptr, DI_NORMAL);
-    SelectObject(dc, old);
-    DeleteDC(dc);
+    if (dc) {
+      auto old = SelectObject(dc, bitmap);
+      DrawIconEx(dc, 0, 0, icon, size, size, 0, nullptr, DI_NORMAL);
+      SelectObject(dc, old);
+      DeleteDC(dc);
+    } else {
+      DeleteObject(bitmap);
+      bitmap = nullptr;
+    }
   }
   DestroyIcon(icon);
   return bitmap;
+}
+static int menuIconSize() {
+  using WindowDpi = UINT(WINAPI *)(HWND);
+  static const auto getDpi = reinterpret_cast<WindowDpi>(
+      GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow"));
+  const UINT dpi = getDpi ? getDpi(GetForegroundWindow()) : 0;
+  return MulDiv(16, dpi ? dpi : USER_DEFAULT_SCREEN_DPI,
+                USER_DEFAULT_SCREEN_DPI);
 }
 class Shell final : public IShellExtInit,
                     public IContextMenu,
@@ -338,17 +359,25 @@ class Shell final : public IShellExtInit,
   int kind;
   std::wstring path;
   std::vector<int> commands;
-  HBITMAP bitmap = nullptr;
+  std::unordered_map<unsigned, HBITMAP> menuBitmaps;
+
+  HBITMAP commandBitmap(int action, int size) {
+    const int resource = menuIconResource(action);
+    const auto key = (static_cast<unsigned>(size) << 16) | resource;
+    auto [item, inserted] = menuBitmaps.try_emplace(key, nullptr);
+    if (inserted)
+      item->second = menuBitmap(resource, size);
+    return item->second;
+  }
 
 public:
   explicit Shell(int k) : kind(k) {
-    if (k == 0)
-      bitmap = menuBitmap();
     objects++;
   }
   ~Shell() {
-    if (bitmap)
-      DeleteObject(bitmap);
+    for (const auto &entry : menuBitmaps)
+      if (entry.second)
+        DeleteObject(entry.second);
     objects--;
   }
   HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void **pp) override {
@@ -418,6 +447,11 @@ public:
                                     : std::vector<int>{cloneCommand};
     if (last - first + 1 < commands.size())
       return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
+    const int size = menuIconSize();
+    const HBITMAP rootBitmap = commandBitmap(-1, size);
+    HBITMAP icons[std::size(menuIconIDs)]{};
+    for (size_t i = 0; i < commands.size(); ++i)
+      icons[i] = commandBitmap(commands[i], size);
     auto popup = CreatePopupMenu();
     if (!popup)
       return E_OUTOFMEMORY;
@@ -427,7 +461,7 @@ public:
       item.fMask = MIIM_ID | MIIM_STRING | MIIM_BITMAP;
       item.wID = first + i;
       item.dwTypeData = const_cast<LPWSTR>(commandTitle(commands[i]));
-      item.hbmpItem = bitmap;
+      item.hbmpItem = icons[i];
       if (!InsertMenuItemW(popup, i, TRUE, &item)) {
         DestroyMenu(popup);
         return E_FAIL;
@@ -438,7 +472,7 @@ public:
     root.fMask = MIIM_STRING | MIIM_SUBMENU | MIIM_BITMAP;
     root.dwTypeData = const_cast<LPWSTR>(L"MyGittu");
     root.hSubMenu = popup;
-    root.hbmpItem = bitmap;
+    root.hbmpItem = rootBitmap;
     if (!InsertMenuItemW(menu, pos, TRUE, &root)) {
       DestroyMenu(popup);
       return E_FAIL;

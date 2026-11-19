@@ -267,15 +267,20 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 			native.Text(c, d.copy("两个分支没有独有提交。", "Neither branch has unique commits.")).TextColor(c.Theme().TextMuted)
 		} else {
 			roundedTable(c, &w.comparisonCommits, []native.TableColumn{
-				{Title: d.copy("所属分支", "Branch"), Width: 145}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 125}, {Title: d.text("date"), Width: 110},
+				{Title: d.copy("所属分支", "Branch"), Width: 145}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 125}, {Title: d.text("date"), Width: dateColumnWidth},
 			}, len(w.comparison.Commits), func(row, col int) {
 				item := w.comparison.Commits[row]
 				branch := w.left
 				if item.Side == ">" {
 					branch = w.right
 				}
-				value := []string{branch, item.Subject, item.Author, commitDate(item.Date)}[col]
-				native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(item.Hash)
+				value := []string{branch, item.Subject, item.Author, item.Date}[col]
+				tooltip := item.Hash
+				if col == 3 {
+					value = displayDateTime(value)
+					tooltip = value
+				}
+				native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(tooltip)
 			}).Grow(1).FillWidth()
 		}
 	}

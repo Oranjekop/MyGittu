@@ -205,7 +205,7 @@ func (s *Service) FileBlame(ctx context.Context, id, path string) ([]BlameLine, 
 			}
 		case strings.HasPrefix(line, "author-tz "):
 			if tz, err := time.Parse("-0700", strings.TrimPrefix(line, "author-tz ")); err == nil && !authoredAt.IsZero() {
-				current.Date = authoredAt.In(tz.Location()).Format(time.DateOnly)
+				current.Date = authoredAt.In(tz.Location()).Format(time.RFC3339)
 			}
 		case current.Hash == "":
 			parts := strings.Fields(line)
