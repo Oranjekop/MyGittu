@@ -45,6 +45,7 @@ type Desktop struct {
 	offset                             int
 	query                              string
 	cloneURL, cloneDestination         string
+	cloneOpen                          bool
 	cloneProvider                      int
 	cloneParent, cloneAccount          string
 	cloneRepoSearch, cloneRepoChoice   string
@@ -112,6 +113,8 @@ type Desktop struct {
 	references                         app.References
 	stashRow, tagRow                   int
 	stashList, tagList                 native.ListState
+	tagSort, tagAppliedSort            native.SortOrder
+	tagOrder                           []string
 	stashMessage, tagName              string
 	hunksOpen                          bool
 	hunkPath                           string
@@ -134,7 +137,6 @@ func New(client *ipc.Client, path, action string) *Desktop {
 		d.page = 2
 	case "clone":
 		d.action = action
-		d.page = 5
 		if path != "" {
 			d.cloneParent = path
 		}
@@ -154,7 +156,7 @@ func (d *Desktop) Run() error {
 		if dir, err := platform.ConfigDir(); err == nil {
 			d.draftDir = filepath.Join(dir, "drafts")
 		}
-		d.win = mygo.NewWindow(d.windowOptions())
+		d.win = NewRememberedWindow(d.windowOptions())
 		_ = d.win.SetIcon(brand.PNG)
 		_ = mygo.App.Dock.SetIcon(brand.PNG)
 		updateContext, cancelUpdates := context.WithCancel(context.Background())
@@ -170,7 +172,7 @@ func (d *Desktop) Run() error {
 			go d.watchUpdates(updateContext)
 			go app.CleanupUpdates()
 			d.win.OnFileDrop(func(e *mygo.FileDropEvent) {
-				if len(e.Paths) > 0 {
+				if len(e.Paths) > 0 && !d.cloneOpen {
 					d.open(e.Paths[0])
 				}
 			})
@@ -192,7 +194,7 @@ func (d *Desktop) Run() error {
 			if e != nil {
 				return nil, e
 			}
-			if d.path != "" && d.page != 5 {
+			if d.path != "" {
 				var repo repository.Info
 				e = d.Client.Call(ctx, "repo.register", ipc.Params{Path: d.path}, &repo)
 				if e != nil {
@@ -342,6 +344,7 @@ func (d *Desktop) refresh() {
 			}
 			if page == referencesPage {
 				d.references, d.stashRow, d.tagRow = references, -1, -1
+				d.tagOrder = nil
 				return
 			}
 			if page == projectFilesPage {
@@ -506,7 +509,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			d.files.Selected = &d.row
 			previous := d.row
 			d.showStagingActions(c, files)
-			native.Table(c, &d.files, []native.TableColumn{{Title: d.text("file")}, {Title: d.text("index"), Width: 68}, {Title: d.text("worktree"), Width: 68}}, len(files), func(row, col int) {
+			roundedTable(c, &d.files, []native.TableColumn{{Title: d.text("file")}, {Title: d.text("index"), Width: 68}, {Title: d.text("worktree"), Width: 68}}, len(files), func(row, col int) {
 				f := files[row]
 				if col == 0 {
 					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
@@ -646,10 +649,10 @@ func (d *Desktop) view(c *native.Context) {
 	if d.page != projectFilesPage {
 		d.cancelProjectPreview()
 	}
-	if d.action == "" && !d.settingsOpen && !d.repositoriesOpen && c.Shortcut(native.Cmd, native.KeyO) {
+	if d.action == "" && !d.settingsOpen && !d.repositoriesOpen && !d.cloneOpen && c.Shortcut(native.Cmd, native.KeyO) {
 		d.chooseRepository()
 	}
-	if d.action == "" && !d.settingsOpen && !d.busy && c.Shortcut(native.Cmd, native.KeyK) {
+	if d.action == "" && !d.settingsOpen && !d.cloneOpen && !d.busy && c.Shortcut(native.Cmd, native.KeyK) {
 		d.repositorySearch = ""
 		d.repositoriesOpen = true
 	}
@@ -686,7 +689,7 @@ func (d *Desktop) view(c *native.Context) {
 				}
 			}
 			native.Box(c).Grow(1)
-			if d.selected != "" && d.page != 5 {
+			if d.selected != "" {
 				for _, op := range []struct{ label, action string }{{"remote.fetch", "fetch"}, {"remote.pull", "pull"}, {"remote.push", "push"}} {
 					if IconButton(c, d.text(op.label), op.label, false).Disabled(d.busy).Clicked() {
 						d.remoteAction(op.action)
@@ -723,8 +726,9 @@ func (d *Desktop) view(c *native.Context) {
 				if IconButton(c, "", "open", false).Label(d.text("repo.open")).Tooltip(d.text("repo.open")).FillWidth().Disabled(d.busy).Clicked() {
 					d.chooseRepository()
 				}
-				if IconButton(c, "", "clone", d.page == 5).Label(d.text("clone.run")).Tooltip(d.text("clone.run")).FillWidth().Disabled(d.busy).Clicked() {
-					d.page = 5
+				if IconButton(c, "", "clone", d.cloneOpen).Label(d.text("clone.run")).Tooltip(d.text("clone.run")).FillWidth().Disabled(d.busy).Clicked() {
+					d.cloneOpen = true
+					d.err = ""
 				}
 			})
 			native.Column(c).Grow(1).FillHeight().Gap(controlSpacing).Children(func() {
@@ -750,10 +754,10 @@ func (d *Desktop) view(c *native.Context) {
 						d.installUpdate()
 					}
 				}
-				if d.err != "" {
+				if d.err != "" && !d.cloneOpen {
 					native.Text(c, d.text("error")+": "+d.err).TextColor(native.Hex("#bf3030"))
 				}
-				if d.selected == "" && d.page != 4 && d.page != 5 {
+				if d.selected == "" && d.page != 4 {
 					native.Column(c).Grow(1).FillWidth().Center().Gap(16).Children(func() {
 						native.Text(c, "MyGittu").FontSize(28).Bold()
 						native.Text(c, d.text("repo.drop")).TextColor(t.TextMuted)
@@ -775,8 +779,6 @@ func (d *Desktop) view(c *native.Context) {
 				case 3:
 					d.repositoryToolButtons(c)
 					d.showBranches(c)
-				case 5:
-					d.cloneView(c)
 				case 6:
 					native.Text(c, d.text("remote."+d.branch)).Bold()
 					if IconButton(c, d.text("remote."+d.branch), d.branch, true).Disabled(d.busy).Clicked() {
@@ -792,6 +794,7 @@ func (d *Desktop) view(c *native.Context) {
 }
 
 func (d *Desktop) dialogs(c *native.Context) {
+	d.cloneDialog(c)
 	d.settingsDialog(c)
 	d.commitAIDialog(c)
 	d.showRepositoryTools(c)

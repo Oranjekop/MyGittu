@@ -44,7 +44,7 @@ func (d *Desktop) showHistoryPatch(c *native.Context) {
 	native.Row(c).Grow(1).MinHeight(100).FillWidth().Gap(panelSpacing).Children(func() {
 		d.historyFileList.Selected = &d.historyFileRow
 		before := d.historyFileRow
-		native.Table(c, &d.historyFileList, []native.TableColumn{{Title: d.copy("变更文件", "Changed files")}}, len(d.historyFiles)+1, func(row, _ int) {
+		roundedTable(c, &d.historyFileList, []native.TableColumn{{Title: d.copy("变更文件", "Changed files")}}, len(d.historyFiles)+1, func(row, _ int) {
 			if row == 0 {
 				native.Text(c, d.text("diff.all"))
 				return
@@ -73,7 +73,7 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 	})
 	d.history.Selected = &d.logRow
 	previous := d.logRow
-	native.Table(c, &d.history, []native.TableColumn{{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190}}, len(d.logs), func(row, col int) {
+	roundedTable(c, &d.history, []native.TableColumn{{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190}}, len(d.logs), func(row, col int) {
 		l := d.logs[row]
 		values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
 		native.Text(c, values[col])

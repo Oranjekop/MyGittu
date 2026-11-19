@@ -12,6 +12,14 @@ import (
 	"mygittu/internal/brand"
 )
 
+func TestRemoteWindowRemembersPlacementWithOnlyCloseControl(t *testing.T) {
+	options := (&remoteWindow{}).windowOptions()
+	if options.StateKey == "" || !options.DisableMinimize || !options.DisableMaximize ||
+		!options.DisableFullScreen || options.DisableClose || options.DisableResize || options.DisableMove {
+		t.Fatalf("unexpected progress window configuration: %+v", options)
+	}
+}
+
 func TestRemoteRabbitFramesAreSquare(t *testing.T) {
 	atlas, err := png.DecodeConfig(bytes.NewReader(brand.RemoteRabbitPNG))
 	if err != nil {

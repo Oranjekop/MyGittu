@@ -76,7 +76,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			}
 			d.projectFileList.Selected = &d.projectFileRow
 			previous := d.projectFileRow
-			native.Table(c, &d.projectFileList, []native.TableColumn{{Title: d.text("nav.files")}}, len(d.projectTree), func(row, _ int) {
+			roundedTable(c, &d.projectFileList, []native.TableColumn{{Title: d.text("nav.files")}}, len(d.projectTree), func(row, _ int) {
 				entry := d.projectTree[row]
 				name := path.Base(entry.path)
 				native.Row(c).FillWidth().MinWidth(0).Gap(detailSpacing).AlignItems(native.Center).

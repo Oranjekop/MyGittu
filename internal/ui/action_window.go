@@ -29,13 +29,16 @@ func (d *Desktop) actionTitle() string {
 func (d *Desktop) windowOptions() mygo.WindowOptions {
 	options := mygo.WindowOptions{
 		Title: d.actionTitle(), Width: 1280, Height: 820, MinWidth: 960, MinHeight: 680,
-		Content: native.View(d.view),
+		StateKey: "workspace",
+		Content:  native.View(d.view),
 	}
 	switch d.action {
 	case "clone":
+		options.StateKey = d.action
 		options.Width, options.Height = 720, 520
 		options.MinWidth, options.MinHeight = 600, 480
 	case "commit", "log", "diff":
+		options.StateKey = d.action
 		options.Width, options.Height = 960, 680
 		options.MinWidth, options.MinHeight = 800, 560
 	}

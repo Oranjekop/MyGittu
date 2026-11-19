@@ -184,7 +184,7 @@ func (d *Desktop) showBranches(c *native.Context) {
 			}
 			previous := row
 			w.branchList.Selected = &row
-			native.Table(c, &w.branchList, []native.TableColumn{{Title: d.text("nav.branches")}}, len(w.branches), func(i, _ int) {
+			roundedTable(c, &w.branchList, []native.TableColumn{{Title: d.text("nav.branches")}}, len(w.branches), func(i, _ int) {
 				branch := w.branches[i]
 				name := strings.TrimPrefix(branch.Name, "refs/remotes/")
 				native.Column(c).Gap(detailSpacing).Children(func() {
@@ -266,7 +266,7 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 		} else if len(w.comparison.Commits) == 0 {
 			native.Text(c, d.copy("两个分支没有独有提交。", "Neither branch has unique commits.")).TextColor(c.Theme().TextMuted)
 		} else {
-			native.Table(c, &w.comparisonCommits, []native.TableColumn{
+			roundedTable(c, &w.comparisonCommits, []native.TableColumn{
 				{Title: d.copy("所属分支", "Branch"), Width: 145}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 125}, {Title: d.text("date"), Width: 110},
 			}, len(w.comparison.Commits), func(row, col int) {
 				item := w.comparison.Commits[row]

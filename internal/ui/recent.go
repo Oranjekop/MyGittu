@@ -80,7 +80,7 @@ func (d *Desktop) repositoryDialog(c *native.Context) {
 							} else {
 								open = native.Button(c, "")
 							}
-							open.Label(label).Grow(1).Padding(controlSpacing).Radius(8).Disabled(d.busy).Tooltip(repo.Root)
+							open.Label(label).Grow(1).Padding(controlSpacing).Radius(c.Theme().Radius).Disabled(d.busy).Tooltip(repo.Root)
 							open.Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 								native.Icon(c, icons["open"]).Width(14).Height(14)
 								native.Column(c).Grow(1).Gap(detailSpacing).Children(func() {

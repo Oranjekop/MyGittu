@@ -58,6 +58,43 @@ func (d *Desktop) cloneView(c *native.Context) {
 		Background(c.Theme().Background).Radius(8).Children(func() { d.cloneForm(c) })
 }
 
+func (d *Desktop) cloneDialog(c *native.Context) {
+	if !d.cloneOpen || d.settingsOpen {
+		return
+	}
+	width, height := c.Size()
+	running := d.operation == cloneOperation
+	dismissed := native.Modal(c, &d.cloneOpen, func() {
+		native.Column(c).Width(min(670, width-80)).Gap(panelSpacing).Children(func() {
+			native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+				native.Text(c, d.text("clone.title")).FontSize(18).Bold().Grow(1)
+				if IconButton(c, d.text("close"), "close", false).Disabled(running).Clicked() {
+					d.cloneOpen = false
+					d.err = ""
+				}
+			})
+			if running {
+				native.Column(c).Height(220).FillWidth().Children(func() { d.cloneProgress(c) })
+				return
+			}
+			native.Scroll(c).FillWidth().MaxHeight(height - 130).Children(func() {
+				native.Column(c).FillWidth().Gap(panelSpacing).Children(func() {
+					if d.err != "" {
+						native.Text(c, d.err).FillWidth().TextColor(c.Theme().Danger)
+					}
+					d.cloneForm(c)
+				})
+			})
+		})
+	}).Dismissed()
+	if dismissed {
+		d.cloneOpen = running
+		if !running {
+			d.err = ""
+		}
+	}
+}
+
 func (d *Desktop) cloneProgress(c *native.Context) {
 	t := c.Theme()
 	native.Column(c).Grow(1).FillWidth().Padding(20).Gap(controlSpacing).Center().
@@ -72,9 +109,6 @@ func (d *Desktop) cloneProgress(c *native.Context) {
 }
 
 func (d *Desktop) cloneForm(c *native.Context) {
-	if d.action != "clone" {
-		native.Text(c, d.text("clone.title")).Bold()
-	}
 	native.Segmented(c, &d.cloneProvider, d.copy("Git 地址", "Git URL"), "GitHub", "Gitee", "GitLab", "Bitbucket").Disabled(d.busy)
 	host := cloneHosts[d.cloneProvider]
 	placeholder := d.text("clone.url")
@@ -135,8 +169,8 @@ func (d *Desktop) cloneForm(c *native.Context) {
 		}
 	})
 	destination := strings.TrimSpace(d.cloneDestination)
-	if remote != "" {
-		native.Text(c, git.Redact(remote)).FillWidth().TextColor(c.Theme().TextMuted)
+	if displayURL := git.Redact(remote); remote != "" && displayURL != strings.TrimSpace(d.cloneURL) {
+		native.Text(c, displayURL).FillWidth().TextColor(c.Theme().TextMuted)
 	}
 	if strings.TrimSpace(d.cloneURL) != "" && remote == "" {
 		native.Text(c, d.copy("请输入有效的所有者/仓库或仓库链接。", "Enter a valid owner/repository or repository URL.")).TextColor(c.Theme().Danger)
@@ -155,6 +189,7 @@ func (d *Desktop) cloneForm(c *native.Context) {
 					return
 				}
 				d.repos = append(d.repos, repo)
+				d.cloneOpen = false
 				d.selectRepository(repo.ID, repo.Root)
 				d.page = 0
 				d.refresh()

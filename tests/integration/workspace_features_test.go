@@ -9,6 +9,24 @@ import (
 	"testing"
 )
 
+func TestTagVersionOrderAndTimestamps(t *testing.T) {
+	service, id, dir := setup(t)
+	command(t, dir, "commit", "--allow-empty", "-m", "initial")
+	command(t, dir, "tag", "v0.0.9")
+	command(t, dir, "tag", "--annotate", "--message=release", "v0.0.19")
+	refs, err := service.References(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"v0.0.19", "v0.0.9"}; !slices.Equal(refs.Tags, want) {
+		t.Fatalf("unexpected version order: %v", refs.Tags)
+	}
+	annotated, lightweight := refs.TagTimes["v0.0.19"], refs.TagTimes["v0.0.9"]
+	if annotated.Unix == 0 || !annotated.Annotated || lightweight.Unix == 0 || lightweight.Annotated {
+		t.Fatalf("unexpected timestamp sources: %+v", refs.TagTimes)
+	}
+}
+
 func TestPartialStageAndReferences(t *testing.T) {
 	s, id, dir := setup(t)
 	ctx := context.Background()

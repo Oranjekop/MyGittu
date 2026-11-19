@@ -40,6 +40,8 @@ var Catalog = map[string]Message{
 	"stash.save":                  {"储藏变更", "Stash changes"},
 	"stash.apply":                 {"应用所选储藏", "Apply selected stash"},
 	"tag.title":                   {"标签", "Tags"},
+	"tag.time":                    {"创建时间", "Created"},
+	"tag.commitTime":              {"提交时间", "commit time"},
 	"tag.name":                    {"标签名称", "Tag name"},
 	"tag.create":                  {"为 HEAD 创建标签", "Tag HEAD"},
 	"tag.delete":                  {"删除本地标签", "Delete local tag"},

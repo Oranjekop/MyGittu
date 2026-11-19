@@ -39,3 +39,8 @@ func ApplyTheme(c *native.Context, fontSize float32) *native.Theme {
 	c.SetTheme(&t)
 	return &t
 }
+
+func roundedTable(c *native.Context, state *native.ListState, columns []native.TableColumn, rows int, cell func(row, column int)) native.Element {
+	state.RoundRows = true
+	return native.Table(c, state, columns, rows, cell)
+}

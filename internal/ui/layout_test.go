@@ -91,6 +91,72 @@ func TestLargeProjectTextHasOneScrollbar(t *testing.T) {
 	}
 }
 
+func TestWorkspaceCloneDialogAt150Percent(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.page = "demo", 1
+	d.cloneURL = "https://example.invalid/demo.git"
+	d.cloneDestination = t.TempDir()
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if err := tt.Click(d.text("clone.run")); err != nil {
+		t.Fatal(err)
+	}
+	if !d.cloneOpen || d.page != 1 || !tt.HasText(d.text("clone.title")) || !tt.HasText("配置克隆凭据") {
+		t.Fatal("clone form did not open over the current page")
+	}
+	saveLayoutPreview(t, tt, "workspace-clone-dialog.png")
+	if err := tt.Click("配置克隆凭据"); err != nil {
+		t.Fatal(err)
+	}
+	if !d.settingsOpen || d.settingsTab != 6 {
+		t.Fatal("clone credential settings did not open")
+	}
+	tt.Key(0, native.KeyEscape)
+	if d.settingsOpen || !d.cloneOpen || !tt.HasText("配置克隆凭据") || d.cloneURL != "https://example.invalid/demo.git" {
+		t.Fatal("closing settings did not restore the clone dialog")
+	}
+	d.operation, d.busy = cloneOperation, true
+	tt.Frame()
+	tt.Key(0, native.KeyEscape)
+	if !d.cloneOpen || !tt.HasText(d.text(cloneOperation)) {
+		t.Fatal("closing the dialog interrupted the progress presentation")
+	}
+	d.operation, d.busy = "", false
+	tt.Frame()
+	tt.Key(0, native.KeyEscape)
+	if d.cloneOpen || d.page != 1 || d.selected != "demo" {
+		t.Fatal("closing clone changed the active workspace")
+	}
+}
+
+func TestTagSortingKeepsTheSelectedTag(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.page = "demo", referencesPage
+	d.references = app.References{
+		Tags: []string{"v0.0.19", "v0.0.9", "no-date"},
+		TagTimes: map[string]app.TagTime{
+			"v0.0.19": {Unix: 1795052051, Annotated: true},
+			"v0.0.9":  {Unix: 1795050000},
+		},
+	}
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if tags := d.sortedTagNames(); tags[0] != "v0.0.19" || !d.tagList.RoundRows || !tt.HasText(d.text("tag.time")) {
+		t.Fatal("tag version order, rounded rows or time column missing")
+	}
+	if err := tt.Click("v0.0.19"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click(d.text("tag.time")); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tags := d.sortedTagNames(); d.tagSort.Column != "time" || tags[0] != "v0.0.9" || tags[2] != "no-date" || d.tagRow != 1 {
+		t.Fatal("time sorting moved the selection to a different tag")
+	}
+	saveLayoutPreview(t, tt, "tags-with-time.png")
+}
+
 func TestProjectPreviewStaysVisibleDuringSelection(t *testing.T) {
 	d := New(nil, "D:/Projects/MyGittu", "")
 	d.selected, d.page = "demo", projectFilesPage

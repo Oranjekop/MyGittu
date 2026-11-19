@@ -145,7 +145,7 @@ func (d *Desktop) remoteManager(c *native.Context, w *repositoryTools) {
 		d.toolError(c, w)
 		previous := w.remoteRow
 		w.remoteList.Selected = &w.remoteRow
-		native.Table(c, &w.remoteList, []native.TableColumn{{Title: d.copy("名称", "Name"), Width: 105}, {Title: "URL"}}, len(w.remotes), func(row, col int) {
+		roundedTable(c, &w.remoteList, []native.TableColumn{{Title: d.copy("名称", "Name"), Width: 105}, {Title: "URL"}}, len(w.remotes), func(row, col int) {
 			item := w.remotes[row]
 			if col == 0 {
 				native.Text(c, item.Name)
@@ -216,7 +216,7 @@ func (d *Desktop) worktreeManager(c *native.Context, w *repositoryTools) {
 		native.Text(c, d.copy("工作树", "Worktrees")).Bold()
 		d.toolError(c, w)
 		w.treeList.Selected = &w.treeRow
-		native.Table(c, &w.treeList, []native.TableColumn{{Title: d.copy("分支", "Branch"), Width: 130}, {Title: d.copy("目录", "Folder")}}, len(w.trees), func(row, col int) {
+		roundedTable(c, &w.treeList, []native.TableColumn{{Title: d.copy("分支", "Branch"), Width: 130}, {Title: d.copy("目录", "Folder")}}, len(w.trees), func(row, col int) {
 			item := w.trees[row]
 			if col == 0 {
 				native.Text(c, item.Branch)

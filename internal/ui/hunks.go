@@ -64,7 +64,7 @@ func (d *Desktop) hunkDialog(c *native.Context) {
 			}
 			native.Row(c).Height(min(340, height-166)).FillWidth().Gap(panelSpacing).Children(func() {
 				d.hunkList.Selected = &d.hunkRow
-				native.Table(c, &d.hunkList, []native.TableColumn{{Title: d.copy("未暂存区块", "Unstaged hunks")}}, len(d.hunks), func(row, _ int) {
+				roundedTable(c, &d.hunkList, []native.TableColumn{{Title: d.copy("未暂存区块", "Unstaged hunks")}}, len(d.hunks), func(row, _ int) {
 					native.Textf(c, d.copy("区块 %d", "Hunk %d"), row+1)
 				}).Width(170).FillHeight().Disabled(d.busy || d.hunkConfirm)
 				d.hunkRow = max(0, min(d.hunkRow, len(d.hunks)-1))

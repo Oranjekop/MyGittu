@@ -73,7 +73,7 @@ func patchFileName(file editor.FilePatch) string {
 
 func (d *Desktop) showPatch(c *native.Context, view *patchView) native.Element {
 	t := c.Theme()
-	return native.Table(c, &view.list, []native.TableColumn{
+	return roundedTable(c, &view.list, []native.TableColumn{
 		{Title: d.copy("旧行", "Old"), Width: 54},
 		{Title: d.copy("新行", "New"), Width: 54},
 		{Title: d.copy("代码变更", "Code changes")},

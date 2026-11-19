@@ -4,12 +4,19 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
 type References struct {
-	Stashes []string
-	Tags    []string
+	Stashes  []string
+	Tags     []string
+	TagTimes map[string]TagTime
+}
+
+type TagTime struct {
+	Unix      int64
+	Annotated bool
 }
 
 var stashObject = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
@@ -20,7 +27,8 @@ func (s *Service) References(ctx context.Context, id string) (References, error)
 	if err != nil {
 		return refs, err
 	}
-	tags, err := s.Read(ctx, id, "tag", "--list")
+	tags, err := s.Read(ctx, id, "for-each-ref", "--sort=-version:refname",
+		"--format=%(refname:lstrip=2)%09%(objecttype)%09%(creatordate:unix)", "refs/tags")
 	if err != nil {
 		return refs, err
 	}
@@ -31,7 +39,16 @@ func (s *Service) References(ctx context.Context, id string) (References, error)
 		}
 		return strings.Split(value, "\n")
 	}
-	refs.Stashes, refs.Tags = lines(stashes.Stdout), lines(tags.Stdout)
+	refs.Stashes = lines(stashes.Stdout)
+	refs.TagTimes = make(map[string]TagTime)
+	for _, line := range lines(tags.Stdout) {
+		name, rest, _ := strings.Cut(line, "\t")
+		kind, stamp, _ := strings.Cut(rest, "\t")
+		refs.Tags = append(refs.Tags, name)
+		if created, err := strconv.ParseInt(strings.TrimSpace(stamp), 10, 64); err == nil {
+			refs.TagTimes[name] = TagTime{Unix: created, Annotated: kind == "tag"}
+		}
+	}
 	return refs, nil
 }
 

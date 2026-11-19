@@ -67,7 +67,7 @@ func (d *Desktop) cloneCredentialList(c *native.Context, f *cloneCredentials) {
 		row := slices.IndexFunc(profiles, func(p settings.CloneProfile) bool { return p.ID == f.draft.ID })
 		before := row
 		f.list.Selected = &row
-		native.Table(c, &f.list, []native.TableColumn{
+		roundedTable(c, &f.list, []native.TableColumn{
 			{Title: d.copy("名称", "Name")}, {Title: d.copy("类型", "Type"), Width: 68},
 		}, len(profiles), func(row, col int) {
 			p := profiles[row]

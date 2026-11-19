@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -36,7 +37,7 @@ func runRemote(client *ipc.Client, path, action string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	mygo.App.WhenReady(func() {
-		d.win = mygo.NewWindow(d.windowOptions())
+		d.win = ui.NewRememberedWindow(d.windowOptions())
 		d.win.OnClosed(cancel)
 		animationCtx, stopAnimation := context.WithCancel(ctx)
 		go d.animate(animationCtx)
@@ -50,8 +51,13 @@ func runRemote(client *ipc.Client, path, action string) error {
 
 func (d *remoteWindow) windowOptions() mygo.WindowOptions {
 	return mygo.WindowOptions{
-		TitleBarStyle: mygo.TitleBarHidden,
-		Width:         400, Height: 234, MinWidth: 360, MinHeight: 220,
+		TitleBarStyle:     mygo.TitleBarHidden,
+		DisableMinimize:   true,
+		DisableMaximize:   true,
+		DisableFullScreen: true,
+		HideWindowButtons: runtime.GOOS != "windows",
+		StateKey:          "remote",
+		Width:             400, Height: 234, MinWidth: 360, MinHeight: 220,
 		Content: native.View(d.view),
 	}
 }
@@ -75,6 +81,24 @@ func (d *remoteWindow) view(c *native.Context) {
 			d.captionStyled, d.captionDark = true, t.Dark
 		}
 	}
+	native.Box(c).Fill().Children(func() {
+		d.content(c, t)
+		if d.win != nil {
+			bar := c.TitleBar()
+			if runtime.GOOS == "windows" {
+				native.Box(c).Absolute().Top(0).Left(bar.Left).Right(bar.Right).Height(bar.Height).DragWindow()
+			} else {
+				native.Box(c).Absolute().Top(0).Left(0).Right(44).Height(34).DragWindow()
+				label := d.text("关闭", "Close")
+				if ui.IconButton(c, "", "close", false).Absolute().Top(4).Right(6).Label(label).Tooltip(label).Clicked() {
+					d.win.Close()
+				}
+			}
+		}
+	})
+}
+
+func (d *remoteWindow) content(c *native.Context, t *native.Theme) {
 	if d.err == "" {
 		message := d.status
 		if message == "" {
@@ -90,12 +114,6 @@ func (d *remoteWindow) view(c *native.Context) {
 		native.Text(c, d.status).FontSize(17 + t.FontSize - 12.5).Bold().TextColor(t.Danger)
 		native.Scroll(c).Grow(1).FillWidth().Background(t.Surface).Radius(8).Children(func() {
 			native.Text(c, d.err).FillWidth().Padding(10)
-		})
-		native.Row(c).FillWidth().Children(func() {
-			native.Box(c).Grow(1)
-			if ui.IconButton(c, d.text("关闭", "Close"), "close", false).Clicked() {
-				d.win.Close()
-			}
 		})
 	})
 }

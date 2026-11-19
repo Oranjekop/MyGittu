@@ -63,7 +63,7 @@ func (d *Desktop) showFileHistory(c *native.Context) {
 				return
 			}
 			w.fileList.Selected = &w.fileRow
-			native.Table(c, &w.fileList, []native.TableColumn{
+			roundedTable(c, &w.fileList, []native.TableColumn{
 				{Title: d.text("subject")}, {Title: d.text("author"), Width: 120}, {Title: d.text("date"), Width: 112},
 			}, len(w.fileCommits), func(row, col int) {
 				commit := w.fileCommits[row]
@@ -139,7 +139,7 @@ func (d *Desktop) showFileBlame(c *native.Context, height float32) {
 		}
 		return
 	}
-	native.Table(c, &w.blameList, []native.TableColumn{
+	roundedTable(c, &w.blameList, []native.TableColumn{
 		{Title: d.copy("行", "Line"), Width: 55},
 		{Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 110},
 		{Title: d.copy("代码", "Code")},
