@@ -47,6 +47,7 @@ var Catalog = map[string]Message{
 	"tag.delete":                  {"删除本地标签", "Delete local tag"},
 	"update.cancel":               {"取消下载", "Cancel download"},
 	"branch.noUpstream":           {"无上游", "No upstream"},
+	"files.openExternal":          {"外部打开", "Open externally"},
 	"files.search":                {"搜索文件名或路径", "Search file name or path"},
 	"nav.workspace":               {"工作区", "Workspace"},
 	"repo.search":                 {"按名称或路径搜索", "Search by name or path"},

@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"go/format"
 	"image/png"
+	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -169,6 +171,37 @@ func (d *Desktop) projectFileActions(c *native.Context, filename string) {
 	if IconButton(c, d.text("file.history"), "history", false).Disabled(d.busy).Clicked() {
 		d.openFileHistory(filename)
 	}
+	label := d.text("files.openExternal")
+	if IconButton(c, "", "external", false).Label(label).Tooltip(label).
+		Disabled(d.busy || !filepath.IsAbs(d.path)).Clicked() {
+		d.openProjectFileExternally(filename)
+	}
+}
+
+func (d *Desktop) openProjectFileExternally(filename string) {
+	rootPath := d.path
+	d.task(func(ctx context.Context) (func(), error) {
+		name, err := filepath.Localize(filename)
+		if err != nil {
+			return nil, err
+		}
+		root, err := os.OpenRoot(rootPath)
+		if err != nil {
+			return nil, err
+		}
+		defer root.Close()
+		info, err := root.Stat(name)
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("not a regular file: %s", filename)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return nil, mygo.Shell.OpenPath(filepath.Join(rootPath, name))
+	})
 }
 
 type projectPreviewRequest struct {

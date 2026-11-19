@@ -28,6 +28,7 @@ var iconShapes = map[string]string{
 	"switch":       `<path d="M3 7h14m-3-3 3 3-3 3m3 3H3m3-3-3 3 3 3"/>`,
 	"merge":        `<circle cx="6" cy="4" r="2"/><circle cx="6" cy="16" r="2"/><circle cx="15" cy="4" r="2"/><path d="M6 6v8m9-8a6 6 0 0 1-6 6H6"/>`,
 	"stash":        `<path d="M3 5h14v4H3zM4 9v7h12V9M8 12h4"/>`,
+	"external":     `<path d="M11 3h6v6m0-6-8 8m7 0v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/>`,
 	"open":         `<path d="M2.5 6.5V5a1.5 1.5 0 0 1 1.5-1.5h4l2 2h6A1.5 1.5 0 0 1 17.5 7v1M2.5 8.5h15l-2 8h-12z"/>`,
 	"clone":        `<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M12 3H5a2 2 0 0 0-2 2v7M9.5 12h5M12 9.5v5"/>`,
 	"changes":      `<path d="M11 3H5a1.5 1.5 0 0 0-1.5 1.5v11A1.5 1.5 0 0 0 5 17h10a1.5 1.5 0 0 0 1.5-1.5V8zM11 3v5h5.5M6.5 11h5M6.5 14h3"/>`,

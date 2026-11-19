@@ -850,6 +850,9 @@ func TestProjectImagePreviewFitsPane(t *testing.T) {
 	d.projectBitmap = native.NewBitmap(source)
 	tt := native.NewTester(d.view, 960, 680)
 	tt.SetScale(1.5)
+	if _, ok := tt.Find("外部打开"); !ok {
+		t.Fatal("external open action missing from image preview")
+	}
 	rendered := tt.Image()
 	var painted image.Rectangle
 	for y := rendered.Bounds().Min.Y; y < rendered.Bounds().Max.Y; y++ {

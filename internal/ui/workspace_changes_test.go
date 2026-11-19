@@ -101,3 +101,20 @@ func TestWorkspaceDiffSideFollowsFileGroup(t *testing.T) {
 		t.Fatal("an unstaged file should move to the working-tree side")
 	}
 }
+
+func TestEmptyChangesHidesGroupsWhilePulling(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected = "demo"
+	d.repos = []repository.Info{{ID: "demo", Root: "/tmp/demo"}}
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if !tt.HasText("暂无变更") {
+		t.Fatal("expected the empty workspace illustration")
+	}
+	d.busy, d.remoteRunning = true, "pull"
+	tt.Frame()
+	if !tt.HasText("拉取中…") || tt.HasText("已暂存的更改（0）") || tt.HasText("更改（0）") {
+		t.Fatal("empty groups should stay hidden while pulling")
+	}
+	saveLayoutPreview(t, tt, "empty-changes-while-pulling.png")
+}

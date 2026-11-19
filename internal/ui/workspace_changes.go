@@ -56,8 +56,12 @@ func workspaceDiffSide(file git.FileStatus, staged bool) bool {
 }
 
 func (d *Desktop) workspaceChangeList(c *native.Context, files []git.FileStatus) {
-	if len(files) == 0 && !d.busy && d.err == "" {
-		emptyState(c, emptyDiffArt, 88, d.copy("暂无变更", "No changes")).Grow(1)
+	if len(files) == 0 {
+		if !d.busy && d.err == "" {
+			emptyState(c, emptyDiffArt, 88, d.copy("暂无变更", "No changes")).Grow(1)
+		} else {
+			native.Box(c).Grow(1)
+		}
 		return
 	}
 	rows := workspaceChangeRows(files, d.stagedCollapsed, d.changesCollapsed)
@@ -98,9 +102,11 @@ func (d *Desktop) workspaceChangeHeader(c *native.Context, row workspaceChangeRo
 		arrow = "right"
 	}
 	label := fmt.Sprintf(d.text(key), row.count)
-	if IconButton(c, label, arrow, false).FillWidth().Justify(native.Start).Clicked() {
-		*collapsed = !*collapsed
-	}
+	native.Column(c).FillWidth().Padding(3, 0).Children(func() {
+		if IconButton(c, label, arrow, false).FillWidth().Justify(native.Start).Clicked() {
+			*collapsed = !*collapsed
+		}
+	})
 }
 
 func (d *Desktop) workspaceChangeItem(c *native.Context, file git.FileStatus, staged bool) {
