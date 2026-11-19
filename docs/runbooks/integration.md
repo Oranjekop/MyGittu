@@ -15,13 +15,11 @@
 
 ## macOS
 
-1. 在 Apple Silicon 的 Xcode 环境先编译 Swift Finder 扩展，运行 Go race 测试。
-2. 创建与签名身份匹配的 App Group 和 provisioning profiles，设置 `MYGITTU_APP_GROUP` 与 `SIGN_IDENTITY`。主程序、Agent 和扩展必须共享相同 App Group。按分发方式将 profiles 嵌入对应 bundle；脚本不会申请 Apple 账号资源。
-3. 运行 `packaging/darwin/build.sh`。使用 codesign 和 spctl 校验，完成 `xcrun notarytool submit ... --wait` 与 stapler（需要自己的 notarytool keychain profile）。
-4. 将 App 放入 Applications，启动并注册仓库，在系统设置中启用 Finder 扩展。检查 `repo.list`、0700 共享目录、0600 socket、peer UID 和 sandbox denial 日志。
-5. 验证多个目录注册、滚动出现的徽标、变化后的更新、Agent 退出/重启、Finder 重启、扩展重载。未注册目录不要求徽标覆盖。
-
-如果 App Group POSIX socket 被当前签名/沙盒组合拒绝，不能放宽目录权限或移除沙盒交付；应接入受控 XPC helper 后重新验证。本版本尚未完成该环境验收。
+1. 设置 `SIGN_IDENTITY` 为 Developer ID Application 身份，`MYGITTU_APP_GROUP` 为 `TEAMID.mygittu`。Team ID 必须与证书一致。发布工作流从 `MYGITTU_MACOS_CERT_BASE64`、`MYGITTU_MACOS_CERT_PASSWORD` 读取 P12，从仓库变量 `MYGITTU_MACOS_SIGN_IDENTITY`、`MYGITTU_MACOS_APP_GROUP` 读取身份与分组。
+2. 运行 `bash packaging/darwin/release.sh` 生成包含 Universal Finder 扩展的 PKG。仅构建签名的 `bin/MyGittu.app` 时运行 `bash packaging/darwin/build.sh`。
+3. 安装 PKG，启动 MyGittu 并添加仓库。在系统设置中搜索「Finder 扩展」，启用「MyGittu Finder」。
+4. 在已注册仓库中验证状态、提交、历史、差异右键命令，以及干净、修改、冲突徽章。再验证 Agent 退出和重启、Finder 重启、扩展重载和多个仓库。
+5. IPC 位于 App Group 的 `ipc` 子目录。核查 0700 目录、0600 socket、peer UID 和沙盒日志。仓库注册、设置和草稿仍存放在原用户配置目录。
 
 ## 性能与恢复
 

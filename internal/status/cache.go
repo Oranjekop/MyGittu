@@ -133,13 +133,6 @@ func (c *Cache) takeScheduled() map[string]struct{} {
 	return queued
 }
 
-// A filesystem event invalidates in-flight scans. Keep the last successful
-// snapshot visible until a replacement is ready.
-func (c *Cache) markDirty(id string) {
-	c.mu.Lock()
-	c.epochs[id]++
-	c.mu.Unlock()
-}
 func (c *Cache) Get(id string) (Snapshot, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

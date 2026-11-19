@@ -63,7 +63,7 @@ final class FinderSync: FIFinderSync {
     private var timer: Timer?
     private var visible = Set<URL>()
     private var pending = Set<URL>()
-    private var directory: URL?
+    private var roots = Set<URL>()
     private var language = Locale.preferredLanguages.first?.hasPrefix("zh") == true ? "zh-CN" : "en"
 
     override init() {
@@ -71,8 +71,7 @@ final class FinderSync: FIFinderSync {
         configureBadges()
         guard let group = Bundle.main.object(forInfoDictionaryKey: "MyGittuAppGroup") as? String,
               let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return }
-        self.directory = directory
-        client = AgentClient(directory: directory)
+        client = AgentClient(directory: directory.appendingPathComponent("ipc", isDirectory: true))
         updateRoots()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.updateRoots()
@@ -93,8 +92,15 @@ final class FinderSync: FIFinderSync {
                 DispatchQueue.main.async { if self.language != language { self.language = language; self.configureBadges() } }
             }
             guard let repos = try? client.call("repo.list") as? [[String: Any]] else { return }
-            let roots = Set(repos.compactMap { ($0["root"] as? String).map { URL(fileURLWithPath: $0) } })
-            DispatchQueue.main.async { FIFinderSyncController.default().directoryURLs = roots }
+            let paths = repos.flatMap { repo in
+                [repo["root"] as? String].compactMap { $0 } + (repo["aliases"] as? [String] ?? [])
+            }
+            let roots = Set(paths.map { URL(fileURLWithPath: $0, isDirectory: true) })
+            DispatchQueue.main.async {
+                guard self.roots != roots else { return }
+                self.roots = roots
+                FIFinderSyncController.default().directoryURLs = roots
+            }
         }
     }
     override func requestBadgeIdentifier(for url: URL) {
@@ -122,7 +128,7 @@ final class FinderSync: FIFinderSync {
     @objc private func openDesktop(_ sender: NSMenuItem) {
         guard let action = sender.representedObject as? String, ["status", "commit", "log", "diff"].contains(action),
               let url = FIFinderSyncController.default().selectedItemURLs()?.first ?? FIFinderSyncController.default().targetedURL() else { return }
-        // The host bundle is exactly two bundle ancestors above PlugIns/*.appex.
+        // MyGittu.app/Contents/PlugIns/MyGittuFinder.appex
         let host = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let config = NSWorkspace.OpenConfiguration(); config.createsNewApplicationInstance = true
         config.arguments = ["--action", action, "--path", url.path]

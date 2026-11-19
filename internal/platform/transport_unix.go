@@ -12,7 +12,7 @@ import (
 )
 
 func socketPath() (string, error) {
-	dir, e := ConfigDir()
+	dir, e := socketDir()
 	if e != nil {
 		return "", e
 	}

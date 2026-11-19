@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -279,6 +280,15 @@ func (s *Server) Serve(ctx context.Context, l net.Listener) error {
 		if e != nil {
 			if ctx.Err() != nil {
 				return nil
+			}
+			if errors.Is(e, syscall.EMFILE) || errors.Is(e, syscall.ENFILE) {
+				// A burst of filesystem events can temporarily exhaust descriptors.
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(100 * time.Millisecond):
+					continue
+				}
 			}
 			return e
 		}

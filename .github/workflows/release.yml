@@ -106,7 +106,33 @@ jobs:
           go test ./...
           go vet ./...
       - name: Build Chinese Universal installer
-        run: bash packaging/darwin/release.sh '${{ needs.version.outputs.value }}'
+        env:
+          MACOS_CERT_BASE64: ${{ secrets.MYGITTU_MACOS_CERT_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MYGITTU_MACOS_CERT_PASSWORD }}
+          MYGITTU_APP_GROUP: ${{ vars.MYGITTU_MACOS_APP_GROUP }}
+          SIGN_IDENTITY: ${{ vars.MYGITTU_MACOS_SIGN_IDENTITY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$MACOS_CERT_BASE64$MACOS_CERT_PASSWORD$MYGITTU_APP_GROUP$SIGN_IDENTITY" ]]; then
+            bash packaging/darwin/release.sh '${{ needs.version.outputs.value }}'
+            exit 0
+          fi
+          : "${MACOS_CERT_BASE64:?Missing Developer ID Application certificate}"
+          : "${MACOS_CERT_PASSWORD:?Missing certificate password}"
+          : "${MYGITTU_APP_GROUP:?Missing macOS App Group}"
+          : "${SIGN_IDENTITY:?Missing macOS signing identity}"
+          cert="$RUNNER_TEMP/mygittu-signing.p12"
+          keychain="$RUNNER_TEMP/mygittu-signing.keychain-db"
+          password="$(openssl rand -hex 24)"
+          trap 'rm -f "$cert"; security delete-keychain "$keychain" || true' EXIT
+          printf '%s' "$MACOS_CERT_BASE64" | base64 -D > "$cert"
+          security create-keychain -p "$password" "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$cert" -k "$keychain" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          bash packaging/darwin/release.sh '${{ needs.version.outputs.value }}'
       - name: Install and launch on Apple Silicon
         run: bash packaging/darwin/smoke-install.sh
       - name: Upload macOS release file

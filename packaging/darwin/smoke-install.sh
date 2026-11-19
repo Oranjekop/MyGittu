@@ -4,7 +4,17 @@ cd "$(dirname "$0")/../.."
 VERSION="$(tr -d '\r\n' < VERSION)"
 sudo installer -pkg "dist/release/MyGittu-$VERSION-macOS.pkg" -target /
 APP=/Applications/MyGittu.app
-for command in desktop agent mygittu; do lipo "$APP/Contents/MacOS/$command" -verify_arch x86_64 arm64; done
+for command in desktop agent mygittu; do
+  lipo "$APP/Contents/MacOS/$command" -verify_arch x86_64
+  lipo "$APP/Contents/MacOS/$command" -verify_arch arm64
+done
+signature="$(codesign -dv "$APP" 2>&1)"
+if ! grep -Fxq 'TeamIdentifier=not set' <<< "$signature"; then
+  EXT="$APP/Contents/PlugIns/MyGittuFinder.appex"
+  lipo "$EXT/Contents/MacOS/MyGittuFinder" -verify_arch x86_64
+  lipo "$EXT/Contents/MacOS/MyGittuFinder" -verify_arch arm64
+  [[ "$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$EXT/Contents/Info.plist")" == com.apple.FinderSync ]]
+fi
 codesign --verify --deep --strict "$APP"
 mkdir -p .work
 "$APP/Contents/MacOS/agent" > .work/installed-agent.log 2>&1 &

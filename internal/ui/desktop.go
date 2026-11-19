@@ -16,6 +16,7 @@ import (
 	"mygittu/internal/settings"
 	"mygittu/internal/status"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -181,8 +182,10 @@ func (d *Desktop) Run() error {
 				d.win.Invalidate()
 			}
 		})
-		_ = d.win.SetIcon(brand.PNG)
-		_ = mygo.App.Dock.SetIcon(brand.PNG)
+		if runtime.GOOS != "darwin" {
+			_ = d.win.SetIcon(brand.PNG)
+			_ = mygo.App.Dock.SetIcon(brand.PNG)
+		}
 		updateContext, cancelUpdates := context.WithCancel(context.Background())
 		d.win.OnClosed(func() {
 			d.saveFilePane(layoutPath)
@@ -704,7 +707,12 @@ func (d *Desktop) view(c *native.Context) {
 		return
 	}
 	native.Column(c).Fill().Padding(panelSpacing).Gap(panelSpacing).Background(t.Surface).Children(func() {
-		native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+		toolbar := native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center)
+		if runtime.GOOS == "darwin" {
+			bar := c.TitleBar()
+			toolbar.MinHeight(32).Padding(0, 0, 0, max(0, bar.Left+controlSpacing-panelSpacing)).DragWindow()
+		}
+		toolbar.Children(func() {
 			d.repositoryMenu(c)
 			if d.snapshot.Branch != "" && (d.page == 0 || d.page == 2) {
 				native.Text(c, d.snapshot.Branch).TextColor(t.TextMuted)

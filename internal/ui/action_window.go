@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -31,6 +32,10 @@ func (d *Desktop) windowOptions() mygo.WindowOptions {
 		Title: d.actionTitle(), Width: 1280, Height: 820, MinWidth: 960, MinHeight: 680,
 		StateKey: "workspace",
 		Content:  native.View(d.view),
+	}
+	if runtime.GOOS == "darwin" && d.action == "" {
+		options.TitleBarStyle = mygo.TitleBarHidden
+		options.TrafficLightPosition = &mygo.Point{X: panelSpacing, Y: panelSpacing + 9}
 	}
 	switch d.action {
 	case "clone":
