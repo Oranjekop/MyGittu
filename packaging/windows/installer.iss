@@ -55,6 +55,16 @@ Source: "THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ModernShellPackage}"; DestDir: "{app}"; DestName: "MyGittuShell.msix"
 Source: "packaging\windows\register-modern.ps1"; DestDir: "{app}"
 #endif
+#ifdef ModernShellCertificate
+Source: "{#ModernShellCertificate}"; DestDir: "{app}"; DestName: "MyGittu-Windows-Publisher.cer"; Flags: ignoreversion
+#endif
+
+[Registry]
+#ifdef ModernShellThumbprint
+Root: HKLM; Subkey: "Software\MyGittu"; ValueType: string; ValueName: "ShellPublisherThumbprint"; ValueData: "{#ModernShellThumbprint}"; Flags: uninsdeletevalue uninsdeletekeyifempty
+#else
+Root: HKLM; Subkey: "Software\MyGittu"; ValueType: none; ValueName: "ShellPublisherThumbprint"; Flags: deletevalue
+#endif
 
 [Icons]
 Name: "{group}\MyGittu"; Filename: "{app}\desktop.exe"

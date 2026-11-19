@@ -36,7 +36,7 @@ func runRemote(client *ipc.Client, path, action string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	mygo.App.WhenReady(func() {
-		d.win = mygo.NewWindow(mygo.WindowOptions{Title: "MyGittu", Width: 400, Height: 234, MinWidth: 360, MinHeight: 220, Content: native.View(d.view)})
+		d.win = mygo.NewWindow(d.windowOptions())
 		d.win.OnClosed(cancel)
 		animationCtx, stopAnimation := context.WithCancel(ctx)
 		go d.animate(animationCtx)
@@ -46,6 +46,14 @@ func runRemote(client *ipc.Client, path, action string) error {
 		}()
 	})
 	return mygo.App.Run()
+}
+
+func (d *remoteWindow) windowOptions() mygo.WindowOptions {
+	return mygo.WindowOptions{
+		TitleBarStyle: mygo.TitleBarHidden,
+		Width:         400, Height: 234, MinWidth: 360, MinHeight: 220,
+		Content: native.View(d.view),
+	}
 }
 
 func (d *remoteWindow) text(zh, en string) string {
@@ -72,13 +80,13 @@ func (d *remoteWindow) view(c *native.Context) {
 		if message == "" {
 			message = d.runningStatus()
 		}
-		native.Column(c).Fill().Background(t.Background).Padding(12, 12, 26, 12).Center().Gap(8).Children(func() {
+		native.Column(c).Fill().Background(t.Background).Padding(12).Center().Gap(8).Children(func() {
 			native.Image(c, ui.RemoteRabbitFrame(d.action, d.frame)).Width(116).Height(116)
-			native.Text(c, message).FontSize(17 + t.FontSize - 12.5).Bold()
+			native.Text(c, message).FontSize(17 + t.FontSize - 12.5).TextAlign(native.Center).Bold()
 		})
 		return
 	}
-	native.Column(c).Fill().Padding(18).Gap(12).Background(t.Background).Children(func() {
+	native.Column(c).Fill().Padding(36, 18, 18, 18).Gap(12).Background(t.Background).Children(func() {
 		native.Text(c, d.status).FontSize(17 + t.FontSize - 12.5).Bold().TextColor(t.Danger)
 		native.Scroll(c).Grow(1).FillWidth().Background(t.Surface).Radius(8).Children(func() {
 			native.Text(c, d.err).FillWidth().Padding(10)

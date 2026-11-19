@@ -112,7 +112,7 @@ func TestCommitAndCloneProgress(t *testing.T) {
 				t.Fatal("operation progress remains after failure")
 			}
 			if operation.action == "clone" &&
-				(!tester.HasText(d.text("clone.title")) || !tester.HasText(d.cloneURL) || !tester.HasText("操作失败: operation failed")) {
+				(!tester.HasText(d.cloneURL) || !tester.HasText("操作失败: operation failed")) {
 				t.Fatal("clone failure should restore the populated form and show the error")
 			}
 		})

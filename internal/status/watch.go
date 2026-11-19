@@ -136,7 +136,12 @@ func (c *Cache) Run(ctx context.Context) {
 			}
 		case <-completed:
 			busy = false
-		case <-tick.C:
+		case now := <-tick.C:
+			for id := range c.takeScheduled() {
+				if _, exists := pending[id]; !exists {
+					pending[id] = now
+				}
+			}
 			if !busy {
 				for id, when := range pending {
 					if time.Now().After(when) {
@@ -157,6 +162,9 @@ func (c *Cache) Run(ctx context.Context) {
 func (c *Cache) poll(ctx context.Context) {
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
+	scheduled := time.NewTicker(200 * time.Millisecond)
+	defer scheduled.Stop()
+refreshAll:
 	for {
 		for _, r := range c.Service.Registry.List() {
 			if ctx.Err() != nil {
@@ -164,10 +172,17 @@ func (c *Cache) poll(ctx context.Context) {
 			}
 			_ = c.Refresh(ctx, r.ID)
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				continue refreshAll
+			case <-scheduled.C:
+				for id := range c.takeScheduled() {
+					_ = c.Refresh(ctx, id)
+				}
+			}
 		}
 	}
 }

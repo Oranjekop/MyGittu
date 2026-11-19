@@ -248,7 +248,7 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 	switch r.Method {
 	case "git.stage", "git.unstage", "git.commit", "git.branch", "git.remote", "git.amend", "git.cherry-pick", "git.remote.configure", "git.restore", "git.hunk.restore", "git.hunk.stage", "git.recover", "git.resolve", "git.worktree.edit":
 		if s.Cache != nil {
-			s.Cache.Invalidate(p.RepoID)
+			s.Cache.ScheduleRefresh(p.RepoID)
 		}
 	}
 	if e != nil {

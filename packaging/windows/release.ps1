@@ -28,6 +28,13 @@ try {
  if($env:MYGITTU_CERT_PATH){
   & "$PSScriptRoot/build-sparse.ps1" -Version $Version -CertificatePath $env:MYGITTU_CERT_PATH
   $setupArgs+= "/DModernShellPackage=dist\release\MyGittu-$Version-Shell.msix"
+  $password = ConvertTo-SecureString $env:MYGITTU_CERT_PASSWORD -AsPlainText -Force
+  $cert = (Get-PfxData -FilePath $env:MYGITTU_CERT_PATH -Password $password).EndEntityCertificates[0]
+  if ($cert.Subject -eq $cert.Issuer) {
+   Export-Certificate -Cert $cert -FilePath dist/release/MyGittu-Windows-Publisher.cer | Out-Null
+   $setupArgs+= '/DModernShellCertificate=dist\release\MyGittu-Windows-Publisher.cer'
+   $setupArgs+= "/DModernShellThumbprint=$($cert.Thumbprint)"
+  }
  }
  & $iscc @setupArgs packaging/windows/installer.iss
  if($LASTEXITCODE){throw 'Installer compilation failed'}

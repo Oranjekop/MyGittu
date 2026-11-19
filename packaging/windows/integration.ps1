@@ -58,6 +58,49 @@ function Set-COM([int]$Index,[string]$Dll) {
 function MenuEnabled { (Read-Default (MenuPath 'Directory')) -eq (ClassID 1) }
 function OverlaysEnabled { (Read-Default (Join-Path $overlayRoot $overlayNames[0])) -eq (ClassID 2) }
 
+function Trust-Publisher {
+    if ([Environment]::OSVersion.Version.Build -lt 22000) { return }
+    $certificatePath = Join-Path $root 'MyGittu-Windows-Publisher.cer'
+    $packagePath = Join-Path $root 'MyGittuShell.msix'
+    $publisherKey = 'HKLM:\SOFTWARE\MyGittu'
+    if (!(Test-Path -LiteralPath $publisherKey)) { return }
+    $pin = Get-ItemPropertyValue -LiteralPath $publisherKey -Name ShellPublisherThumbprint -ErrorAction SilentlyContinue
+    if (!$pin) { return }
+    $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificatePath)
+    try {
+        if ($certificate.Thumbprint -ne $pin -or $certificate.Issuer -ne $certificate.Subject) {
+            throw 'Unexpected MyGittu publisher certificate.'
+        }
+        if (Test-Path -LiteralPath "Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)") { return }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        Add-Type -AssemblyName System.Security
+        $package = [IO.Compression.ZipFile]::OpenRead($packagePath)
+        try {
+            $entry = $package.GetEntry('AppxSignature.p7x')
+            if (!$entry -or $entry.Length -le 4 -or $entry.Length -gt 1MB) {
+                throw 'MyGittu MSIX signature is missing or invalid.'
+            }
+            $signature = [IO.BinaryReader]::new($entry.Open())
+            try {
+                if ([Text.Encoding]::ASCII.GetString($signature.ReadBytes(4)) -cne 'PKCX') {
+                    throw 'Invalid MyGittu MSIX signature header.'
+                }
+                $cms = [Security.Cryptography.Pkcs.SignedCms]::new()
+                $cms.Decode($signature.ReadBytes([int]$entry.Length - 4))
+                $cms.CheckSignature($true)
+                if ($cms.SignerInfos.Count -ne 1 -or $cms.SignerInfos[0].Certificate.Thumbprint -ne $certificate.Thumbprint) {
+                    throw 'The MyGittu MSIX signer does not match the bundled publisher certificate.'
+                }
+            } finally { $signature.Dispose() }
+        } finally { $package.Dispose() }
+        $store = [Security.Cryptography.X509Certificates.X509Store]::new('TrustedPeople', 'LocalMachine')
+        try {
+            $store.Open('ReadWrite')
+            $store.Add($certificate)
+        } finally { $store.Dispose() }
+    } finally { $certificate.Dispose() }
+}
+
 if ($Action -eq 'Status') {
     @{
         startup = [bool](Read-Run $userRun MyGittu)
@@ -113,6 +156,7 @@ if ($Action -in 'Menu','Overlays','Maintain' -and ($State -eq 'On' -or $Action -
 }
 if ($Action -eq 'Menu') {
     if ($State -eq 'On') {
+        Trust-Publisher
         Set-COM 1 $dll.FullName
         foreach ($kind in $menuClasses) { Write-Default (MenuPath $kind) (ClassID 1) }
     } else {
@@ -135,11 +179,13 @@ if ($Action -eq 'Overlays') {
     Set-Run $machineRun MyGittuAgent agent.exe ($State -eq 'On')
 }
 if ($Action -eq 'Maintain') {
-    if (MenuEnabled) { Set-COM 1 $dll.FullName }
+    $maintainMenu = MenuEnabled
+    if ($maintainMenu) { Set-COM 1 $dll.FullName }
     if (OverlaysEnabled) {
         for ($i=2; $i -le 4; $i++) { Set-COM $i $dll.FullName }
         Set-Run $machineRun MyGittuAgent agent.exe $true
     } else { Set-Run $machineRun MyGittuAgent agent.exe $false }
+    if ($maintainMenu) { Trust-Publisher }
 }
 if ($Action -eq 'Remove') {
     foreach ($kind in $menuClasses) { Remove-Key (MenuPath $kind) }

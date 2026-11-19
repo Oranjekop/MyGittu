@@ -7,7 +7,6 @@ type Message struct{ ZH, EN string }
 var Catalog = map[string]Message{
 	"branch.current":              {"当前分支", "Current branch"},
 	"compare.useSelected":         {"设为对比分支", "Use for comparison"},
-	"nav.toggle":                  {"展开或收起侧栏", "Toggle sidebar"},
 	"batch.count":                 {"已选 %d 项", "%d selected"},
 	"batch.clear":                 {"清空选择", "Clear selection"},
 	"batch.stage":                 {"暂存所选", "Stage selected"},

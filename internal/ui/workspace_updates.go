@@ -26,7 +26,7 @@ func (d *Desktop) watchWorkspace(ctx context.Context) {
 }
 
 func (d *Desktop) canPollWorkspace() bool {
-	return d.selected != "" && (d.page == 0 || d.page == 2) && !d.busy && !d.settingsOpen && !d.repositoriesOpen && !d.hunksOpen && !d.tools.conflictOpen && !d.tools.confirmOpen && !d.repositoryTools.confirmOpen && !d.repositoryTools.amendOpen
+	return d.result == "" && d.selected != "" && (d.page == 0 || d.page == 2) && !d.busy && !d.settingsOpen && !d.repositoriesOpen && !d.hunksOpen && !d.tools.conflictOpen && !d.tools.confirmOpen && !d.repositoryTools.confirmOpen && !d.repositoryTools.amendOpen
 }
 
 func (d *Desktop) pollWorkspace(ctx context.Context) {

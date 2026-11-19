@@ -39,9 +39,10 @@ func TestWorkspaceAtNarrow150Percent(t *testing.T) {
 	saveLayoutPreview(t, tt, "workspace-compact-960-150.png")
 	d.filePane = 380
 	tt.Frame()
-	tt.Press(452, 318)
-	tt.Move(427, 318)
-	tt.Release(427, 318)
+	dividerX := 2*panelSpacing + sidebarWidth + d.filePane
+	tt.Press(float32(dividerX), 318)
+	tt.Move(float32(dividerX-25), 318)
+	tt.Release(float32(dividerX-25), 318)
 	tt.Move(20, 20)
 	if d.filePane >= 380 {
 		t.Fatal("dragging the file divider did not resize the pane")
@@ -68,13 +69,11 @@ func TestWorkspaceAtNarrow150Percent(t *testing.T) {
 	if len(d.tools.batch) != 0 {
 		t.Fatal("batch selection was not cleared")
 	}
-	tt.ClickAt(26, 23)
-	if !d.sidebarCollapsed {
-		t.Fatal("sidebar state did not collapse")
+	if _, ok := tt.Find("展开或收起侧栏"); ok {
+		t.Fatal("sidebar collapse control is still visible")
 	}
-	tt.ClickAt(26, 23)
-	if d.sidebarCollapsed {
-		t.Fatal("sidebar did not reopen")
+	if bounds, ok := tt.Find("文件"); !ok || bounds.X != panelSpacing || bounds.W != sidebarWidth {
+		t.Fatalf("sidebar button should be directly in the outer layout: %v", bounds)
 	}
 	tt.SetSize(1280, 800)
 	tt.SetScale(1)
@@ -441,5 +440,70 @@ func TestFileHistoryShowsPatchAndBlameInColumns(t *testing.T) {
 	}
 	if !tt.HasText("代码") || !tt.HasText("Alex") || tt.HasText("Update release") {
 		t.Fatal("expected structured line annotations")
+	}
+}
+
+func TestShellActionWindowsAt150Percent(t *testing.T) {
+	for _, tc := range []struct{ action, control string }{
+		{"commit", "提交暂存内容"},
+		{"log", "搜索"},
+		{"diff", "全部暂存"},
+		{"clone", "开始克隆"},
+	} {
+		t.Run(tc.action, func(t *testing.T) {
+			d := New(nil, "D:/Projects/MyGittu", tc.action)
+			if tc.action != "clone" {
+				d.selected, d.snapshot.Branch = "demo", "main"
+			}
+			switch tc.action {
+			case "commit", "diff":
+				d.changes = []git.FileStatus{
+					{Path: "README.md", Index: git.Modified, Worktree: git.Clean, State: git.Modified},
+					{Path: "internal/ui/action_window.go", Index: git.Clean, Worktree: git.Modified, State: git.Modified},
+					{Path: "packaging/windows/integration.ps1", Index: git.Clean, Worktree: git.Modified, State: git.Modified},
+				}
+				d.row, d.stagedCount, d.staged = 0, 1, true
+				d.message = "让右键操作在独立窗口中完成"
+				d.commitIdentity.EffectiveName = "Alex"
+				d.applyComparison("README.md", app.Comparison{
+					Old: "# MyGittu\n\n在资源管理器中打开仓库。\n\n## 安装\n\n运行安装包后，在设置中启用右键菜单。\n",
+					New: "# MyGittu\n\n在资源管理器中打开仓库。\n提交、克隆、历史和差异各自在独立窗口中打开。\n\n## 安装\n\n运行安装包后，在设置中启用右键菜单。\n",
+				})
+			case "log":
+				d.logs = []app.Commit{
+					{Hash: "91f8e230ccba", Subject: "让右键操作在独立窗口中完成", Author: "Alex", Date: "2026-11-19"},
+					{Hash: "c30bfce405d3", Subject: "修复拉取后的资源管理器徽章", Author: "Alex", Date: "2026-11-18"},
+					{Hash: "e9a2f7ac11da", Subject: "简化工作区侧栏", Author: "Alex", Date: "2026-11-18"},
+				}
+				d.logRow = 0
+				summary := "让右键操作在独立窗口中完成\n\n将提交、克隆、历史和差异接入单独的窗口。"
+				d.historySummary = &summary
+			case "clone":
+				d.cloneParent = ""
+				d.cloneURL = "https://github.com/example/demo.git"
+				d.cloneDestination = "D:/Projects/demo"
+			}
+			options := d.windowOptions()
+			tt := native.NewTester(d.view, int(options.MinWidth), int(options.MinHeight))
+			tt.SetScale(1.5)
+			if bounds, ok := tt.Find(tc.control); !ok || bounds.W <= 0 || bounds.H <= 0 ||
+				bounds.X < 0 || bounds.Y < 0 || bounds.X+bounds.W > float32(options.MinWidth) || bounds.Y+bounds.H > float32(options.MinHeight) {
+				t.Fatalf("action control %q is not visible: %v", tc.control, bounds)
+			}
+			if _, ok := tt.Find(d.text("nav.branches")); ok {
+				t.Fatal("standalone action displayed the workspace navigation")
+			}
+			if os.Getenv("MYGITTU_LAYOUT_PREVIEW") != "" {
+				tt.SetSize(int(options.Width), int(options.Height))
+				saveLayoutPreview(t, tt, "context-menu-"+tc.action+".png")
+			}
+			if tc.action == "commit" || tc.action == "clone" {
+				d.result = "操作完成"
+				tt.Frame()
+				if !tt.HasText(d.result) || !tt.HasText(d.text("close")) || tt.HasText(tc.control) {
+					t.Fatal("successful action did not stay in its own result window")
+				}
+			}
+		})
 	}
 }

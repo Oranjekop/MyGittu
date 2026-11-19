@@ -58,6 +58,22 @@ func TestWatcherRefreshAndStop(t *testing.T) {
 		t.Fatalf("expected %s, got %+v", state, c.Lookup(repo.Root))
 	}
 	await(git.Clean)
+	initial := c.Lookup(repo.Root)
+	c.ScheduleRefresh(repo.ID)
+	deadline := time.Now().Add(8 * time.Second)
+	for {
+		got := c.Lookup(repo.Root)
+		if got.State != git.Clean {
+			t.Fatalf("scheduled refresh hid the clean overlay: %+v", got)
+		}
+		if got.Generation > initial.Generation {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("scheduled refresh was not processed without a filesystem event")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	if e := os.WriteFile(filepath.Join(repo.Root, "new.txt"), []byte("new"), 0600); e != nil {
 		t.Fatal(e)
 	}
@@ -86,7 +102,11 @@ func TestDirtyRepositoryKeepsOverlayUntilRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := c.Lookup(repo.Root)
-	c.markDirty(repo.ID)
+	c.ScheduleRefresh(repo.ID)
+	c.ScheduleRefresh(repo.ID)
+	if queued := c.takeScheduled(); len(queued) != 1 {
+		t.Fatalf("expected one scheduled refresh, got %v", queued)
+	}
 	if got := c.Lookup(repo.Root); got != before || !got.Cached {
 		t.Fatalf("badge disappeared while refresh was pending: %+v", got)
 	}

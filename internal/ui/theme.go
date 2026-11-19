@@ -6,7 +6,7 @@ const (
 	panelSpacing   = 10
 	controlSpacing = 8
 	detailSpacing  = 4
-	sidebarWidth   = 52
+	sidebarWidth   = 36
 )
 
 func ApplyTheme(c *native.Context, fontSize float32) *native.Theme {

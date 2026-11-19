@@ -24,6 +24,7 @@ import (
 type Desktop struct {
 	Client                             *ipc.Client
 	win                                *mygo.Window
+	action, initialDiffPath, result    string
 	repos                              []repository.Info
 	selected                           string
 	path, message, branch, detail, err string
@@ -39,7 +40,6 @@ type Desktop struct {
 	row                                int
 	files, history                     native.ListState
 	filePane                           float32
-	sidebarCollapsed                   bool
 	captionStyled, captionDark         bool
 	staged                             bool
 	offset                             int
@@ -119,10 +119,13 @@ func New(client *ipc.Client, path, action string) *Desktop {
 	d := &Desktop{Client: client, path: path, row: -1, logRow: -1, filePane: 310, prefs: settings.Values{Language: "zh-CN", Theme: "system"}}
 	switch action {
 	case "log":
+		d.action = action
 		d.page = 1
 	case "diff":
+		d.action = action
 		d.page = 2
 	case "clone":
+		d.action = action
 		d.page = 5
 		if path != "" {
 			d.cloneParent = path
@@ -130,7 +133,9 @@ func New(client *ipc.Client, path, action string) *Desktop {
 	case "pull", "push":
 		d.page = 6
 		d.branch = action
-	case "status", "commit", "":
+	case "commit":
+		d.action = action
+	case "status", "":
 	default:
 		d.err = d.text("unsupported")
 	}
@@ -141,7 +146,7 @@ func (d *Desktop) Run() error {
 		if dir, err := platform.ConfigDir(); err == nil {
 			d.draftDir = filepath.Join(dir, "drafts")
 		}
-		d.win = mygo.NewWindow(mygo.WindowOptions{Title: "MyGittu", Width: 1280, Height: 820, MinWidth: 960, MinHeight: 680, Content: native.View(d.view)})
+		d.win = mygo.NewWindow(d.windowOptions())
 		_ = d.win.SetIcon(brand.PNG)
 		_ = mygo.App.Dock.SetIcon(brand.PNG)
 		updateContext, cancelUpdates := context.WithCancel(context.Background())
@@ -152,14 +157,22 @@ func (d *Desktop) Run() error {
 			}
 			d.saveDraft()
 		})
-		go d.watchUpdates(updateContext)
-		go app.CleanupUpdates()
-		go d.watchWorkspace(updateContext)
-		d.win.OnFileDrop(func(e *mygo.FileDropEvent) {
-			if len(e.Paths) > 0 {
-				d.open(e.Paths[0])
-			}
-		})
+		if d.action == "" {
+			go d.watchUpdates(updateContext)
+			go app.CleanupUpdates()
+			d.win.OnFileDrop(func(e *mygo.FileDropEvent) {
+				if len(e.Paths) > 0 {
+					d.open(e.Paths[0])
+				}
+			})
+		}
+		if d.action != "clone" && d.action != "log" {
+			go d.watchWorkspace(updateContext)
+		}
+		if d.action != "" {
+			d.loadAction()
+			return
+		}
 		d.task(func(ctx context.Context) (func(), error) {
 			var prefs settings.Values
 			if e := d.Client.Call(ctx, "settings.get", ipc.Params{}, &prefs); e != nil {
@@ -197,6 +210,9 @@ func (d *Desktop) applyPrefs(v settings.Values) {
 	previousAI := d.prefs.AI
 	previousLanguage := d.prefs.Language
 	d.prefs = v
+	if d.action != "" && previousLanguage != v.Language && d.win != nil && !d.win.IsDestroyed() {
+		d.win.SetTitle(d.actionTitle())
+	}
 	if previousLanguage != v.Language && v.AIPrompt == "" {
 		d.resetPromptDraft()
 	}
@@ -246,6 +262,9 @@ func (d *Desktop) operationTask(operation string, work func(context.Context) (fu
 		}
 		apply, e := work(ctx)
 		mygo.RunOnMain(func() {
+			if d.win != nil && d.win.IsDestroyed() {
+				return
+			}
 			d.busy = false
 			d.operation, d.operationFrame = "", 0
 			if e != nil {
@@ -265,7 +284,9 @@ func (d *Desktop) refresh() {
 	if id == "" {
 		return
 	}
-	d.row = -1
+	if page != 2 {
+		d.row = -1
+	}
 	d.detail = ""
 	d.comparison = nil
 	if page == projectFilesPage {
@@ -285,7 +306,7 @@ func (d *Desktop) refresh() {
 		switch page {
 		case 0, 2:
 			e = d.Client.Call(ctx, "status.refresh", ipc.Params{RepoID: id}, &snap)
-			if e == nil {
+			if e == nil && page == 0 {
 				e = d.Client.Call(ctx, "identity.get", ipc.Params{RepoID: id, Scope: "local"}, &identity)
 			}
 		case 1:
@@ -334,7 +355,18 @@ func (d *Desktop) refresh() {
 				d.commitIdentity = identity
 				oldMode := d.staged
 				changed := d.applyWorkspaceStatus(snap)
-				if d.row >= 0 && (changed || d.staged != oldMode) {
+				if d.initialDiffPath != "" {
+					target := d.initialDiffPath
+					d.initialDiffPath = ""
+					d.row = slices.IndexFunc(d.changes, func(file git.FileStatus) bool {
+						return repository.Key(file.Path) == target
+					})
+					if d.row >= 0 {
+						d.staged = d.changes[d.row].Worktree == git.Clean
+						changed = true
+					}
+				}
+				if d.row >= 0 && (page == 2 || changed || d.staged != oldMode) {
 					d.diff(d.changes[d.row].Path)
 				}
 			}
@@ -357,6 +389,10 @@ func (d *Desktop) mutate(method string, p ipc.Params) {
 			if method == "git.commit" {
 				d.message = ""
 				d.saveDraft()
+				if d.action == "commit" {
+					d.result = d.copy("提交成功", "Commit completed")
+					return
+				}
 			}
 			if method == "git.stage" || method == "git.unstage" {
 				clear(d.tools.batch)
@@ -411,7 +447,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	files := d.visible()
 	width, _ := c.Size()
 	available := width - 2*panelSpacing
-	if !d.sidebarCollapsed {
+	if d.action == "" {
 		available -= sidebarWidth + panelSpacing
 	}
 	fileWidth := min(max(d.filePane, 284), max(284, available-320))
@@ -488,6 +524,9 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			if d.row != previous && d.row >= 0 && d.row < len(files) {
 				d.staged = files[d.row].Worktree == git.Clean
 				d.diff(files[d.row].Path)
+			}
+			if d.action == "diff" {
+				return
 			}
 			if d.aiError != "" {
 				native.Text(c, d.aiError).FillWidth().TextColor(t.Danger)
@@ -588,10 +627,10 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	})
 }
 func (d *Desktop) view(c *native.Context) {
-	if !d.settingsOpen && !d.repositoriesOpen && c.Shortcut(native.Cmd, native.KeyO) {
+	if d.action == "" && !d.settingsOpen && !d.repositoriesOpen && c.Shortcut(native.Cmd, native.KeyO) {
 		d.chooseRepository()
 	}
-	if !d.settingsOpen && !d.busy && c.Shortcut(native.Cmd, native.KeyK) {
+	if d.action == "" && !d.settingsOpen && !d.busy && c.Shortcut(native.Cmd, native.KeyK) {
 		d.repositorySearch = ""
 		d.repositoriesOpen = true
 	}
@@ -608,11 +647,13 @@ func (d *Desktop) view(c *native.Context) {
 			d.captionStyled, d.captionDark = true, t.Dark
 		}
 	}
+	if d.action != "" {
+		d.actionView(c, t)
+		d.dialogs(c)
+		return
+	}
 	native.Column(c).Fill().Padding(panelSpacing).Gap(panelSpacing).Background(t.Surface).Children(func() {
 		native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-			if IconButton(c, "", "diff", false).Label(d.text("nav.toggle")).Tooltip(d.text("nav.toggle")).Clicked() {
-				d.sidebarCollapsed = !d.sidebarCollapsed
-			}
 			d.repositoryMenu(c)
 			if d.snapshot.Branch != "" && (d.page == 0 || d.page == 2) {
 				native.Text(c, d.snapshot.Branch).TextColor(t.TextMuted)
@@ -641,34 +682,32 @@ func (d *Desktop) view(c *native.Context) {
 			}
 		})
 		native.Row(c).Grow(1).FillWidth().Gap(panelSpacing).Children(func() {
-			if !d.sidebarCollapsed {
-				native.Column(c).Width(sidebarWidth).FillHeight().Padding(controlSpacing).Gap(detailSpacing).Background(t.Background).Radius(8).Children(func() {
-					for _, item := range []struct {
-						page        int
-						label, icon string
-					}{
-						{0, "changes.nav", "changes"},
-						{projectFilesPage, "nav.files", "file"},
-						{1, "nav.history", "history"},
-						{3, "nav.branches", "branch"},
-						{referencesPage, "nav.references", "stash"},
-					} {
-						label := d.text(item.label)
-						active := d.page == item.page || item.page == 0 && d.page == 2
-						if IconButton(c, "", item.icon, active).Label(label).Tooltip(label).FillWidth().Disabled(d.busy).Clicked() {
-							d.page, d.offset = item.page, 0
-							d.refresh()
-						}
+			native.Column(c).Width(sidebarWidth).FillHeight().Gap(detailSpacing).Children(func() {
+				for _, item := range []struct {
+					page        int
+					label, icon string
+				}{
+					{0, "changes.nav", "changes"},
+					{projectFilesPage, "nav.files", "file"},
+					{1, "nav.history", "history"},
+					{3, "nav.branches", "branch"},
+					{referencesPage, "nav.references", "stash"},
+				} {
+					label := d.text(item.label)
+					active := d.page == item.page || item.page == 0 && d.page == 2
+					if IconButton(c, "", item.icon, active).Label(label).Tooltip(label).FillWidth().Disabled(d.busy).Clicked() {
+						d.page, d.offset = item.page, 0
+						d.refresh()
 					}
-					native.Box(c).Grow(1)
-					if IconButton(c, "", "open", false).Label(d.text("repo.open")).Tooltip(d.text("repo.open")).FillWidth().Disabled(d.busy).Clicked() {
-						d.chooseRepository()
-					}
-					if IconButton(c, "", "clone", d.page == 5).Label(d.text("clone.run")).Tooltip(d.text("clone.run")).FillWidth().Disabled(d.busy).Clicked() {
-						d.page = 5
-					}
-				})
-			}
+				}
+				native.Box(c).Grow(1)
+				if IconButton(c, "", "open", false).Label(d.text("repo.open")).Tooltip(d.text("repo.open")).FillWidth().Disabled(d.busy).Clicked() {
+					d.chooseRepository()
+				}
+				if IconButton(c, "", "clone", d.page == 5).Label(d.text("clone.run")).Tooltip(d.text("clone.run")).FillWidth().Disabled(d.busy).Clicked() {
+					d.page = 5
+				}
+			})
 			native.Column(c).Grow(1).FillHeight().Gap(controlSpacing).Children(func() {
 
 				if d.busy && !d.settingsOpen && d.operation != cloneOperation && (d.operation != "" || d.aiGenerating) {
@@ -713,71 +752,7 @@ func (d *Desktop) view(c *native.Context) {
 				case 0, 2:
 					d.workspace(c, t)
 				case 1:
-					native.Row(c).Gap(controlSpacing).Children(func() {
-						native.TextInput(c, &d.query).Placeholder(d.text("history.search")).Grow(1).Disabled(d.busy)
-						if IconButton(c, d.text("search"), "search", false).Disabled(d.busy).Clicked() {
-							d.offset = 0
-							d.refresh()
-						}
-					})
-					d.history.Selected = &d.logRow
-					previous := d.logRow
-					native.Table(c, &d.history, []native.TableColumn{{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190}}, len(d.logs), func(row, col int) {
-						l := d.logs[row]
-						values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
-						native.Text(c, values[col])
-					}).Grow(1).MinHeight(110).FillWidth().Disabled(d.busy)
-					if previous != d.logRow && d.logRow >= 0 && d.logRow < len(d.logs) && !d.busy && d.Client != nil {
-						id, hash := d.selected, d.logs[d.logRow].Hash
-						d.historySummary = nil
-						d.task(func(ctx context.Context) (func(), error) {
-							var detail app.CommitDetails
-							e := d.Client.Call(ctx, "git.commit.details", ipc.Params{RepoID: id, Hash: hash}, &detail)
-							return func() {
-								d.historySummary = &detail.Summary
-								d.setHistoryPatch(detail.Patch)
-							}, e
-						})
-					}
-					native.Row(c).Gap(controlSpacing).Children(func() {
-						valid := d.logRow >= 0 && d.logRow < len(d.logs)
-						if IconButton(c, d.text("recover.undo"), "undo", false).Disabled(d.busy || !valid || d.offset != 0 || d.query != "" || d.logRow != 0).Clicked() && valid {
-							d.confirmRecovery("undo", d.logs[d.logRow].Hash)
-						}
-						if IconButton(c, d.text("recover.revert"), "revert", false).Disabled(d.busy || !valid).Clicked() && valid {
-							d.confirmRecovery("revert", d.logs[d.logRow].Hash)
-						}
-						if IconButton(c, d.copy("拣选提交", "Cherry-pick"), "branch", false).Disabled(d.busy || !valid).Clicked() && valid {
-							hash := d.logs[d.logRow].Hash
-							d.askAction(d.copy("将该提交应用到当前分支？", "Apply this commit to the current branch?"), hash, func() { d.runCherry("start", hash) })
-						}
-					})
-					if d.historySummary != nil && d.logRow >= 0 && d.logRow < len(d.logs) {
-						native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-							native.Segmented(c, &d.historyMode, d.text("commit.details"), d.copy("提交差异", "Commit diff"))
-							native.Text(c, d.logs[d.logRow].Hash).TextColor(t.TextMuted)
-						})
-						if d.historyMode == 0 {
-							d.showCommitSummary(c, d.logs[d.logRow])
-						} else {
-							d.showHistoryPatch(c)
-						}
-					}
-					native.Row(c).Gap(controlSpacing).Children(func() {
-						if IconButton(c, d.text("previous"), "left", false).Disabled(d.busy || d.offset == 0).Clicked() {
-							d.offset = max(0, d.offset-100)
-							d.refresh()
-						}
-						if len(d.logs) == 0 {
-							native.Text(c, d.text("history.empty"))
-						} else {
-							native.Text(c, fmt.Sprintf("%d–%d", d.offset+1, d.offset+len(d.logs)))
-						}
-						if IconButton(c, d.text("next"), "right", false).Disabled(d.busy || len(d.logs) < 100).Clicked() {
-							d.offset += 100
-							d.refresh()
-						}
-					})
+					d.showHistory(c, t)
 				case 3:
 					d.repositoryToolButtons(c)
 					d.showBranches(c)
@@ -794,6 +769,10 @@ func (d *Desktop) view(c *native.Context) {
 			})
 		})
 	})
+	d.dialogs(c)
+}
+
+func (d *Desktop) dialogs(c *native.Context) {
 	d.settingsDialog(c)
 	d.commitAIDialog(c)
 	d.showRepositoryTools(c)

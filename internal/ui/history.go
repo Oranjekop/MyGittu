@@ -1,11 +1,14 @@
 package ui
 
 import (
+	"context"
+	"fmt"
 	"strings"
 
 	native "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"mygittu/internal/app"
+	"mygittu/internal/ipc"
 )
 
 func (d *Desktop) setHistoryPatch(patch string) {
@@ -57,5 +60,73 @@ func (d *Desktop) showHistoryPatch(c *native.Context) {
 			view = &d.historyFilePatch
 		}
 		d.showPatch(c, view).Grow(1).FillHeight()
+	})
+}
+
+func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
+	native.Row(c).Gap(controlSpacing).Children(func() {
+		native.TextInput(c, &d.query).Placeholder(d.text("history.search")).Grow(1).Disabled(d.busy)
+		if IconButton(c, d.text("search"), "search", false).Disabled(d.busy).Clicked() {
+			d.offset = 0
+			d.refresh()
+		}
+	})
+	d.history.Selected = &d.logRow
+	previous := d.logRow
+	native.Table(c, &d.history, []native.TableColumn{{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190}}, len(d.logs), func(row, col int) {
+		l := d.logs[row]
+		values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
+		native.Text(c, values[col])
+	}).Grow(1).MinHeight(110).FillWidth().Disabled(d.busy)
+	if previous != d.logRow && d.logRow >= 0 && d.logRow < len(d.logs) && !d.busy && d.Client != nil {
+		id, hash := d.selected, d.logs[d.logRow].Hash
+		d.historySummary = nil
+		d.task(func(ctx context.Context) (func(), error) {
+			var detail app.CommitDetails
+			e := d.Client.Call(ctx, "git.commit.details", ipc.Params{RepoID: id, Hash: hash}, &detail)
+			return func() {
+				d.historySummary = &detail.Summary
+				d.setHistoryPatch(detail.Patch)
+			}, e
+		})
+	}
+	native.Row(c).Gap(controlSpacing).Children(func() {
+		valid := d.logRow >= 0 && d.logRow < len(d.logs)
+		if IconButton(c, d.text("recover.undo"), "undo", false).Disabled(d.busy || !valid || d.offset != 0 || d.query != "" || d.logRow != 0).Clicked() && valid {
+			d.confirmRecovery("undo", d.logs[d.logRow].Hash)
+		}
+		if IconButton(c, d.text("recover.revert"), "revert", false).Disabled(d.busy || !valid).Clicked() && valid {
+			d.confirmRecovery("revert", d.logs[d.logRow].Hash)
+		}
+		if IconButton(c, d.copy("拣选提交", "Cherry-pick"), "branch", false).Disabled(d.busy || !valid).Clicked() && valid {
+			hash := d.logs[d.logRow].Hash
+			d.askAction(d.copy("将该提交应用到当前分支？", "Apply this commit to the current branch?"), hash, func() { d.runCherry("start", hash) })
+		}
+	})
+	if d.historySummary != nil && d.logRow >= 0 && d.logRow < len(d.logs) {
+		native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+			native.Segmented(c, &d.historyMode, d.text("commit.details"), d.copy("提交差异", "Commit diff"))
+			native.Text(c, d.logs[d.logRow].Hash).TextColor(t.TextMuted)
+		})
+		if d.historyMode == 0 {
+			d.showCommitSummary(c, d.logs[d.logRow])
+		} else {
+			d.showHistoryPatch(c)
+		}
+	}
+	native.Row(c).Gap(controlSpacing).Children(func() {
+		if IconButton(c, d.text("previous"), "left", false).Disabled(d.busy || d.offset == 0).Clicked() {
+			d.offset = max(0, d.offset-100)
+			d.refresh()
+		}
+		if len(d.logs) == 0 {
+			native.Text(c, d.text("history.empty"))
+		} else {
+			native.Text(c, fmt.Sprintf("%d–%d", d.offset+1, d.offset+len(d.logs)))
+		}
+		if IconButton(c, d.text("next"), "right", false).Disabled(d.busy || len(d.logs) < 100).Clicked() {
+			d.offset += 100
+			d.refresh()
+		}
 	})
 }

@@ -23,7 +23,9 @@ func (s *Service) OpenDesktop(ctx context.Context, path, action string) error {
 		if e != nil {
 			return e
 		}
-		path = repo.Root
+		if action != "diff" {
+			path = repo.Root
+		}
 	}
 	self, e := os.Executable()
 	if e != nil {

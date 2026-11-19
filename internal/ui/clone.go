@@ -72,7 +72,9 @@ func (d *Desktop) cloneProgress(c *native.Context) {
 }
 
 func (d *Desktop) cloneForm(c *native.Context) {
-	native.Text(c, d.text("clone.title")).Bold()
+	if d.action != "clone" {
+		native.Text(c, d.text("clone.title")).Bold()
+	}
 	native.Segmented(c, &d.cloneProvider, d.copy("Git 地址", "Git URL"), "GitHub", "Gitee", "GitLab", "Bitbucket").Disabled(d.busy)
 	host := cloneHosts[d.cloneProvider]
 	placeholder := d.text("clone.url")
@@ -147,6 +149,11 @@ func (d *Desktop) cloneForm(c *native.Context) {
 			var repo repository.Info
 			err := d.Client.Call(ctx, "git.clone", ipc.Params{URL: remote, Destination: destination, CloneAuth: auth}, &repo)
 			return func() {
+				if d.action == "clone" {
+					d.path = repo.Root
+					d.result = d.copy("克隆成功", "Clone completed")
+					return
+				}
 				d.repos = append(d.repos, repo)
 				d.selectRepository(repo.ID, repo.Root)
 				d.page = 0
