@@ -45,21 +45,29 @@ func (d *Desktop) cloneSettings(c *native.Context) {
 	if f.draft.Kind == "" {
 		f.clearEditor()
 	}
-	native.Text(c, d.copy("克隆凭据", "Clone credentials")).Bold()
-	native.Row(c).FillWidth().Gap(panelSpacing).AlignItems(native.Start).Children(func() {
-		native.Column(c).Width(226).Gap(controlSpacing).Children(func() { d.cloneCredentialList(c, f) })
-		native.Column(c).Grow(1).MinWidth(0).Gap(controlSpacing).Children(func() { d.cloneCredentialEditor(c, f) })
+	native.Row(c).Grow(1).MinHeight(0).FillWidth().Gap(14).Children(func() {
+		native.Column(c).WidthPercent(39).FillHeight().Gap(controlSpacing).Children(func() {
+			d.cloneCredentialList(c, f)
+		})
+		native.Box(c).Width(1).FillHeight().Background(c.Theme().Border)
+		native.Scroll(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
+			native.Column(c).FillWidth().PaddingEnd(detailSpacing).Gap(controlSpacing).Children(func() {
+				d.cloneCredentialEditor(c, f)
+			})
+		})
 	})
 }
 
 func (d *Desktop) cloneCredentialList(c *native.Context, f *cloneCredentials) {
-	native.Row(c).AlignItems(native.Center).Gap(detailSpacing).Wrap().Children(func() {
-
+	native.Row(c).FillWidth().AlignItems(native.Center).Gap(detailSpacing).Wrap().Children(func() {
 		if IconButton(c, d.copy("新增凭据", "Add credential"), "plus", false).Disabled(d.busy).Clicked() {
 			f.clearEditor()
 		}
-		if IconButton(c, d.copy("删除凭据", "Delete credential"), "remove", false).Disabled(d.busy || f.draft.ID == "").Clicked() {
-			f.deleteID = f.draft.ID
+		if f.draft.ID != "" {
+			label := d.copy("删除凭据", "Delete credential")
+			if IconButton(c, "", "remove", false).Label(label).Tooltip(label).Disabled(d.busy).Clicked() {
+				f.deleteID = f.draft.ID
+			}
 		}
 	})
 	profiles := d.prefs.CloneProfiles
@@ -80,12 +88,12 @@ func (d *Desktop) cloneCredentialList(c *native.Context, f *cloneCredentials) {
 				kind = "GitHub"
 			}
 			native.Text(c, kind)
-		}).Height(255).FillWidth().Disabled(d.busy)
+		}).Grow(1).MinHeight(0).FillWidth().Disabled(d.busy)
 		if row != before && row >= 0 && row < len(profiles) {
 			f.edit(profiles, profiles[row].ID)
 		}
 	} else if !d.busy && d.err == "" {
-		emptyState(c, emptyPreviewArt, 72, d.copy("暂无凭据", "No saved credentials"))
+		emptyState(c, emptyPreviewArt, 72, d.copy("暂无凭据", "No saved credentials")).Grow(1)
 	}
 }
 
@@ -108,7 +116,7 @@ func (d *Desktop) cloneCredentialEditor(c *native.Context, f *cloneCredentials) 
 	}
 	native.Text(c, title).Bold()
 	native.Text(c, d.copy("显示名称", "Display name"))
-	native.TextInput(c, &f.draft.Label).Placeholder(d.copy("显示名称", "Display name")).FillWidth().Disabled(d.busy)
+	native.TextInput(c, &f.draft.Label).Label(d.copy("显示名称", "Display name")).FillWidth().Disabled(d.busy)
 	kinds := []string{"https", "ssh", "github"}
 	kind := max(0, slices.Index(kinds, f.draft.Kind))
 	native.Segmented(c, &kind, "HTTPS", "SSH", d.copy("GitHub 登录", "GitHub login")).Disabled(d.busy)
@@ -121,7 +129,7 @@ func (d *Desktop) cloneCredentialEditor(c *native.Context, f *cloneCredentials) 
 		native.Text(c, d.copy("服务器域名", "Server hostname"))
 		native.TextInput(c, &f.draft.Host).Placeholder(d.copy("服务器域名，例如 gitee.com", "Server hostname, e.g. gitee.com")).FillWidth().Disabled(d.busy)
 		native.Text(c, d.copy("HTTPS 用户名", "HTTPS username"))
-		native.TextInput(c, &f.draft.Username).Placeholder(d.copy("HTTPS 用户名", "HTTPS username")).FillWidth().Disabled(d.busy)
+		native.TextInput(c, &f.draft.Username).Label(d.copy("HTTPS 用户名", "HTTPS username")).FillWidth().Disabled(d.busy)
 		native.TextInput(c, &f.password).Password().Placeholder(d.copy("密码或令牌（本次运行）", "Password or token (this session)")).FillWidth().Disabled(d.busy)
 	case "ssh":
 		native.Text(c, d.copy("SSH 私钥路径", "SSH private key path"))
@@ -141,7 +149,7 @@ func (d *Desktop) cloneCredentialEditor(c *native.Context, f *cloneCredentials) 
 		})
 	case "github":
 		native.Text(c, d.copy("GitHub 用户名", "GitHub username"))
-		native.TextInput(c, &f.draft.Username).Placeholder(d.copy("GitHub 用户名", "GitHub username")).FillWidth().Disabled(d.busy)
+		native.TextInput(c, &f.draft.Username).Label(d.copy("GitHub 用户名", "GitHub username")).FillWidth().Disabled(d.busy)
 		name := strings.TrimSpace(f.draft.Username)
 		label := d.copy("在浏览器授权", "Authorize in browser")
 		if f.authorizing {

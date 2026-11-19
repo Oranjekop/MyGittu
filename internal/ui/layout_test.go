@@ -470,7 +470,7 @@ func TestIntegrationSettingsAt150Percent(t *testing.T) {
 	d.integration = integrationState{Menu: true, Modern: true, Overlays: true}
 	tt := native.NewTester(d.view, 960, 680)
 	tt.SetScale(1.5)
-	for _, label := range []string{"系统集成", "登录时启动 MyGittu", "当前版本  " + buildinfo.Version} {
+	for _, label := range []string{"系统集成", "登录时启动 MyGittu"} {
 		if !tt.HasText(label) {
 			t.Fatalf("missing integration setting %q", label)
 		}
@@ -483,6 +483,19 @@ func TestIntegrationSettingsAt150Percent(t *testing.T) {
 		}
 	}
 	saveLayoutPreview(t, tt, "settings-integration-150.png")
+	if err := tt.Click("软件更新"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("当前版本  " + buildinfo.Version) {
+		t.Fatal("installed version missing from software update settings")
+	}
+	if err := tt.Click("克隆凭据"); err != nil {
+		t.Fatal(err)
+	}
+	if !tt.HasText("暂无凭据") || !tt.HasText("新建凭据") {
+		t.Fatal("empty credential list or editor missing")
+	}
+	saveLayoutPreview(t, tt, "clone-credentials-empty-150.png")
 }
 
 func TestExtendedGitDialogsAt150Percent(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	native "github.com/egoist/mygo/ui"
+	"mygittu/internal/buildinfo"
 	"mygittu/internal/commitai"
 	"mygittu/internal/settings"
 )
@@ -22,25 +23,33 @@ func (d *Desktop) openSettings() {
 }
 func (d *Desktop) settingsDialog(c *native.Context) {
 	width, height := c.Size()
-	dialogWidth := min(float32(820), max(420, width-80))
-	bodyHeight := min(float32(495), max(245, height-160))
+	dialogWidth := min(float32(780), max(420, width-64))
+	bodyHeight := min(float32(422), max(245, height-136))
+	t := c.Theme()
+	tabs := []struct{ label, icon string }{
+		{d.copy("外观", "Appearance"), "appearance"},
+		{d.text("identity.title"), "user"},
+		{d.copy("AI 供应商", "AI provider"), "sparkle"},
+		{d.copy("AI 提示词", "AI prompt"), "prompt"},
+		{d.text("update.title"), "download"},
+		{d.copy("系统集成", "Integration"), "settings"},
+		{d.copy("克隆凭据", "Clone credentials"), "user"},
+	}
 	native.Modal(c, &d.settingsOpen, func() {
-		native.Column(c).Width(dialogWidth).MaxWidth(dialogWidth).Gap(panelSpacing).Children(func() {
-			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-				native.Icon(c, icons["settings"]).Width(20).Height(20)
+		native.Column(c).Width(dialogWidth).MaxWidth(dialogWidth).Gap(14).Children(func() {
+			native.Row(c).FillWidth().AlignItems(native.Center).Children(func() {
 				native.Text(c, d.text("nav.settings")).FontSize(18).Bold().Grow(1)
-				if IconButton(c, d.text("close"), "close", false).Clicked() {
+				if IconButton(c, "", "close", false).Label(d.text("close")).Tooltip(d.text("close")).Border(0, t.Border).Clicked() {
 					d.settingsOpen = false
 				}
 			})
-			if d.err != "" {
-				native.Text(c, d.err).TextColor(native.Hex("#bf3030"))
-			}
+			native.Box(c).FillWidth().Height(1).Background(t.Border)
 			native.Row(c).Height(bodyHeight).FillWidth().Gap(18).Children(func() {
-				native.Column(c).Width(160).FillHeight().Gap(6).Children(func() {
-					tabIcons := [...]string{"appearance", "user", "sparkle", "prompt", "download", "settings", "user"}
-					for i, label := range []string{d.copy("外观", "Appearance"), d.text("identity.title"), d.copy("AI 供应商", "AI provider"), d.copy("AI 提示词", "AI prompt"), d.text("update.title"), d.copy("系统集成", "Integration"), d.copy("克隆凭据", "Clone credentials")} {
-						if IconButton(c, label, tabIcons[i], d.settingsTab == i).FillWidth().Justify(native.Start).Clicked() && d.settingsTab != i {
+				native.Column(c).Width(max(140, t.FontSize*10)).FillHeight().Padding(6).
+					Gap(3).Background(t.Surface).Radius(6).Children(func() {
+					for i, tab := range tabs {
+						if IconButton(c, tab.label, tab.icon, d.settingsTab == i).FillWidth().Justify(native.Start).
+							Border(0, t.Border).Clicked() && d.settingsTab != i {
 							d.settingsTab = i
 							if i == 5 && !d.busy {
 								d.queryIntegration()
@@ -54,24 +63,32 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 						}
 					}
 				})
-				native.Scroll(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
-					native.Column(c).FillWidth().Gap(12).PaddingEnd(controlSpacing).Children(func() {
-						switch d.settingsTab {
-						case 0:
-							d.appearanceSettings(c)
-						case 1:
-							d.identitySettings(c)
-						case 2:
-							d.aiSettings(c)
-						case 3:
-							d.promptSettings(c)
-						case 4:
-							d.updateSettings(c)
-						case 5:
-							d.integrationSettings(c)
-						case 6:
-							d.cloneSettings(c)
-						}
+				native.Column(c).Grow(1).MinWidth(0).FillHeight().Gap(12).Children(func() {
+					native.Text(c, tabs[d.settingsTab].label).FontSize(max(16, t.FontSize)).Bold()
+					if d.err != "" {
+						native.Text(c, d.err).FillWidth().TextColor(t.Danger)
+					}
+					if d.settingsTab == 6 {
+						d.cloneSettings(c)
+						return
+					}
+					native.Scroll(c.Key(d.settingsTab)).Grow(1).MinHeight(0).FillWidth().Children(func() {
+						native.Column(c).FillWidth().Gap(12).PaddingEnd(controlSpacing).Children(func() {
+							switch d.settingsTab {
+							case 0:
+								d.appearanceSettings(c)
+							case 1:
+								d.identitySettings(c)
+							case 2:
+								d.aiSettings(c)
+							case 3:
+								d.promptSettings(c)
+							case 4:
+								d.updateSettings(c)
+							case 5:
+								d.integrationSettings(c)
+							}
+						})
 					})
 				})
 			})
@@ -80,8 +97,8 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 }
 func (d *Desktop) updateSettings(c *native.Context) {
 	t := c.Theme()
-	native.Row(c).Gap(panelSpacing).Children(func() {
-		native.Text(c, d.text("update.title")).Bold()
+	native.Row(c).FillWidth().Gap(panelSpacing).AlignItems(native.Center).Wrap().Children(func() {
+		native.Text(c, d.copy("当前版本", "Current version")+"  "+buildinfo.Version).TextColor(t.TextMuted)
 		if IconButton(c, d.text("update.check"), "refresh", false).Disabled(d.updateChecking).Clicked() {
 			d.checkUpdate(true)
 		}
@@ -142,7 +159,6 @@ func (d *Desktop) identitySettings(c *native.Context) {
 	native.Text(c, d.text("identity.future")).TextColor(t.TextMuted)
 }
 func (d *Desktop) appearanceSettings(c *native.Context) {
-	t := c.Theme()
 	native.Text(c, d.text("settings.language"))
 	oldLanguage := d.languageIndex
 	native.Segmented(c, &d.languageIndex, "简体中文", "English").Disabled(d.busy)
@@ -176,7 +192,6 @@ func (d *Desktop) appearanceSettings(c *native.Context) {
 			d.changeFontSize(0)
 		}
 	})
-	native.Text(c, appFontName).TextColor(t.TextMuted)
 
 }
 
