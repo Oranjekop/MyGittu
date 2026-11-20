@@ -14,7 +14,10 @@ $overlayRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellIc
 $machineRun = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
 $userRun = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
 $menuClasses = @('*','Directory','Directory\Background')
-$overlayNames = @('MyGittu Clean','MyGittu Modified','MyGittu Conflict')
+$legacyOverlayNames = @('MyGittu Clean','MyGittu Modified','MyGittu Conflict')
+# Explorer allocates a limited number of overlay slots in key-name order.
+# A single leading space keeps these together ahead of unprefixed handlers.
+$overlayNames = @($legacyOverlayNames | ForEach-Object { ' ' + $_ })
 
 function ClassID([int]$Index) { '{29810E41-632A-4A9B-A190-4D659366810' + $Index + '}' }
 function MenuPath([string]$Kind) { Join-Path $classes "$Kind\shellex\ContextMenuHandlers\MyGittu" }
@@ -56,7 +59,24 @@ function Set-COM([int]$Index,[string]$Dll) {
     New-ItemProperty -LiteralPath $path -Name ThreadingModel -Value Apartment -PropertyType String -Force | Out-Null
 }
 function MenuEnabled { (Read-Default (MenuPath 'Directory')) -eq (ClassID 1) }
-function OverlaysEnabled { (Read-Default (Join-Path $overlayRoot $overlayNames[0])) -eq (ClassID 2) }
+function OverlaysEnabled {
+    (Read-Default (Join-Path $overlayRoot $overlayNames[0])) -eq (ClassID 2) -or
+    (Read-Default (Join-Path $overlayRoot $legacyOverlayNames[0])) -eq (ClassID 2)
+}
+function Set-OverlayRegistration([bool]$Enabled,[string]$Dll) {
+    for ($i=0; $i -lt $overlayNames.Count; $i++) {
+        $index = $i + 2
+        $path = Join-Path $overlayRoot $overlayNames[$i]
+        if ($Enabled) {
+            Set-COM $index $Dll
+            Write-Default $path (ClassID $index)
+        } else {
+            Remove-Key $path
+            Remove-Key (COMPath $index)
+        }
+        Remove-Key (Join-Path $overlayRoot $legacyOverlayNames[$i])
+    }
+}
 
 function Trust-Publisher {
     if ([Environment]::OSVersion.Version.Build -lt 22000) { return }
@@ -188,31 +208,21 @@ if ($Action -eq 'Menu') {
     }
 }
 if ($Action -eq 'Overlays') {
-    for ($i=0; $i -lt $overlayNames.Count; $i++) {
-        $index = $i + 2
-        $path = Join-Path $overlayRoot $overlayNames[$i]
-        if ($State -eq 'On') {
-            Set-COM $index $dll.FullName
-            Write-Default $path (ClassID $index)
-        } else {
-            Remove-Key $path
-            Remove-Key (COMPath $index)
-        }
-    }
+    Set-OverlayRegistration ($State -eq 'On') $dll.FullName
     Set-Run $machineRun MyGittuAgent agent.exe ($State -eq 'On')
 }
 if ($Action -eq 'Maintain') {
     $maintainMenu = MenuEnabled
     if ($maintainMenu) { Set-COM 1 $dll.FullName }
     if (OverlaysEnabled) {
-        for ($i=2; $i -le 4; $i++) { Set-COM $i $dll.FullName }
+        Set-OverlayRegistration $true $dll.FullName
         Set-Run $machineRun MyGittuAgent agent.exe $true
     } else { Set-Run $machineRun MyGittuAgent agent.exe $false }
     if ($maintainMenu) { Trust-Publisher }
 }
 if ($Action -eq 'Remove') {
     foreach ($kind in $menuClasses) { Remove-Key (MenuPath $kind) }
-    foreach ($name in $overlayNames) { Remove-Key (Join-Path $overlayRoot $name) }
-    for ($i=1; $i -le 4; $i++) { Remove-Key (COMPath $i) }
+    Set-OverlayRegistration $false ''
+    Remove-Key (COMPath 1)
     Set-Run $machineRun MyGittuAgent agent.exe $false
 }

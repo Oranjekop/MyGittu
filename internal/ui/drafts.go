@@ -18,6 +18,10 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.savedMessage = d.message
 		d.snapshot = status.Snapshot{}
 		d.remoteNotice = ""
+		d.remoteDiverged = false
+		d.fileSearch.cancelRequest()
+		d.fileSearch = projectContentSearch{}
+		d.stashPreview = stashPreview{}
 		d.row, d.changes, d.stagedCount = -1, nil, 0
 		d.changeTabs = nil
 		d.stagedCollapsed, d.changesCollapsed = true, true

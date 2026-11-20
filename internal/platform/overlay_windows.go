@@ -11,12 +11,18 @@ import (
 var shellChangeNotify = windows.NewLazySystemDLL("shell32.dll").NewProc("SHChangeNotify")
 
 func NotifyRepositoryOverlay(root string) {
-	const updateDir = 0x1000
+	const (
+		updateDir  = 0x1000
+		updateItem = 0x2000
+	)
 	const pathW = 0x0005
-	for _, dir := range []string{filepath.Dir(root), root} {
-		name, err := windows.UTF16PtrFromString(dir)
+	for _, change := range []struct {
+		event uintptr
+		path  string
+	}{{updateItem, root}, {updateDir, filepath.Dir(root)}, {updateDir, root}} {
+		name, err := windows.UTF16PtrFromString(change.path)
 		if err == nil {
-			shellChangeNotify.Call(updateDir, pathW, uintptr(unsafe.Pointer(name)), 0)
+			shellChangeNotify.Call(change.event, pathW, uintptr(unsafe.Pointer(name)), 0)
 			runtime.KeepAlive(name)
 		}
 	}

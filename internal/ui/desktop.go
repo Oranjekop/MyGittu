@@ -43,6 +43,7 @@ type Desktop struct {
 	files, history                     native.ListState
 	stagedCollapsed, changesCollapsed  bool
 	remoteRunning, remoteNotice        string
+	remoteDiverged                     bool
 	pushRetryRepo, pushFailure         string
 	filePane                           float32
 	filePaneChanged                    bool
@@ -132,6 +133,8 @@ type Desktop struct {
 	tools                              workbench
 	references                         app.References
 	stashRow, tagRow                   int
+	stashPreview                       stashPreview
+	fileSearch                         projectContentSearch
 	stashList, tagList                 native.ListState
 	tagSort, tagAppliedSort            native.SortOrder
 	tagOrder                           []string
@@ -227,6 +230,7 @@ func (d *Desktop) Run() error {
 			saveFilePane(layoutPath, d.filePane, d.filePaneChanged)
 			saveFilePane(projectLayoutPath, d.projectPane, d.projectPaneChanged)
 			d.cancelProjectPreview()
+			d.fileSearch.cancelRequest()
 			cancelUpdates()
 			if d.updateCancel != nil {
 				d.updateCancel()
@@ -737,6 +741,9 @@ func (d *Desktop) toolbarStatus(c *native.Context) {
 		if message != "" {
 			native.Text(c, message).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(message).TextColor(color)
 		}
+		if d.remoteDiverged && IconButton(c, d.copy("比较上游", "Compare upstream"), "diff", false).Disabled(d.busy).Clicked() {
+			d.compareUpstream()
+		}
 	})
 }
 
@@ -886,6 +893,8 @@ func (d *Desktop) windowContent(c *native.Context, t *native.Theme) {
 }
 
 func (d *Desktop) dialogs(c *native.Context) {
+	d.showProjectContentSearch(c)
+	d.showStashPreview(c)
 	d.cloneDialog(c)
 	d.settingsDialog(c)
 	d.showRepositoryTools(c)

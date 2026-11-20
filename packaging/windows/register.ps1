@@ -21,6 +21,12 @@ $overlay='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOver
 $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($admin) {
  $names=@('MyGittu Clean','MyGittu Modified','MyGittu Conflict')
- for ($i=0;$i -lt 3;$i++) { $key="$overlay\$($names[$i])"; if ($Uninstall) { Remove-Item -LiteralPath $key -Force -ErrorAction SilentlyContinue } else { New-Item $key -Force | Out-Null; Set-Item $key $ids[$i+1] } }
+ for ($i=0;$i -lt $names.Count;$i++) {
+  $legacyKey="$overlay\$($names[$i])"
+  $key="$overlay\ $($names[$i])"
+  if ($Uninstall) { Remove-Item -LiteralPath $key -Force -ErrorAction SilentlyContinue }
+  else { New-Item -Path $key -Force | Out-Null; Set-Item -LiteralPath $key -Value $ids[$i+1] }
+  Remove-Item -LiteralPath $legacyKey -Force -ErrorAction SilentlyContinue
+ }
 } else { Write-Host 'Menus updated. Run elevated to register/remove optional overlays.' }
 Write-Host 'Restart Explorer to reload shell extensions. Windows may limit available overlay slots.'

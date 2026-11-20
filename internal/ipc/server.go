@@ -176,6 +176,8 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		e = s.Service.StageSelectedHunk(ctx, p.RepoID, p.Path, p.Hash, p.Offset)
 	case "git.references":
 		result, e = s.Service.References(ctx, p.RepoID)
+	case "git.stash.patch":
+		result, e = s.Service.StashPatch(ctx, p.RepoID, p.Hash)
 	case "git.conflict":
 		result, e = s.Service.Conflict(ctx, p.RepoID, p.Path)
 	case "git.resolve":
@@ -212,12 +214,22 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result, e = s.Service.CompareBranches(ctx, p.RepoID, p.Name, p.Query)
 	case "git.compare.targets":
 		result, e = s.Service.CompareTargets(ctx, p.RepoID)
+	case "git.compare.upstream":
+		result, e = s.Service.UpstreamBranches(ctx, p.RepoID)
+	case "git.compare.summary":
+		result, e = s.Service.CompareBranchesSummary(ctx, p.RepoID, p.Name, p.Query)
+	case "git.compare.page":
+		result, e = s.Service.CompareBranchesPage(ctx, p.RepoID, p.Name, p.Query, p.Offset)
+	case "git.compare.file":
+		result, e = s.Service.CompareBranchesFile(ctx, p.RepoID, p.Name, p.Query, p.Path)
 	case "git.branch.entries":
 		result, e = s.Service.BranchEntries(ctx, p.RepoID)
 	case "git.reference":
 		e = s.Service.EditReference(ctx, p.RepoID, p.Action, p.Name)
 	case "git.files":
 		result, e = s.Service.Files(ctx, p.RepoID)
+	case "git.files.search":
+		result, e = s.Service.SearchFiles(ctx, p.RepoID, p.Query)
 	case "git.file.preview":
 		result, e = s.Service.PreviewFile(ctx, p.RepoID, p.Path, p.PreviewOffset, p.PreviewVersion)
 	case "git.file.save":
@@ -296,9 +308,18 @@ func (s *Server) Serve(ctx context.Context, l net.Listener) error {
 				timeout := 2 * time.Minute
 				if req.Method == "overlay.lookup" {
 					timeout = 40 * time.Millisecond
+				} else if req.Method == "git.files.search" {
+					timeout = 15 * time.Second
 				}
 				task, cancel := context.WithTimeout(ctx, timeout)
 				defer cancel()
+				if req.Method == "git.files.search" {
+					go func() {
+						var end [1]byte
+						_, _ = c.Read(end[:])
+						cancel()
+					}()
+				}
 				_ = WriteFrame(c, s.Handle(task, req))
 			}()
 		default:

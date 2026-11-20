@@ -97,7 +97,13 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 	files := func() {
 		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
 			before := d.projectSearch
-			native.TextInput(c, &d.projectSearch).Placeholder(d.text("files.search")).FillWidth().Disabled(d.busy)
+			native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+				native.TextInput(c, &d.projectSearch).Placeholder(d.text("files.search")).Grow(1).MinWidth(0).Disabled(d.busy)
+				label := d.copy("搜索文件内容", "Search file contents")
+				if IconButton(c, "", "search", false).Label(label).Tooltip(label).Disabled(d.busy).Clicked() {
+					d.fileSearch.open = true
+				}
+			})
 			if before != d.projectSearch {
 				d.rebuildProjectTree()
 			}
@@ -309,6 +315,11 @@ func (d *Desktop) loadProjectPreview(path string) {
 					d.projectTabs[d.selected] = append(d.projectTabs[d.selected], &projectTab{path: path})
 				}
 				d.rememberProjectTab()
+			}
+			if err == nil {
+				d.jumpToProjectMatch()
+			} else if d.fileSearch.jump.Path == path {
+				d.fileSearch.jump = app.FileMatch{}
 			}
 			if d.win != nil {
 				d.win.Invalidate()

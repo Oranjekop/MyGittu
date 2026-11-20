@@ -2,11 +2,13 @@ package ui
 
 import (
 	"cmp"
+	"context"
 	"slices"
 	"strings"
 	"time"
 
 	native "github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"mygittu/internal/ipc"
 )
 
@@ -28,6 +30,10 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 					edit("stash.save", d.stashMessage)
 				}
 				valid := d.stashRow >= 0 && d.stashRow < len(d.references.Stashes)
+				if IconButton(c, d.copy("预览储藏", "Preview stash"), "diff", false).Disabled(d.busy || !valid).Clicked() && valid {
+					hash, label, _ := strings.Cut(d.references.Stashes[d.stashRow], "\t")
+					d.openStashPreview(hash, label)
+				}
 				if IconButton(c, d.text("stash.apply"), "restore", false).Disabled(d.busy || !valid).Clicked() && valid {
 					name, _, _ := strings.Cut(d.references.Stashes[d.stashRow], "\t")
 					edit("stash.apply", name)
@@ -70,6 +76,61 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 			})
 		})
 	})
+}
+
+type stashPreview struct {
+	open  bool
+	label string
+	row   int
+	list  native.ListState
+	files []editor.FilePatch
+	patch patchView
+}
+
+func (d *Desktop) openStashPreview(hash, label string) {
+	id := d.selected
+	d.task(func(ctx context.Context) (func(), error) {
+		var patch string
+		if err := d.Client.Call(ctx, "git.stash.patch", ipc.Params{RepoID: id, Hash: hash}, &patch); err != nil {
+			return nil, err
+		}
+		files, err := editor.ParsePatch(patch)
+		return func() {
+			d.stashPreview = stashPreview{open: true, label: label, files: files, row: -1}
+		}, err
+	})
+}
+
+func (d *Desktop) showStashPreview(c *native.Context) {
+	v := &d.stashPreview
+	width, height := c.Size()
+	native.Modal(c, &v.open, func() {
+		native.Column(c).Width(min(880, width-72)).Gap(controlSpacing).Children(func() {
+			native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+				native.Text(c, v.label).Grow(1).MinWidth(0).Bold().SingleLine().Ellipsis("…").Tooltip(v.label)
+				if IconButton(c, d.text("close"), "close", false).Clicked() {
+					v.open = false
+				}
+			})
+			native.Row(c).Height(min(440, height-130)).FillWidth().Gap(panelSpacing).Children(func() {
+				previous := v.row
+				v.list.Selected = &v.row
+				roundedTable(c, &v.list, []native.TableColumn{{Title: d.copy("变更文件", "Changed files")}}, len(v.files), func(row, _ int) {
+					name := patchFileName(v.files[row])
+					native.Text(c, name).SingleLine().Ellipsis("…").Tooltip(name)
+				}).Width(230 + panelSpacing).FillHeight()
+				if v.row != previous && v.row >= 0 && v.row < len(v.files) {
+					v.patch = patchView{lines: d.patchRows(v.files[v.row:v.row+1], false)}
+				}
+				if v.row >= 0 && v.row < len(v.files) {
+					d.showPatch(c, &v.patch).Grow(1).FillHeight()
+				}
+			})
+		})
+	})
+	if !v.open && v.files != nil {
+		*v = stashPreview{}
+	}
 }
 
 func (d *Desktop) sortedTagNames() []string {

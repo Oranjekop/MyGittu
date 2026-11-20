@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Installer,[string]$Version=(Get-Content "$PSScriptRoot/../../VERSION" -Raw).Trim())
+param([Parameter(Mandatory=$true)][string]$Installer,[string]$Version=(Get-Content "$PSScriptRoot/../../VERSION" -Raw).Trim(),[string]$ShellSmoke)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../.work/install-smoke'))
 $installerPath=(Resolve-Path $Installer).Path
@@ -22,6 +22,11 @@ try{
  $health=(& (Join-Path $root 'mygittu.exe') -method health.ping)|ConvertFrom-Json
  if($LASTEXITCODE -or $health.app_version -ne $Version){throw 'Installed Agent health/version check failed'}
  if(!(Test-Path -LiteralPath (Join-Path $root 'MyGittuShell.dll'))){throw 'Shell DLL is missing'}
+ if($ShellSmoke){
+  . "$PSScriptRoot/smoke-overlays.ps1"
+  Initialize-OverlaySmoke $root
+  Test-InstalledOverlays $root $ShellSmoke
+ }
  if(Test-Path -LiteralPath (Join-Path $root 'launch-installed.ps1')){throw 'Installer-only script was left in the install directory'}
  $desktop=Start-Process -FilePath $file -PassThru
  Start-Sleep -Seconds 2
@@ -35,8 +40,14 @@ try{
  $checkUserFile=$true
  Set-ItemProperty -LiteralPath $uninstallKey -Name UninstallString -Value ('"'+$legacyUninstaller+'"')
  Set-ItemProperty -LiteralPath $uninstallKey -Name InstallLocation -Value ($root+'\')
+ if($ShellSmoke){ Set-LegacyOverlaySmokeRegistration }
  $upgrade=Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
  if($upgrade.ExitCode -ne 0 -or !$agent.HasExited -or !$desktop.HasExited){throw 'Installation over a running desktop and Agent failed'}
+ if($ShellSmoke){
+  Test-OverlayMigration
+  $agent=Start-Process -FilePath (Join-Path $root 'agent.exe') -WindowStyle Hidden -PassThru
+  Test-InstalledOverlays $root $ShellSmoke
+ }
  if(Test-Path -LiteralPath $legacyShell){throw 'Unused versioned shell DLL was not cleaned up'}
  $entry=Get-ItemProperty -LiteralPath $uninstallKey
  if($entry.InstallLocation -ne $root -or $entry.UninstallString -ne ('"'+(Join-Path $root 'Uninstall.exe')+'"') -or (Test-Path -LiteralPath $legacyUninstaller)){

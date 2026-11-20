@@ -22,6 +22,19 @@ int wmain(int argc, wchar_t **argv) {
       GetProcAddress(dll, "DllCanUnloadNow"));
   if (!get || !unload)
     return 4;
+  const bool verifyShell = argc > 4 && std::wstring(argv[4]) == L"--explorer";
+  if (verifyShell) {
+    SHFILEINFOW info{};
+    if (!SHGetFileInfoW(argv[2], 0, &info, sizeof(info),
+                        SHGFI_ICON | SHGFI_SYSICONINDEX | SHGFI_OVERLAYINDEX))
+      return 35;
+    if (info.hIcon)
+      DestroyIcon(info.hIcon);
+    const int overlay = static_cast<unsigned>(info.iIcon) >> 24;
+    std::cout << "shell overlay=" << overlay << "\n";
+    if (!overlay)
+      return 36;
+  }
   CLSID id = {0x29810e41,
               0x632a,
               0x4a9b,
@@ -52,6 +65,12 @@ int wmain(int argc, wchar_t **argv) {
       return 10;
     overlay->Release();
     factory->Release();
+  }
+  if (verifyShell) {
+    // The Shell may retain its own handler instances until process exit.
+    FreeLibrary(dll);
+    CoUninitialize();
+    return 0;
   }
   id.Data4[7] = 1;
   IClassFactory *factory = nullptr;

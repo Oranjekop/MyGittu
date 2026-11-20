@@ -264,6 +264,17 @@ type BranchComparison struct {
 	Commits      []BranchComparisonCommit
 }
 
+type BranchComparisonSummary struct {
+	Left, Right string
+	Paths       []string
+	BranchComparisonPage
+}
+
+type BranchComparisonPage struct {
+	Commits []BranchComparisonCommit
+	More    bool
+}
+
 type BranchComparisonCommit struct {
 	Commit
 	Side string
@@ -308,8 +319,23 @@ func (s *Service) CompareTargets(ctx context.Context, id string) ([]string, erro
 	return names, nil
 }
 
-func (s *Service) CompareBranches(ctx context.Context, id, left, right string) (BranchComparison, error) {
-	var comparison BranchComparison
+func (s *Service) UpstreamBranches(ctx context.Context, id string) ([2]string, error) {
+	var pair [2]string
+	for i, revision := range []string{"HEAD", "@{upstream}"} {
+		result, err := s.Read(ctx, id, "rev-parse", "--symbolic-full-name", "--verify", revision)
+		if err != nil {
+			return pair, err
+		}
+		ref := strings.TrimSpace(string(result.Stdout))
+		if !strings.HasPrefix(ref, "refs/heads/") && !strings.HasPrefix(ref, "refs/remotes/") {
+			return pair, fmt.Errorf("no branch upstream available")
+		}
+		pair[i] = strings.TrimPrefix(ref, "refs/heads/")
+	}
+	return pair, nil
+}
+
+func (s *Service) comparisonHashes(ctx context.Context, id, left, right string) (string, string, error) {
 	resolve := func(name string) (string, error) {
 		if name == "" || strings.HasPrefix(name, "-") {
 			return "", fmt.Errorf("branch name required")
@@ -326,9 +352,15 @@ func (s *Service) CompareBranches(ctx context.Context, id, left, right string) (
 	}
 	a, err := resolve(left)
 	if err != nil {
-		return comparison, err
+		return "", "", err
 	}
 	b, err := resolve(right)
+	return a, b, err
+}
+
+func (s *Service) CompareBranches(ctx context.Context, id, left, right string) (BranchComparison, error) {
+	var comparison BranchComparison
+	a, b, err := s.comparisonHashes(ctx, id, left, right)
 	if err != nil {
 		return comparison, err
 	}
@@ -337,18 +369,66 @@ func (s *Service) CompareBranches(ctx context.Context, id, left, right string) (
 		return comparison, err
 	}
 	comparison.Graph = string(result.Stdout)
-	result, err = s.Read(ctx, id, "log", "-z", "--left-right", "--format=%m%x00%H%x00%an%x00%aI%x00%s", "--max-count=200", a+"..."+b, "--")
+	page, err := s.CompareBranchesPage(ctx, id, a, b, 0)
 	if err != nil {
 		return comparison, err
 	}
+	comparison.Commits = page.Commits
+	result, err = s.Read(ctx, id, "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", a, b, "--")
+	comparison.Files = string(result.Stdout)
+	return comparison, err
+}
+
+func (s *Service) CompareBranchesSummary(ctx context.Context, id, left, right string) (BranchComparisonSummary, error) {
+	a, b, err := s.comparisonHashes(ctx, id, left, right)
+	summary := BranchComparisonSummary{Left: a, Right: b}
+	if err != nil {
+		return summary, err
+	}
+	summary.BranchComparisonPage, err = s.CompareBranchesPage(ctx, id, a, b, 0)
+	if err != nil {
+		return summary, err
+	}
+	result, err := s.Read(ctx, id, "diff", "--name-only", "-z", "--no-renames", a, b, "--")
+	if err == nil {
+		for path := range strings.SplitSeq(string(result.Stdout), "\x00") {
+			if path != "" {
+				summary.Paths = append(summary.Paths, path)
+			}
+		}
+	}
+	return summary, err
+}
+
+func (s *Service) CompareBranchesPage(ctx context.Context, id, a, b string, offset int) (BranchComparisonPage, error) {
+	const size = 200
+	var page BranchComparisonPage
+	if !commitHash.MatchString(a) || !commitHash.MatchString(b) || offset < 0 {
+		return page, fmt.Errorf("invalid comparison page")
+	}
+	result, err := s.Read(ctx, id, "log", "-z", "--left-right", "--format=%m%x00%H%x00%an%x00%aI%x00%s",
+		"--max-count="+strconv.Itoa(size+1), "--skip="+strconv.Itoa(offset), a+"..."+b, "--")
+	if err != nil {
+		return page, err
+	}
 	fields := bytes.Split(bytes.TrimSuffix(result.Stdout, []byte{0}), []byte{0})
 	for i := 0; i+4 < len(fields); i += 5 {
-		comparison.Commits = append(comparison.Commits, BranchComparisonCommit{
+		if len(page.Commits) == size {
+			page.More = true
+			break
+		}
+		page.Commits = append(page.Commits, BranchComparisonCommit{
 			Side:   string(fields[i]),
 			Commit: Commit{Hash: string(fields[i+1]), Author: string(fields[i+2]), Date: string(fields[i+3]), Subject: string(fields[i+4])},
 		})
 	}
-	result, err = s.Read(ctx, id, "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", a, b, "--")
-	comparison.Files = string(result.Stdout)
-	return comparison, err
+	return page, nil
+}
+
+func (s *Service) CompareBranchesFile(ctx context.Context, id, a, b, path string) (string, error) {
+	if !commitHash.MatchString(a) || !commitHash.MatchString(b) || path == "" {
+		return "", fmt.Errorf("invalid file comparison")
+	}
+	result, err := s.Read(ctx, id, "diff", "--no-renames", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", a, b, "--", path)
+	return string(result.Stdout), err
 }

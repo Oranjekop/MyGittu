@@ -208,6 +208,41 @@ func TestWorkspaceCloneDialogAt150Percent(t *testing.T) {
 	}
 }
 
+func TestTableSeparatorKeepsHighlightedRowSpaced(t *testing.T) {
+	selected := 0
+	list := native.ListState{Selected: &selected}
+	var border, accent color.RGBA
+	tt := native.NewTester(func(c *native.Context) {
+		theme := ApplyTheme(c, 12.5)
+		border = color.RGBA{R: theme.Border.R, G: theme.Border.G, B: theme.Border.B, A: theme.Border.A}
+		accent = color.RGBA{R: theme.Accent.R, G: theme.Accent.G, B: theme.Accent.B, A: theme.Accent.A}
+		native.Column(c).Fill().Padding(panelSpacing).Background(theme.Background).Children(func() {
+			roundedTable(c, &list, []native.TableColumn{{Title: "Name"}}, 1, func(_, _ int) {
+				native.Text(c, "Selected")
+			}).Grow(1)
+		})
+	}, 400, 240)
+	for _, scale := range []float32{1, 1.5, 2} {
+		tt.SetScale(scale)
+		img := tt.Image()
+		x := int(200 * scale)
+		borderEnd, rowStart := -1, -1
+		for y := range img.Bounds().Dy() {
+			pixel := img.RGBAAt(x, y)
+			if pixel == border {
+				borderEnd = y
+			}
+			if pixel == accent {
+				rowStart = y
+				break
+			}
+		}
+		if borderEnd < 0 || rowStart-borderEnd-1 != int(controlSpacing*scale) {
+			t.Fatalf("scale %.1f: divider ends at %d, selected row starts at %d", scale, borderEnd, rowStart)
+		}
+	}
+}
+
 func TestTagSortingKeepsTheSelectedTag(t *testing.T) {
 	d := New(nil, "", "")
 	d.selected, d.page = "demo", referencesPage
@@ -226,6 +261,7 @@ func TestTagSortingKeepsTheSelectedTag(t *testing.T) {
 	if err := tt.Click("v0.0.19"); err != nil {
 		t.Fatal(err)
 	}
+	saveLayoutPreview(t, tt, "tags-first-selected.png")
 	if err := tt.Click(d.text("tag.time")); err != nil {
 		t.Fatal(err)
 	}
@@ -279,6 +315,43 @@ func TestProjectFileDividerRemembersWidth(t *testing.T) {
 		t.Fatalf("restored width = %v, want %v", reopened.projectPane, d.projectPane)
 	}
 	saveLayoutPreview(t, tt, "project-file-divider.png")
+}
+
+func TestProjectContentResultOpensFileAtLine(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.page = "demo", projectFilesPage
+	tab := &projectTab{path: "test.txt", code: codePreview("test.txt", "zero\none\nmatch\n"), loaded: true}
+	d.projectTabs = map[string][]*projectTab{d.selected: {tab}}
+	d.fileSearch = projectContentSearch{open: true, found: true, row: -1, result: app.FileSearch{
+		Matches: []app.FileMatch{{Path: tab.path, Line: 3, Text: "match"}},
+	}}
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	saveLayoutPreview(t, tt, "file-content-search.png")
+	if err := tt.Click("test.txt:3"); err != nil {
+		t.Fatal(err)
+	}
+	if d.fileSearch.open || d.projectShownPath != tab.path || d.projectCode.CursorPos().Line != 2 {
+		t.Fatalf("search result did not reveal line 3: %q, %+v", d.projectShownPath, d.projectCode.CursorPos())
+	}
+}
+
+func TestStashPreviewSelectsIndividualPatch(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.page = "demo", referencesPage
+	d.stashPreview = stashPreview{open: true, label: "stash@{0} preview", row: -1, files: []editor.FilePatch{
+		{OldName: "one.txt", NewName: "one.txt", Binary: true},
+		{OldName: "two.txt", NewName: "two.txt"},
+	}}
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	if err := tt.Click("two.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if d.stashPreview.row != 1 || len(d.stashPreview.patch.lines) != 1 || !tt.HasText("文件属性或路径变更") {
+		t.Fatal("stash did not show the selected file's patch")
+	}
+	saveLayoutPreview(t, tt, "stash-file-preview.png")
 }
 
 func TestWorkspaceAtNarrow150Percent(t *testing.T) {
@@ -385,10 +458,10 @@ func TestBranchListAtNarrow150Percent(t *testing.T) {
 		t.Fatalf("branch buttons do not form an aligned grid: %v %v %v %v", compare, switchButton, merge, remove)
 	}
 	d.tools.compared = true
-	d.tools.comparison = app.BranchComparison{Commits: []app.BranchComparisonCommit{
+	d.tools.comparison = app.BranchComparisonSummary{BranchComparisonPage: app.BranchComparisonPage{Commits: []app.BranchComparisonCommit{
 		{Side: "<", Commit: app.Commit{Subject: "修订主分支说明"}},
 		{Side: ">", Commit: app.Commit{Subject: "支持工作区调整"}},
-	}}
+	}}}
 	tt.Frame()
 	for _, label := range []string{"当前分支", "↗ origin/main", "独有提交", "支持工作区调整", "文件差异"} {
 		if !tt.HasText(label) {
@@ -794,6 +867,10 @@ func TestHistoryGraphShowsMergeAndBranchLanes(t *testing.T) {
 	tt.SetScale(1.5)
 	if !tt.HasText("分支图") || !tt.HasText("HEAD -> main") {
 		t.Fatal("missing graph column or branch label")
+	}
+	if first, ok := tt.Find("merge"); ok {
+		tt.Move(first.X+first.W/2, first.Y+first.H/2)
+		tt.Frame()
 	}
 	saveLayoutPreview(t, tt, "history-graph.png")
 }

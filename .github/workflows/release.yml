@@ -84,7 +84,7 @@ jobs:
           & ./.work/release-amd64/Release/MyGittuShellSmoke.exe "$pwd/dist/windows/x64/MyGittuShell.dll" "$pwd" 0
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Install and launch on Windows x64
-        run: ./packaging/windows/smoke-install.ps1 -Installer 'dist/release/MyGittu-${{ needs.version.outputs.value }}-Windows-Setup.exe'
+        run: ./packaging/windows/smoke-install.ps1 -Installer 'dist/release/MyGittu-${{ needs.version.outputs.value }}-Windows-Setup.exe' -ShellSmoke './.work/release-amd64/Release/MyGittuShellSmoke.exe'
       - name: Upload Windows release files
         env:
           GH_TOKEN: ${{ github.token }}

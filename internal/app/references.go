@@ -21,6 +21,14 @@ type TagTime struct {
 
 var stashObject = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
+func (s *Service) StashPatch(ctx context.Context, id, hash string) (string, error) {
+	if !stashObject.MatchString(hash) {
+		return "", fmt.Errorf("invalid stash selection")
+	}
+	result, err := s.Read(ctx, id, "stash", "show", "--include-untracked", "--patch", "--no-ext-diff", "--no-textconv", "--no-color", hash, "--")
+	return string(result.Stdout), err
+}
+
 func (s *Service) References(ctx context.Context, id string) (References, error) {
 	var refs References
 	stashes, err := s.Read(ctx, id, "stash", "list", "--format=%H%x09%gd %gs")

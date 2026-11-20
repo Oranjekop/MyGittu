@@ -99,6 +99,9 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 		// Let Explorer's 500 ms native lookup cache expire before repainting.
 		time.AfterFunc(550*time.Millisecond, func() {
 			platform.NotifyRepositoryOverlay(repo.Root)
+			for _, alias := range repo.Aliases {
+				platform.NotifyRepositoryOverlay(alias)
+			}
 		})
 	}
 	return nil

@@ -68,7 +68,7 @@ var Catalog = map[string]Message{
 	"remote.fetch.unchanged":      {"没有远程更新", "No remote updates"},
 	"remote.pull.unchanged":       {"当前分支已是最新", "Current branch is up to date"},
 	"remote.push.unchanged":       {"没有待推送的提交", "Nothing to push"},
-	"remote.pull.diverged":        {"本地和远程分支已分叉，当前分支未更新。请在分支页比较提交，再选择合并或变基。", "The local and remote branches have diverged. Your branch was not updated. Compare commits in Branches, then merge or rebase."},
+	"remote.pull.diverged":        {"当前分支与上游已分叉，无法快进。", "The current branch and its upstream have diverged and cannot fast-forward."},
 	"remote.push.retry":           {"重试推送", "Retry push"},
 	"commit.actions":              {"提交选项", "Commit options"},
 	"commit.push":                 {"提交并推送", "Commit & Push"},

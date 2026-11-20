@@ -42,7 +42,9 @@ func ApplyTheme(c *native.Context, fontSize float32) *native.Theme {
 
 func roundedTable(c *native.Context, state *native.ListState, columns []native.TableColumn, rows int, cell func(row, column int)) native.Element {
 	state.RoundRows = true
-	return scrollAtPanelEdge(native.Table(c, state, columns, rows, cell))
+	// MyGo lays out the header, divider, and scrollable body as siblings.
+	// Keep the separator clear even when a highlighted row scrolls to the top.
+	return scrollAtPanelEdge(native.Table(c, state, columns, rows, cell).Gap(controlSpacing))
 }
 
 // Put the track in the surrounding panel padding, keeping the content aligned

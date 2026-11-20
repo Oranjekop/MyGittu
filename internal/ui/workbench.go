@@ -32,9 +32,12 @@ type workbench struct {
 	branchList                          native.ListState
 	compareTab                          int
 	compared                            bool
-	comparison                          app.BranchComparison
+	comparison                          app.BranchComparisonSummary
 	comparisonPatch                     patchView
 	comparisonCommits                   native.ListState
+	comparisonFiles                     native.ListState
+	comparisonFileRow                   int
+	comparisonFile                      string
 	batch                               map[string]bool
 }
 
@@ -266,27 +269,20 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 		if IconButton(c, d.text("compare.run"), "diff", false).Disabled(d.busy || w.left == "" || w.right == "").Clicked() {
 			id, left, right := d.selected, w.left, w.right
 			d.task(func(ctx context.Context) (func(), error) {
-				var result app.BranchComparison
-				err := d.Client.Call(ctx, "git.compare", ipc.Params{RepoID: id, Name: left, Query: right}, &result)
+				var result app.BranchComparisonSummary
+				err := d.Client.Call(ctx, "git.compare.summary", ipc.Params{RepoID: id, Name: left, Query: right}, &result)
 				return func() {
-					w.comparison, w.compared = result, true
-					files, _ := editor.ParsePatch(result.Files)
-					w.comparisonPatch = patchView{lines: d.patchRows(files, true)}
-					w.comparisonCommits = native.ListState{}
+					w.setComparison(result)
 				}, err
 			})
 		}
 	})
-	if w.compared && len(w.comparison.Commits) == 0 && w.comparison.Files == "" {
+	if w.compared && len(w.comparison.Commits) == 0 && len(w.comparison.Paths) == 0 {
 		emptyState(c, emptyDiffArt, 128, d.text("compare.same")).Grow(1)
 	} else if w.compared {
 		native.Segmented(c, &w.compareTab, d.copy("独有提交", "Unique commits"), d.text("compare.files"))
 		if w.compareTab == 1 {
-			if len(w.comparisonPatch.lines) == 0 {
-				emptyState(c, emptyDiffArt, 128, d.copy("没有文件差异", "No file differences")).Grow(1)
-			} else {
-				d.showPatch(c, &w.comparisonPatch).Grow(1)
-			}
+			d.showComparisonFiles(c)
 		} else if len(w.comparison.Commits) == 0 {
 			emptyState(c, emptyDiffArt, 128, d.copy("两个分支没有独有提交。", "Neither branch has unique commits.")).Grow(1)
 		} else {
@@ -306,10 +302,76 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 				}
 				native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(tooltip)
 			}).Grow(1)
+			if w.comparison.More && IconButton(c, d.copy("加载更多提交", "Load more commits"), "down", false).Disabled(d.busy).Clicked() {
+				d.loadMoreComparisonCommits()
+			}
 		}
 	} else if !d.busy && d.err == "" {
 		emptyState(c, emptyDiffArt, 128, d.copy("选择分支进行对比", "Select branches to compare")).Grow(1)
 	}
+}
+
+func (w *workbench) setComparison(result app.BranchComparisonSummary) {
+	w.comparison, w.compared = result, true
+	w.comparisonCommits, w.comparisonFiles = native.ListState{}, native.ListState{}
+	w.comparisonFileRow, w.comparisonFile, w.comparisonPatch = -1, "", patchView{}
+}
+
+func (d *Desktop) loadMoreComparisonCommits() {
+	w := &d.tools
+	params := ipc.Params{RepoID: d.selected, Name: w.comparison.Left, Query: w.comparison.Right, Offset: len(w.comparison.Commits)}
+	d.task(func(ctx context.Context) (func(), error) {
+		var page app.BranchComparisonPage
+		err := d.Client.Call(ctx, "git.compare.page", params, &page)
+		return func() {
+			w.comparison.Commits = append(w.comparison.Commits, page.Commits...)
+			w.comparison.More = page.More
+		}, err
+	})
+}
+
+func (d *Desktop) showComparisonFiles(c *native.Context) {
+	w := &d.tools
+	if len(w.comparison.Paths) == 0 {
+		emptyState(c, emptyDiffArt, 128, d.copy("没有文件差异", "No file differences")).Grow(1)
+		return
+	}
+	native.Row(c).Grow(1).FillWidth().Gap(panelSpacing).Children(func() {
+		w.comparisonFiles.Selected = &w.comparisonFileRow
+		roundedTable(c, &w.comparisonFiles, []native.TableColumn{{Title: d.copy("变更文件", "Changed files")}}, len(w.comparison.Paths), func(row, _ int) {
+			name := w.comparison.Paths[row]
+			native.Text(c, name).SingleLine().Ellipsis("…").Tooltip(name)
+		}).Width(220 + panelSpacing).FillHeight().Disabled(d.busy)
+		if w.comparisonFileRow >= 0 && w.comparisonFileRow < len(w.comparison.Paths) {
+			name := w.comparison.Paths[w.comparisonFileRow]
+			if name != w.comparisonFile && !d.busy {
+				params := ipc.Params{RepoID: d.selected, Name: w.comparison.Left, Query: w.comparison.Right, Path: name}
+				w.comparisonFile, w.comparisonPatch = name, patchView{}
+				d.task(func(ctx context.Context) (func(), error) {
+					var patch string
+					err := d.Client.Call(ctx, "git.compare.file", params, &patch)
+					if err != nil {
+						return func() {
+							w.comparisonFileRow, w.comparisonFile = -1, ""
+							d.err = err.Error()
+						}, nil
+					}
+					files, err := editor.ParsePatch(patch)
+					return func() {
+						if err != nil {
+							w.comparisonFileRow, w.comparisonFile = -1, ""
+							d.err = err.Error()
+							return
+						}
+						w.comparisonPatch = patchView{lines: d.patchRows(files, false)}
+					}, nil
+				})
+			}
+		}
+		if len(w.comparisonPatch.lines) > 0 {
+			d.showPatch(c, &w.comparisonPatch).Grow(1).FillHeight()
+		}
+	})
 }
 
 func recoveryIcon(action string) string {

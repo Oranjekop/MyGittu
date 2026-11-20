@@ -41,17 +41,25 @@ func runRemote(client *ipc.Client, path, action string) error {
 	defer cancel()
 	mygo.App.WhenReady(func() {
 		d.win = ui.NewRememberedWindow(d.windowOptions())
-		if runtime.GOOS != "darwin" {
+		handle := d.win.NativeHandle()
+		if d.hidesTaskbar() {
+			if err := excludeRemoteFromTaskbar(handle); err != nil {
+				fmt.Printf("exclude MyGittu pull window from taskbar: %v\n", err)
+			}
+		} else if runtime.GOOS != "darwin" {
 			if err := d.win.SetIcon(brand.PNG); err != nil {
 				fmt.Printf("set MyGittu window icon: %v\n", err)
 			}
 			_ = mygo.App.Dock.SetIcon(brand.PNG)
+			if err := setRemoteTaskbarIdentity(handle); err != nil {
+				fmt.Printf("set MyGittu taskbar identity: %v\n", err)
+			}
 		}
-		configureRemoteCaption(d.win.NativeHandle())
-		if err := setRemoteTaskbarIdentity(d.win.NativeHandle()); err != nil {
-			fmt.Printf("set MyGittu taskbar identity: %v\n", err)
-		}
+		configureRemoteCaption(handle)
 		d.win.OnClosed(cancel)
+		if d.hidesTaskbar() {
+			d.win.Show()
+		}
 		animationCtx, stopAnimation := context.WithCancel(ctx)
 		go d.animate(animationCtx)
 		go func() {
@@ -62,10 +70,16 @@ func runRemote(client *ipc.Client, path, action string) error {
 	return mygo.App.Run()
 }
 
+func (d *remoteWindow) hidesTaskbar() bool {
+	return runtime.GOOS == "windows" && d.action == "pull"
+}
+
 func (d *remoteWindow) windowOptions() mygo.WindowOptions {
 	return mygo.WindowOptions{
 		Title:             "MyGittu",
 		TitleBarStyle:     mygo.TitleBarHidden,
+		Hidden:            d.hidesTaskbar(),
+		SkipTaskbar:       d.hidesTaskbar(),
 		DisableMinimize:   true,
 		DisableMaximize:   true,
 		DisableFullScreen: true,

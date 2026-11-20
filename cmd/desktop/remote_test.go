@@ -39,6 +39,16 @@ func TestRemoteWindowRemembersPlacementWithOnlyCloseControl(t *testing.T) {
 	}
 }
 
+func TestPullWindowStartsOutsideWindowsTaskbar(t *testing.T) {
+	for _, action := range []string{"pull", "fetch", "push"} {
+		options := (&remoteWindow{action: action}).windowOptions()
+		want := runtime.GOOS == "windows" && action == "pull"
+		if options.Hidden != want || options.SkipTaskbar != want {
+			t.Fatalf("%s: hidden=%v, skip taskbar=%v, want both %v", action, options.Hidden, options.SkipTaskbar, want)
+		}
+	}
+}
+
 func TestRemoteRabbitFramesAreSquare(t *testing.T) {
 	atlas, err := png.DecodeConfig(bytes.NewReader(brand.RemoteRabbitPNG))
 	if err != nil {
