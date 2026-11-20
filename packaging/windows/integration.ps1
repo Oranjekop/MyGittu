@@ -104,7 +104,8 @@ function Trust-Publisher {
 if ($Action -eq 'Status') {
     @{
         startup = [bool](Read-Run $userRun MyGittu)
-        modern = [bool]([Environment]::OSVersion.Version.Build -ge 22000 -and (Get-AppxPackage -Name Oranjekop.MyGittu.Shell))
+        modern = [bool]([Environment]::OSVersion.Version.Build -ge 22000 -and
+            (Get-AppxPackage -Name Oranjekop.MyGittu.Shell | Where-Object { $_.Status -eq 'Ok' }))
         modernAvailable = [bool](Test-Path -LiteralPath (Join-Path $root 'MyGittuShell.msix'))
         menu = [bool](MenuEnabled)
         overlays = [bool](OverlaysEnabled)
