@@ -32,6 +32,7 @@ func (d *Desktop) rebuildProjectTree() {
 	selected := d.selectedProjectPath()
 	d.projectTree = d.projectTree[:0]
 	query := strings.ToLower(strings.TrimSpace(d.projectSearch))
+	children := make(map[string][]projectEntry)
 	seen := make(map[string]bool)
 	for _, file := range d.projectFiles {
 		if !strings.Contains(strings.ToLower(file), query) {
@@ -41,20 +42,44 @@ func (d *Desktop) rebuildProjectTree() {
 		var dir string
 		hidden := false
 		for _, part := range parts[:len(parts)-1] {
-			dir = path.Join(dir, part)
+			parent := dir
+			dir = path.Join(parent, part)
 			if !seen[dir] {
-				d.projectTree = append(d.projectTree, projectEntry{dir, true})
+				children[parent] = append(children[parent], projectEntry{dir, true})
 				seen[dir] = true
 			}
-			if query == "" && d.projectCollapsed[dir] {
+			if query == "" && !d.projectExpanded[dir] {
 				hidden = true
 				break
 			}
 		}
 		if !hidden {
-			d.projectTree = append(d.projectTree, projectEntry{path: file})
+			children[dir] = append(children[dir], projectEntry{path: file})
 		}
 	}
+	var appendChildren func(string)
+	appendChildren = func(parent string) {
+		entries := children[parent]
+		slices.SortFunc(entries, func(a, b projectEntry) int {
+			if a.dir != b.dir {
+				if a.dir {
+					return -1
+				}
+				return 1
+			}
+			if order := strings.Compare(strings.ToLower(path.Base(a.path)), strings.ToLower(path.Base(b.path))); order != 0 {
+				return order
+			}
+			return strings.Compare(a.path, b.path)
+		})
+		for _, entry := range entries {
+			d.projectTree = append(d.projectTree, entry)
+			if entry.dir {
+				appendChildren(entry.path)
+			}
+		}
+	}
+	appendChildren("")
 	d.projectFileRow = slices.IndexFunc(d.projectTree, func(entry projectEntry) bool { return !entry.dir && entry.path == selected })
 }
 
@@ -87,7 +112,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 					icon := "open"
 					if entry.dir {
 						arrow := "down"
-						if d.projectSearch == "" && d.projectCollapsed[entry.path] {
+						if strings.TrimSpace(d.projectSearch) == "" && !d.projectExpanded[entry.path] {
 							icon, arrow = "folder", "right"
 						}
 						native.Icon(c, icons[arrow]).Width(12).Height(12)
@@ -99,7 +124,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 						TextColor(fileIconColor(icon, t.Dark != (row == d.projectFileRow)))
 					native.Text(c, name).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
-			}).FillWidth().Disabled(d.busy)
+			}).FillWidth().MinHeight(0).Clip().Disabled(d.busy)
 			message := d.text("files.empty")
 			if len(d.projectFiles) > 0 {
 				message = d.copy("没有匹配的文件", "No matching files")
@@ -113,11 +138,15 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			if row := d.projectFileRow; row != previous && row >= 0 && row < len(d.projectTree) && !d.busy {
 				entry := d.projectTree[row]
 				if entry.dir {
-					d.cancelProjectPreview()
-					if d.projectCollapsed == nil {
-						d.projectCollapsed = make(map[string]bool)
+					if strings.TrimSpace(d.projectSearch) != "" {
+						d.projectFileRow = previous
+						return
 					}
-					d.projectCollapsed[entry.path] = !d.projectCollapsed[entry.path]
+					if d.projectExpanded == nil {
+						d.projectExpanded = make(map[string]bool)
+					}
+					d.projectExpanded[entry.path] = !d.projectExpanded[entry.path]
+					d.projectFileRow = previous
 					d.rebuildProjectTree()
 					return
 				}

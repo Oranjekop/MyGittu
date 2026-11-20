@@ -31,6 +31,7 @@ func TestProjectTabsKeepUnsavedText(t *testing.T) {
 	d := New(nil, "", "")
 	d.selected, d.page = "demo", projectFilesPage
 	d.projectFiles = []string{".gitattributes", "docs/README.md"}
+	d.projectExpanded = map[string]bool{"docs": true}
 	d.rebuildProjectTree()
 	text := &projectTab{path: "one.txt", preview: app.FilePreview{New: "original", Version: "8:1"}, code: codePreview("one.txt", "original"), loaded: true}
 	other := &projectTab{path: "two.txt", preview: app.FilePreview{New: "other", Version: "5:1"}, code: codePreview("two.txt", "other"), loaded: true}
@@ -60,7 +61,7 @@ func TestProjectTabsKeepUnsavedText(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if !d.projectCollapsed["docs"] || tt.HasText("README.md") {
+	if d.projectExpanded["docs"] || tt.HasText("README.md") {
 		t.Fatal("clicking a folder in the file list should collapse its children")
 	}
 	if err := tt.Click("two.txt"); err != nil {
@@ -846,10 +847,19 @@ func TestProjectFileTypeIcons(t *testing.T) {
 	d.selected, d.page = "demo", projectFilesPage
 	d.projectFiles = []string{
 		"Makefile", "README.md", "assets/banner.PNG", "assets/demo.mp4",
-		"config/settings.yaml", "dist/export.zip", "src/main.go",
+		"config/settings.yaml", "dist/export.zip", "src/main.go", "src/nested/child.go",
 	}
-	d.projectCollapsed = map[string]bool{"dist": true}
+	d.projectExpanded = map[string]bool{"assets": true, "src": true}
 	d.rebuildProjectTree()
+	wantPaths := []string{"assets", "assets/banner.PNG", "assets/demo.mp4", "config", "dist", "src", "src/nested", "src/main.go", "Makefile", "README.md"}
+	if len(d.projectTree) != len(wantPaths) {
+		t.Fatalf("unexpected visible file tree: %v", d.projectTree)
+	}
+	for i, want := range wantPaths {
+		if d.projectTree[i].path != want {
+			t.Fatalf("row %d = %q, want %q", i, d.projectTree[i].path, want)
+		}
+	}
 	tt := native.NewTester(d.view, 960, 680)
 	tt.SetScale(1.5)
 	if !tt.HasText("banner.PNG") || !tt.HasText("main.go") || tt.HasText("export.zip") {

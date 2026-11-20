@@ -109,7 +109,7 @@ type Desktop struct {
 	projectFiles                       []string
 	projectSearch                      string
 	projectTree                        []projectEntry
-	projectCollapsed                   map[string]bool
+	projectExpanded                    map[string]bool
 	projectFileRow                     int
 	projectFileList                    native.ListState
 	projectPreview                     app.FilePreview

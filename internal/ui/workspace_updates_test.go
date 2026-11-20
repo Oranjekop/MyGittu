@@ -25,7 +25,6 @@ func TestProjectTreeSearchWithTenThousandFiles(t *testing.T) {
 	for i := range 10000 {
 		d.projectFiles = append(d.projectFiles, fmt.Sprintf("src/pkg-%02d/file-%04d.go", i/100, i))
 	}
-	d.projectCollapsed = map[string]bool{"src": true}
 	d.rebuildProjectTree()
 	if len(d.projectTree) != 1 || !d.projectTree[0].dir {
 		t.Fatal("collapsed tree exposed descendants")

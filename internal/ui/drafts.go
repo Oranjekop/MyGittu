@@ -27,7 +27,7 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.historyGraphBuilder = commitGraphBuilder{}
 		d.invalidateHistoryLoad()
 		d.historyMore = false
-		d.projectSearch, d.projectCollapsed = "", nil
+		d.projectSearch, d.projectExpanded = "", nil
 		d.resetProjectFiles()
 		d.hunksOpen = false
 		d.aiError = ""
