@@ -91,8 +91,11 @@ func (d *Desktop) selectedProjectPath() string {
 }
 
 func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
-	native.Row(c).Grow(1).FillWidth().Gap(panelSpacing).Children(func() {
-		native.Column(c).Width(342).FillHeight().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
+	width, _ := c.Size()
+	available := width - 3*panelSpacing - sidebarWidth
+	fileWidth := filePaneWidth(available, d.projectPane)
+	files := func() {
+		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
 			before := d.projectSearch
 			native.TextInput(c, &d.projectSearch).Placeholder(d.text("files.search")).FillWidth().Disabled(d.busy)
 			if before != d.projectSearch {
@@ -160,13 +163,18 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 				d.openProjectTab(entry.path)
 			}
 		})
-		native.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
+	}
+	preview := func() {
+		native.Column(c).Fill().MinWidth(0).Children(func() {
 			d.showProjectTabs(c)
 			native.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
 				d.showProjectPreview(c, t)
 			})
 		})
-	})
+	}
+	if splitFilePanes(c, t, &fileWidth, defaultProjectPaneWidth, files, preview) {
+		d.projectPane, d.projectPaneChanged = filePaneWidth(available, fileWidth), true
+	}
 }
 
 func (d *Desktop) showProjectPreview(c *native.Context, t *native.Theme) {

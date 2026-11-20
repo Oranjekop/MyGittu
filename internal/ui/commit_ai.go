@@ -184,7 +184,7 @@ func (d *Desktop) requestCommitAI() {
 	d.aiError = ""
 	if d.prefs.AI.Provider == "" {
 		d.openSettings()
-		d.settingsTab = 2
+		d.settingsTab = settingsAI
 		return
 	}
 	d.generateCommitMessage()

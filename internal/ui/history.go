@@ -165,39 +165,42 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		}
 	}
 	previous := d.logRow
-	table := roundedTable(c, &d.history, []native.TableColumn{
-		{Title: d.copy("分支图", "Graph"), Width: max(56, d.historyGraphWidth), Fixed: true},
-		{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190},
-	}, len(d.logs), func(row, col int) {
-		l := d.logs[row]
-		if col == 0 {
-			if row < len(d.historyGraph) {
-				graph := d.historyGraph[row]
-				native.Box(c).Absolute().Left(8).Right(0).Top(0).Bottom(0).Draw(graph.draw)
+	native.Column(c).Grow(1).MinHeight(110).FillWidth().Padding(panelSpacing).Gap(controlSpacing).
+		Background(t.Background).Radius(8).Children(func() {
+		table := roundedTable(c, &d.history, []native.TableColumn{
+			{Title: d.copy("分支图", "Graph"), Width: max(56, d.historyGraphWidth), Fixed: true},
+			{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190},
+		}, len(d.logs), func(row, col int) {
+			l := d.logs[row]
+			if col == 0 {
+				if row < len(d.historyGraph) {
+					graph := d.historyGraph[row]
+					native.Box(c).Absolute().Left(8).Right(0).Top(0).Bottom(0).Draw(graph.draw)
+				}
+				return
 			}
-			return
+			if col == 2 && l.Refs != "" {
+				native.Row(c).FillWidth().MinWidth(0).Gap(6).AlignItems(native.Center).Tooltip(l.Refs + " · " + l.Subject).Children(func() {
+					native.Text(c, l.Refs).MaxWidth(140).SingleLine().Ellipsis("…").Bold()
+					native.Text(c, l.Subject).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				})
+				return
+			}
+			values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
+			value := values[col-1]
+			if col == 4 {
+				value = displayDateTime(value)
+				native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(value)
+			} else {
+				native.Text(c, value)
+			}
+		}).Disabled(d.busy)
+		noCommits := len(d.logs) == 0 && !d.busy && !d.historyLoading && d.historyLoadError == "" && d.err == ""
+		tableOrEmptyState(c, table, noCommits, emptyPreviewArt, d.text("history.empty"))
+		if !noCommits {
+			table.MinHeight(110)
 		}
-		if col == 2 && l.Refs != "" {
-			native.Row(c).FillWidth().MinWidth(0).Gap(6).AlignItems(native.Center).Tooltip(l.Refs + " · " + l.Subject).Children(func() {
-				native.Text(c, l.Refs).MaxWidth(140).SingleLine().Ellipsis("…").Bold()
-				native.Text(c, l.Subject).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-			})
-			return
-		}
-		values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
-		value := values[col-1]
-		if col == 4 {
-			value = displayDateTime(value)
-			native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(value)
-		} else {
-			native.Text(c, value)
-		}
-	}).Disabled(d.busy)
-	noCommits := len(d.logs) == 0 && !d.busy && !d.historyLoading && d.historyLoadError == "" && d.err == ""
-	tableOrEmptyState(c, table, noCommits, emptyPreviewArt, d.text("history.empty"))
-	if !noCommits {
-		table.MinHeight(110)
-	}
+	})
 	if previous != d.logRow && d.logRow >= 0 && d.logRow < len(d.logs) && !d.busy && d.Client != nil {
 		id, commit := d.selected, d.logs[d.logRow]
 		d.task(func(ctx context.Context) (func(), error) {

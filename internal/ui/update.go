@@ -125,7 +125,7 @@ func (d *Desktop) canInstallUpdate() error {
 
 func (d *Desktop) showUpdateError(err error) {
 	d.settingsOpen = true
-	d.settingsTab = 3
+	d.settingsTab = settingsUpdates
 	d.updateError = err.Error()
 }
 
@@ -138,7 +138,7 @@ func (d *Desktop) settingsToolbarButton(c *native.Context) {
 		if IconButton(c, "", "settings", false).Label(label).Tooltip(label).Disabled(d.operation == cloneOperation).Clicked() {
 			d.openSettings()
 			if d.update.Available {
-				d.settingsTab = 3
+				d.settingsTab = settingsUpdates
 			}
 		}
 		if d.update.Available {

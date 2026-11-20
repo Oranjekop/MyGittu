@@ -187,7 +187,7 @@ func TestWorkspaceCloneDialogAt150Percent(t *testing.T) {
 	if err := tt.Click("配置克隆凭据"); err != nil {
 		t.Fatal(err)
 	}
-	if !d.settingsOpen || d.settingsTab != 5 {
+	if !d.settingsOpen || d.settingsTab != settingsCloneCredentials {
 		t.Fatal("clone credential settings did not open")
 	}
 	tt.Key(0, native.KeyEscape)
@@ -257,6 +257,30 @@ func TestProjectPreviewStaysVisibleDuringSelection(t *testing.T) {
 	}
 }
 
+func TestProjectFileDividerRemembersWidth(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.page = "demo", projectFilesPage
+	d.projectFiles = []string{"README.md"}
+	d.rebuildProjectTree()
+	tt := native.NewTester(d.view, 960, 680)
+	tt.SetScale(1.5)
+	divider := float32(2*panelSpacing + sidebarWidth + defaultProjectPaneWidth)
+	tt.Press(divider, 320)
+	tt.Move(divider+60, 320)
+	tt.Release(divider+60, 320)
+	if !d.projectPaneChanged || d.projectPane <= defaultProjectPaneWidth || d.filePane != defaultFilePaneWidth {
+		t.Fatalf("file divider drag did not change only the project width: %v, %v", d.projectPane, d.filePane)
+	}
+	path := filepath.Join(t.TempDir(), "project-file-pane.json")
+	saveFilePane(path, d.projectPane, d.projectPaneChanged)
+	reopened := New(nil, "", "")
+	restoreFilePane(path, &reopened.projectPane)
+	if reopened.projectPane != d.projectPane {
+		t.Fatalf("restored width = %v, want %v", reopened.projectPane, d.projectPane)
+	}
+	saveLayoutPreview(t, tt, "project-file-divider.png")
+}
+
 func TestWorkspaceAtNarrow150Percent(t *testing.T) {
 	d := New(nil, "", "")
 	d.selected = "demo"
@@ -289,9 +313,9 @@ func TestWorkspaceAtNarrow150Percent(t *testing.T) {
 		t.Fatal("dragging the file divider did not resize the pane")
 	}
 	layoutPath := filepath.Join(t.TempDir(), "workspace-file-pane.json")
-	d.saveFilePane(layoutPath)
+	saveFilePane(layoutPath, d.filePane, d.filePaneChanged)
 	reopened := New(nil, "", "")
-	reopened.restoreFilePane(layoutPath)
+	restoreFilePane(layoutPath, &reopened.filePane)
 	if reopened.filePane != d.filePane {
 		t.Fatalf("reopened divider width = %v, want %v", reopened.filePane, d.filePane)
 	}
@@ -456,11 +480,16 @@ func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
 	if !tt.HasText("字体大小") {
 		t.Fatal("appearance settings missing")
 	}
+	credentials, credentialsOK := tt.Find("克隆凭据")
+	update, updateOK := tt.Find(d.text("update.title"))
+	if !credentialsOK || !updateOK || update.Y <= credentials.Y {
+		t.Fatal("software update should be below clone credentials")
+	}
 	saveLayoutPreview(t, tt, "settings-appearance-150.png")
 	if err := tt.Click("AI 配置"); err != nil {
 		t.Fatal(err)
 	}
-	if d.settingsTab != 2 || !tt.HasText("供应商") {
+	if d.settingsTab != settingsAI || !tt.HasText("供应商") {
 		t.Fatal("AI tab did not open")
 	}
 	if err := tt.Click("未启用"); err != nil {
@@ -476,7 +505,7 @@ func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
 		t.Fatal("model retrieval button missing")
 	}
 	saveLayoutPreview(t, tt, "settings-ai-150.png")
-	if d.settingsTab != 2 || !tt.HasText("提交信息提示词") || d.aiPromptDraft != commitai.DefaultPrompt() {
+	if d.settingsTab != settingsAI || !tt.HasText("提交信息提示词") || d.aiPromptDraft != commitai.DefaultPrompt() {
 		t.Fatal("AI settings did not show the default prompt")
 	}
 	saveLayoutPreview(t, tt, "settings-ai-prompt-150.png")
@@ -488,7 +517,7 @@ func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
 	if err := tt.Click("AI 生成提交信息"); err != nil {
 		t.Fatal(err)
 	}
-	if !d.settingsOpen || d.settingsTab != 2 {
+	if !d.settingsOpen || d.settingsTab != settingsAI {
 		t.Fatal("unconfigured AI should open provider settings")
 	}
 }
@@ -496,7 +525,7 @@ func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
 func TestIntegrationSettingsAt150Percent(t *testing.T) {
 	d := New(nil, "", "")
 	d.openSettings()
-	d.settingsTab = 4
+	d.settingsTab = settingsIntegration
 	d.integrationLoaded = true
 	d.integration = integrationState{Menu: true, Modern: true, Overlays: true}
 	tt := native.NewTester(d.view, 960, 680)
@@ -596,7 +625,7 @@ func TestCloneCredentialProfilesAt150Percent(t *testing.T) {
 	if err := tt.Click("配置克隆凭据"); err != nil {
 		t.Fatal(err)
 	}
-	if d.settingsTab != 5 || d.cloneCredentials.draft.Username != "work-user" || !tt.HasText("在浏览器授权") {
+	if d.settingsTab != settingsCloneCredentials || d.cloneCredentials.draft.Username != "work-user" || !tt.HasText("在浏览器授权") {
 		t.Fatal("GitHub authorization settings missing")
 	}
 	saveLayoutPreview(t, tt, "clone-credentials-150.png")

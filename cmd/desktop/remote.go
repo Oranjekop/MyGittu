@@ -48,6 +48,9 @@ func runRemote(client *ipc.Client, path, action string) error {
 			_ = mygo.App.Dock.SetIcon(brand.PNG)
 		}
 		configureRemoteCaption(d.win.NativeHandle())
+		if err := setRemoteTaskbarIdentity(d.win.NativeHandle()); err != nil {
+			fmt.Printf("set MyGittu taskbar identity: %v\n", err)
+		}
 		d.win.OnClosed(cancel)
 		animationCtx, stopAnimation := context.WithCancel(ctx)
 		go d.animate(animationCtx)
@@ -61,6 +64,7 @@ func runRemote(client *ipc.Client, path, action string) error {
 
 func (d *remoteWindow) windowOptions() mygo.WindowOptions {
 	return mygo.WindowOptions{
+		Title:             "MyGittu",
 		TitleBarStyle:     mygo.TitleBarHidden,
 		DisableMinimize:   true,
 		DisableMaximize:   true,

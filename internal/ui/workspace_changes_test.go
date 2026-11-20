@@ -155,7 +155,7 @@ func TestRetryPushAndUpdateControlsAreScoped(t *testing.T) {
 	if err := tt.Click("MyGittu 9.0.0 可用"); err != nil {
 		t.Fatal(err)
 	}
-	if !d.settingsOpen || d.settingsTab != 3 || !tt.HasText("下载并安装 9.0.0") {
+	if !d.settingsOpen || d.settingsTab != settingsUpdates || !tt.HasText("下载并安装 9.0.0") {
 		t.Fatal("update marker did not open Software Updates")
 	}
 	saveLayoutPreview(t, tt, "update-settings-from-marker.png")

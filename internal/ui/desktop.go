@@ -46,6 +46,8 @@ type Desktop struct {
 	pushRetryRepo, pushFailure         string
 	filePane                           float32
 	filePaneChanged                    bool
+	projectPane                        float32
+	projectPaneChanged                 bool
 	captionStyled, captionDark         bool
 	staged                             bool
 	query                              string
@@ -145,7 +147,8 @@ type Desktop struct {
 }
 
 func New(client *ipc.Client, path, action string) *Desktop {
-	d := &Desktop{Client: client, path: path, row: -1, logRow: -1, filePane: 310, prefs: settings.Values{Language: "zh-CN", Theme: "system"}}
+	d := &Desktop{Client: client, path: path, row: -1, logRow: -1, filePane: defaultFilePaneWidth,
+		projectPane: defaultProjectPaneWidth, prefs: settings.Values{Language: "zh-CN", Theme: "system"}}
 	d.stagedCollapsed, d.changesCollapsed = true, true
 	switch action {
 	case "log":
@@ -177,7 +180,9 @@ func (d *Desktop) Run() error {
 		}
 		options := d.windowOptions()
 		layoutPath := filePanePath(options.StateKey)
-		d.restoreFilePane(layoutPath)
+		projectLayoutPath := filePanePath(options.StateKey + "-project")
+		restoreFilePane(layoutPath, &d.filePane)
+		restoreFilePane(projectLayoutPath, &d.projectPane)
 		d.win = NewRememberedWindow(options)
 		canHideOnClose := d.action == "" && supportsHideOnClose()
 		quitting := false
@@ -219,7 +224,8 @@ func (d *Desktop) Run() error {
 		}
 		updateContext, cancelUpdates := context.WithCancel(context.Background())
 		d.win.OnClosed(func() {
-			d.saveFilePane(layoutPath)
+			saveFilePane(layoutPath, d.filePane, d.filePaneChanged)
+			saveFilePane(projectLayoutPath, d.projectPane, d.projectPaneChanged)
 			d.cancelProjectPreview()
 			cancelUpdates()
 			if d.updateCancel != nil {
@@ -560,19 +566,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	if d.action == "" {
 		available -= sidebarWidth + panelSpacing
 	}
-	fileWidth := min(max(d.filePane, 284), max(284, available-320))
-	dividerTheme := *t
-	dividerTheme.Border = t.Surface
-	dividerTheme.Accent = t.Border
-	pane := func(right bool, contents func()) {
-		container := native.Themed(c, t).Fill().Background(t.Surface)
-		if right {
-			container.PaddingStart(panelSpacing / 2)
-		} else {
-			container.PaddingEnd((panelSpacing - 1) / 2)
-		}
-		container.Children(contents)
-	}
+	fileWidth := filePaneWidth(available, d.filePane)
 	canCommit := d.stagedCount > 0 && !slices.ContainsFunc(files, func(file git.FileStatus) bool { return file.State == git.Conflicted })
 	filesPane := func() {
 		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
@@ -625,7 +619,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				if IconButton(c, label, "user", false).Grow(1).MinWidth(0).Tooltip(d.commitIdentity.EffectiveEmail).Disabled(d.busy).Clicked() {
 					d.identityScope = 0
 					d.openSettings()
-					d.settingsTab = 1
+					d.settingsTab = settingsIdentity
 					d.loadIdentity()
 				}
 				if IconButton(c, "", "undo", false).Label(d.copy("修正最近提交", "Amend latest commit")).Tooltip(d.copy("修正最近提交", "Amend latest commit")).Disabled(d.busy || d.snapshot.Merging || d.snapshot.CherryPicking).Clicked() {
@@ -720,14 +714,9 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			diffCard()
 		})
 	}
-	native.Themed(c, &dividerTheme).Grow(1).FillWidth().Background(t.Surface).Children(func() {
-		split := native.Split(c, &fileWidth, func() { pane(false, filesPane) }, func() { pane(true, diffPane) }).
-			Grow(1).FillWidth().SplitReset(310)
-		if split.Changed() && d.filePane != fileWidth {
-			d.filePane = fileWidth
-			d.filePaneChanged = true
-		}
-	})
+	if splitFilePanes(c, t, &fileWidth, defaultFilePaneWidth, filesPane, diffPane) {
+		d.filePane, d.filePaneChanged = filePaneWidth(available, fileWidth), true
+	}
 }
 func (d *Desktop) toolbarStatus(c *native.Context) {
 	t := c.Theme()

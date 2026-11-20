@@ -13,9 +13,18 @@ import (
 
 const sourceRepositoryURL = "https://github.com/Oranjekop/MyGittu"
 
+const (
+	settingsAppearance = iota
+	settingsIdentity
+	settingsAI
+	settingsIntegration
+	settingsCloneCredentials
+	settingsUpdates
+)
+
 func (d *Desktop) openSettings() {
 	d.settingsOpen = true
-	d.settingsTab = 0
+	d.settingsTab = settingsAppearance
 	d.resetPromptDraft()
 	d.aiForm.apply(d.prefs.AI)
 	d.aiForm.key = ""
@@ -33,9 +42,9 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 		{d.copy("外观", "Appearance"), "appearance"},
 		{d.text("identity.title"), "user"},
 		{d.copy("AI 配置", "AI settings"), "sparkle"},
-		{d.text("update.title"), "download"},
 		{d.copy("系统集成", "Integration"), "settings"},
 		{d.copy("克隆凭据", "Clone credentials"), "user"},
+		{d.text("update.title"), "download"},
 	}
 	native.Modal(c, &d.settingsOpen, func() {
 		native.Column(c).Width(dialogWidth).MaxWidth(dialogWidth).Gap(14).Children(func() {
@@ -57,11 +66,11 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 						if IconButton(c, tab.label, tab.icon, d.settingsTab == i).FillWidth().Justify(native.Start).
 							Border(0, t.Border).Clicked() && d.settingsTab != i {
 							d.settingsTab = i
-							if i == 4 && !d.busy {
+							if i == settingsIntegration && !d.busy {
 								d.queryIntegration()
 							}
 
-							if i == 1 && d.Client != nil {
+							if i == settingsIdentity && d.Client != nil {
 								d.loadIdentity()
 							}
 						}
@@ -72,24 +81,24 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 					if d.err != "" {
 						native.Text(c, d.err).FillWidth().TextColor(t.Danger)
 					}
-					if d.settingsTab == 5 {
+					if d.settingsTab == settingsCloneCredentials {
 						d.cloneSettings(c)
 						return
 					}
 					scrollAtPanelEdge(native.Scroll(c.Key(d.settingsTab))).Grow(1).MinHeight(0).Children(func() {
 						native.Column(c).FillWidth().Gap(12).Children(func() {
 							switch d.settingsTab {
-							case 0:
+							case settingsAppearance:
 								d.appearanceSettings(c)
-							case 1:
+							case settingsIdentity:
 								d.identitySettings(c)
-							case 2:
+							case settingsAI:
 								d.aiSettings(c)
 
 								d.promptSettings(c)
-							case 3:
+							case settingsUpdates:
 								d.updateSettings(c)
-							case 4:
+							case settingsIntegration:
 								d.integrationSettings(c)
 							}
 						})
