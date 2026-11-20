@@ -54,6 +54,63 @@ func TestPartiallyStagedFileAppearsInBothGroups(t *testing.T) {
 	saveLayoutPreview(t, tt, "grouped-changes-150.png")
 }
 
+func TestSelectAllChangesIncludesCollapsedGroups(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected = "demo"
+	d.changes = []git.FileStatus{
+		{Path: "staged.go", Index: git.Added, Worktree: git.Clean},
+		{Path: "working.go", Index: git.Clean, Worktree: git.Modified},
+	}
+	tt := native.NewTester(d.view, 960, 680)
+	if err := tt.Click("全选"); err != nil {
+		t.Fatal(err)
+	}
+	stage, unstage, count := d.stagingSelection(d.changes)
+	if count != 2 || !slices.Equal(stage, []string{"working.go"}) || !slices.Equal(unstage, []string{"staged.go"}) {
+		t.Fatal("select all did not feed staged and unstaged files into the existing batch actions")
+	}
+	if err := tt.Click(d.text("batch.clear")); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.tools.batch) != 0 {
+		t.Fatal("clear selection did not undo select all")
+	}
+}
+
+func TestFileTabBarArrowsWhenTabsOverflow(t *testing.T) {
+	d := New(nil, "", "")
+	var bar fileTabBarState
+	width := float32(80)
+	tt := native.NewTester(func(c *native.Context) {
+		d.fileTabBar(c, &bar, func() { native.Box(c).Width(width).Height(24) })
+	}, 320, 100)
+	left, right := "向左滚动标签", "向右滚动标签"
+	if tt.HasText(right) {
+		t.Fatal("arrows should be hidden when tabs fit")
+	}
+	width = 750
+	tt.Frame()
+	tt.Frame()
+	if err := tt.Click(right); err != nil {
+		t.Fatal(err)
+	}
+	if bar.scroll.X <= 0 {
+		t.Fatal("right arrow did not scroll the tabs")
+	}
+	if err := tt.Click(left); err != nil {
+		t.Fatal(err)
+	}
+	if bar.scroll.X != 0 {
+		t.Fatal("left arrow did not return to the start")
+	}
+	width = 80
+	tt.Frame()
+	tt.Frame()
+	if tt.HasText(right) || bar.overflow {
+		t.Fatal("arrows stayed after the tabs fit again")
+	}
+}
+
 func TestChangeTabsOpenSwitchAndClose(t *testing.T) {
 	d := New(nil, "", "")
 	d.selected = "demo"

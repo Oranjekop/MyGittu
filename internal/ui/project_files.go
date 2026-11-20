@@ -160,7 +160,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 				d.openProjectTab(entry.path)
 			}
 		})
-		native.Column(c).Grow(1).MinWidth(0).FillHeight().Gap(controlSpacing).Children(func() {
+		native.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
 			d.showProjectTabs(c)
 			native.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
 				d.showProjectPreview(c, t)

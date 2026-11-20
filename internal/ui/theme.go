@@ -48,3 +48,42 @@ func roundedTable(c *native.Context, state *native.ListState, columns []native.T
 func scrollbarGutter(c *native.Context) float32 {
 	return (native.ScrollbarStyle{}).Resolve(c.Theme()).TrackWidth + 2
 }
+
+type fileTabBarState struct {
+	scroll   native.ScrollState
+	overflow bool
+}
+
+func (d *Desktop) fileTabBar(c *native.Context, state *fileTabBarState, tabs func()) {
+	const buttonWidth = 28
+	reserved := float32(0)
+	if state.overflow {
+		reserved = 2*buttonWidth + 2*detailSpacing
+	}
+	native.Row(c).FillWidth().Height(controlHeight(c)+controlSpacing).Padding(0, 0, controlSpacing, 0).
+		Gap(detailSpacing).AlignItems(native.Center).Children(func() {
+		scroll := native.ScrollHorizontal(c).Grow(1).MinWidth(0).FillHeight().Scrollbars(false).TrackScroll(&state.scroll)
+		scroll.Draw(func(*native.Painter, native.Rect) {
+			// MaxX measures overflow after any space used by the buttons.
+			overflow := state.scroll.MaxX > reserved+0.5
+			if overflow != state.overflow {
+				state.overflow = overflow
+				c.Invalidate()
+			}
+		})
+		scroll.Children(tabs)
+		if reserved == 0 {
+			return
+		}
+		left := d.copy("向左滚动标签", "Scroll tabs left")
+		right := d.copy("向右滚动标签", "Scroll tabs right")
+		offset, end := state.scroll.X, state.scroll.MaxX
+		step := max(96, scroll.Bounds().W*0.75)
+		if IconButton(c, "", "left", false).Width(buttonWidth).Padding(0).Center().Label(left).Tooltip(left).Disabled(offset <= 0).Clicked() {
+			state.scroll.X = max(0, offset-step)
+		}
+		if IconButton(c, "", "right", false).Width(buttonWidth).Padding(0).Center().Label(right).Tooltip(right).Disabled(offset >= end).Clicked() {
+			state.scroll.X = min(end, offset+step)
+		}
+	})
+}

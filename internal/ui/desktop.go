@@ -107,6 +107,7 @@ type Desktop struct {
 	diffWrap, diffExpand               bool
 	workspacePatch                     *editor.State
 	changeTabs                         []changeTab
+	changeTabBar, projectTabBar        fileTabBarState
 	binary                             bool
 	projectFiles                       []string
 	projectSearch                      string
@@ -577,6 +578,12 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
 			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Hidden(len(files) == 0 && !d.busy && d.err == "").Children(func() {
 				native.Textf(c, d.text("changes"), len(files)).Grow(1)
+				if native.Button(c, d.copy("全选", "Select all")).Disabled(d.busy || len(files) == 0).Clicked() {
+					d.tools.batch = make(map[string]bool, len(files))
+					for _, file := range files {
+						d.tools.batch[file.Path] = true
+					}
+				}
 				canStage := slices.ContainsFunc(files, func(file git.FileStatus) bool {
 					return file.State != git.Conflicted && file.Worktree != git.Clean && file.Worktree != ""
 				})
@@ -700,7 +707,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 		})
 	}
 	diffPane := func() {
-		native.Column(c).Fill().MinWidth(0).Gap(controlSpacing).Children(func() {
+		native.Column(c).Fill().MinWidth(0).Children(func() {
 			d.showChangeTabs(c)
 			diffCard()
 		})
