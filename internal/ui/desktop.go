@@ -650,9 +650,8 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			})
 		})
 	}
-	diffPane := func() {
-		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
-			d.showChangeTabs(c)
+	diffCard := func() {
+		native.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
 			noDiff := d.comparison == nil && (d.detail == "" || d.detail == d.text("diff.empty"))
 			hasSelectedFile := d.row >= 0 && d.row < len(files)
 			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Hidden(noDiff && !hasSelectedFile && !d.binary).Children(func() {
@@ -707,6 +706,12 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				}
 				editor.View(c, d.workspacePatch).Grow(1).FillWidth()
 			}
+		})
+	}
+	diffPane := func() {
+		native.Column(c).Fill().MinWidth(0).Gap(controlSpacing).Children(func() {
+			d.showChangeTabs(c)
+			diffCard()
 		})
 	}
 	native.Themed(c, &dividerTheme).Grow(1).FillWidth().Background(t.Surface).Children(func() {
