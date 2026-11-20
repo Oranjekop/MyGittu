@@ -187,7 +187,7 @@ Section
     Call RunAsDesktopUser
   ${EndIf}
   Delete "$INSTDIR\launch-installed.ps1"
-  nsExec::ExecToLog /TIMEOUT=15000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\integration.ps1" -Action CleanupLegacy'
+  nsExec::ExecToLog /TIMEOUT=120000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\integration.ps1" -Action CleanupLegacy'
   Pop $0
   DetailPrint "MyGittu legacy shell cleanup: $0"
   Goto done

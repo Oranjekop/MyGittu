@@ -102,14 +102,16 @@ function Trust-Publisher {
 }
 
 if ($Action -eq 'CleanupLegacy') {
+    $legacy = @(Get-ChildItem -LiteralPath $root -Filter 'MyGittuShell-*.dll' -File |
+        Where-Object { $_.BaseName -match '^MyGittuShell-[0-9]+\.[0-9]+\.[0-9]+$' })
+    if (!$legacy.Count) { return }
     $inUse = @(1..4 | ForEach-Object { Read-Default (Join-Path (COMPath $_) 'InprocServer32') })
     if ([Environment]::OSVersion.Version.Build -ge 22000) {
         $inUse += @(Get-AppxPackage -AllUsers -Name Oranjekop.MyGittu.Shell | ForEach-Object {
             Join-Path $root ('MyGittuShell-{0}.{1}.{2}.dll' -f $_.Version.Major, $_.Version.Minor, $_.Version.Build)
         })
     }
-    Get-ChildItem -LiteralPath $root -Filter 'MyGittuShell-*.dll' -File |
-        Where-Object { $_.BaseName -match '^MyGittuShell-[0-9]+\.[0-9]+\.[0-9]+$' -and $_.FullName -notin $inUse } |
+    $legacy | Where-Object { $_.FullName -notin $inUse } |
         ForEach-Object { Remove-Item -LiteralPath $_.FullName -ErrorAction Continue }
     return
 }
