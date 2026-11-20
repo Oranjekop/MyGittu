@@ -31,6 +31,14 @@ func TestPartiallyStagedFileAppearsInBothGroups(t *testing.T) {
 	d.changes, d.stagedCount = files, 2
 	tt := native.NewTester(d.view, 960, 680)
 	tt.SetScale(1.5)
+	if tt.HasText("staged.txt") || tt.HasText("partial.txt") {
+		t.Fatal("both groups should initially be collapsed")
+	}
+	for _, label := range []string{"已暂存的更改（2）", "更改（3）"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := tt.Click("已暂存的更改（2）"); err != nil {
 		t.Fatal(err)
 	}

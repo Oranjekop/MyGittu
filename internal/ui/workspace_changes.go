@@ -83,7 +83,7 @@ func (d *Desktop) workspaceChangeList(c *native.Context, files []git.FileStatus)
 			return
 		}
 		d.workspaceChangeItem(c, files[row.file], row.staged, row.file == d.row && row.staged == d.staged)
-	}).FillWidth().Grow(1).Disabled(d.busy)
+	}).FillWidth().Grow(1).MinHeight(0).Clip().Disabled(d.busy)
 	if !d.busy && selected != before && selected >= 0 && selected < len(rows) {
 		row := rows[selected]
 		if row.file >= 0 {
@@ -103,7 +103,7 @@ func (d *Desktop) workspaceChangeHeader(c *native.Context, row workspaceChangeRo
 		arrow = "right"
 	}
 	label := fmt.Sprintf(d.text(key), row.count)
-	native.Column(c).FillWidth().Padding(3, 0).Children(func() {
+	native.Column(c).FillWidth().Background(c.Theme().Background).Padding(3, 0).Children(func() {
 		if IconButton(c, label, arrow, false).FillWidth().Justify(native.Start).Clicked() {
 			*collapsed = !*collapsed
 		}

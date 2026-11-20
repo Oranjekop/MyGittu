@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	native "github.com/egoist/mygo/ui"
 	"mygittu/internal/app"
 	"mygittu/internal/status"
 )
@@ -18,6 +19,8 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.snapshot = status.Snapshot{}
 		d.remoteNotice = ""
 		d.row, d.changes, d.stagedCount = -1, nil, 0
+		d.stagedCollapsed, d.changesCollapsed = true, true
+		d.files = native.ListState{}
 		d.detail, d.comparison, d.binary = "", nil, false
 		d.logs, d.logRow, d.historySummary, d.historyShown = nil, -1, nil, app.Commit{}
 		d.historyGraph, d.historyGraphWidth = nil, 0

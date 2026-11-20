@@ -66,11 +66,12 @@ func TestCommitDraftsAreIsolatedAndPersisted(t *testing.T) {
 func TestWorkspaceStatusPreservesSelectionByPath(t *testing.T) {
 	d := New(nil, "", "")
 	d.message = "ongoing draft"
-	file := git.FileStatus{Path: "b.txt", Index: git.Clean, State: git.Modified}
+	file := git.FileStatus{Path: "first/b.txt", Index: git.Clean, State: git.Modified}
 	d.changes, d.row = []git.FileStatus{file}, 0
-	inserted := git.FileStatus{Path: "a.txt", Index: git.Added, State: git.Added}
-	d.applyWorkspaceStatus(status.Snapshot{Files: []git.FileStatus{inserted, file}})
-	if d.row != 1 || d.message != "ongoing draft" || d.stagedCount != 1 {
+	inserted := git.FileStatus{Path: "last/A.txt", Index: git.Added, State: git.Added}
+	root := git.FileStatus{Path: "0.txt", Index: git.Clean, State: git.Modified}
+	d.applyWorkspaceStatus(status.Snapshot{Files: []git.FileStatus{root, file, inserted}})
+	if d.row != 1 || d.changes[0].Path != inserted.Path || d.changes[2].Path != root.Path || d.message != "ongoing draft" || d.stagedCount != 1 {
 		t.Fatal("updated status displaced selection or draft")
 	}
 	d.applyWorkspaceStatus(status.Snapshot{Files: []git.FileStatus{inserted}})

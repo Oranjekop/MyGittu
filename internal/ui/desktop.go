@@ -143,6 +143,7 @@ type Desktop struct {
 
 func New(client *ipc.Client, path, action string) *Desktop {
 	d := &Desktop{Client: client, path: path, row: -1, logRow: -1, filePane: 310, prefs: settings.Values{Language: "zh-CN", Theme: "system"}}
+	d.stagedCollapsed, d.changesCollapsed = true, true
 	switch action {
 	case "log":
 		d.action = action
@@ -400,6 +401,11 @@ func (d *Desktop) refresh() {
 					})
 					if d.row >= 0 {
 						d.staged = d.changes[d.row].Worktree == git.Clean
+						if d.staged {
+							d.stagedCollapsed = false
+						} else {
+							d.changesCollapsed = false
+						}
 					}
 				}
 				if d.row >= 0 {

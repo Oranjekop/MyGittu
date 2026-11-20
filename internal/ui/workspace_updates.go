@@ -2,7 +2,9 @@ package ui
 
 import (
 	"context"
+	"path"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -86,6 +88,19 @@ func (d *Desktop) applyWorkspaceStatus(snapshot status.Snapshot) bool {
 			}
 		}
 	}
+	slices.SortFunc(changes, func(a, b git.FileStatus) int {
+		aInFolder, bInFolder := strings.Contains(a.Path, "/"), strings.Contains(b.Path, "/")
+		if aInFolder != bInFolder {
+			if aInFolder {
+				return -1
+			}
+			return 1
+		}
+		if order := strings.Compare(strings.ToLower(path.Base(a.Path)), strings.ToLower(path.Base(b.Path))); order != 0 {
+			return order
+		}
+		return strings.Compare(a.Path, b.Path)
+	})
 	branchChanged := d.snapshot.Branch != snapshot.Branch || d.snapshot.Tracking != snapshot.Tracking || d.snapshot.Merging != snapshot.Merging || d.snapshot.CherryPicking != snapshot.CherryPicking
 	d.snapshot = snapshot
 	if slices.Equal(d.changes, changes) {
