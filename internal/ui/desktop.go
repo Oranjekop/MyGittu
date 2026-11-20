@@ -187,12 +187,13 @@ func (d *Desktop) Run() error {
 		restoreFilePane(layoutPath, &d.filePane)
 		restoreFilePane(projectLayoutPath, &d.projectPane)
 		d.win = NewRememberedWindow(options)
+		isMac := runtime.GOOS == "darwin"
 		canHideOnClose := d.action == "" && supportsHideOnClose()
 		quitting := false
 		if canHideOnClose {
 			offQuit := mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 			offCanceled := mygo.App.OnQuitCanceled(func() { quitting = false })
-			if runtime.GOOS == "darwin" {
+			if isMac {
 				d.win.OnShow(d.removeTray)
 			}
 			d.win.OnClosed(func() {
@@ -210,6 +211,9 @@ func (d *Desktop) Run() error {
 					return
 				}
 				d.win.Hide()
+				if isMac {
+					mygo.App.Dock.Hide()
+				}
 				return
 			}
 			if !d.projectAllowClose && d.hasUnsavedProjectFiles() {

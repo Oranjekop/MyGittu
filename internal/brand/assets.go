@@ -8,6 +8,9 @@ var PNG []byte
 //go:embed icon-ui.png
 var SmallPNG []byte
 
+//go:embed menu-bar.png
+var MenuBarPNG []byte
+
 //go:embed remote-rabbit.png
 var RemoteRabbitPNG []byte
 

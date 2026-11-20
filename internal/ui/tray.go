@@ -12,7 +12,12 @@ func (d *Desktop) ensureTray() bool {
 	if d.tray != nil {
 		return true
 	}
-	tray, err := mygo.NewTray(mygo.TrayOptions{Icon: brand.SmallPNG, ToolTip: "MyGittu"})
+	options := mygo.TrayOptions{Icon: brand.SmallPNG, ToolTip: "MyGittu"}
+	if runtime.GOOS == "darwin" {
+		options.Icon = brand.MenuBarPNG
+		options.IconIsTemplate = true
+	}
+	tray, err := mygo.NewTray(options)
 	if err != nil {
 		label := d.copy("无法创建系统托盘图标：%v", "Unable to create the system tray icon: %v")
 		if runtime.GOOS == "darwin" {
@@ -23,6 +28,9 @@ func (d *Desktop) ensureTray() bool {
 	}
 	d.tray = tray
 	show := func() {
+		if runtime.GOOS == "darwin" {
+			mygo.App.Dock.Show()
+		}
 		d.win.Show()
 		d.win.Focus()
 	}
