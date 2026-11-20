@@ -18,7 +18,7 @@ func (d *Desktop) openSettings() {
 	d.settingsTab = 0
 	d.resetPromptDraft()
 	d.aiForm.apply(d.prefs.AI)
-	d.aiForm.key = d.aiForm.savedKey
+	d.aiForm.key = ""
 	d.cloneCredentials.clearEditor()
 	if d.selected == "" {
 		d.identityScope = 1

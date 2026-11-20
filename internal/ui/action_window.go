@@ -121,13 +121,6 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 				native.Text(c, d.text("error")+": "+d.err).FillWidth().TextColor(t.Danger)
 			})
 		}
-		if d.operation == "commit.running" {
-			native.Column(c).Grow(1).FillWidth().Center().Gap(controlSpacing).Children(func() {
-				OperationIcon(c, 80, d.operationFrame, "commit")
-				native.Text(c, d.text(d.operation)).Bold()
-			})
-			return
-		}
 		if d.action == "clone" {
 			if d.operation == cloneOperation {
 				d.cloneProgress(c)

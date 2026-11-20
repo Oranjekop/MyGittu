@@ -178,8 +178,8 @@ func TestRetryPushAndUpdateControlsAreScoped(t *testing.T) {
 	if tt.HasText("重试推送") {
 		t.Fatal("successful retry should clear the failure action")
 	}
-	if !tt.HasText("拉取中…") {
-		t.Fatal("pull progress should appear in its toolbar button")
+	if !tt.HasText(d.text("remote.pull")) || tt.HasText("拉取中…") {
+		t.Fatal("pull progress should keep the toolbar button label stable")
 	}
 	saveLayoutPreview(t, tt, "inline-remote-progress.png")
 }
@@ -208,7 +208,7 @@ func TestEmptyChangesHidesGroupsWhilePulling(t *testing.T) {
 	}
 	d.busy, d.remoteRunning = true, "pull"
 	tt.Frame()
-	if !tt.HasText("拉取中…") || tt.HasText("已暂存的更改（0）") || tt.HasText("更改（0）") {
+	if !tt.HasText(d.text("remote.pull")) || tt.HasText("已暂存的更改（0）") || tt.HasText("更改（0）") {
 		t.Fatal("empty groups should stay hidden while pulling")
 	}
 	saveLayoutPreview(t, tt, "empty-changes-while-pulling.png")

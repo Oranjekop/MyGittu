@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -10,15 +12,16 @@ import (
 	"unicode/utf8"
 
 	native "github.com/egoist/mygo/ui"
+	"github.com/go-keyring/keyring"
 	"mygittu/internal/commitai"
 	"mygittu/internal/ipc"
 )
 
 type aiSettingsForm struct {
-	config        commitai.Config
-	key, savedKey string
-	models        []string
-	modelError    string
+	config     commitai.Config
+	key        string
+	models     []string
+	modelError string
 }
 
 func (f *aiSettingsForm) apply(config commitai.Config) {
@@ -80,11 +83,9 @@ func (d *Desktop) aiSettings(c *native.Context) {
 			f.key = ""
 			f.models, f.modelError = nil, ""
 		}
-		native.Text(c, d.copy("API 密钥（本次运行）", "API key (this session)"))
+		native.Text(c, d.copy("API 密钥", "API key"))
 		input := native.TextInput(c, &f.key).Password().FillWidth().Disabled(d.busy)
-		if env := f.environment(); env != "" {
-			input.Placeholder(env)
-		}
+		input.Placeholder(d.copy("留空沿用已保存的密钥", "Leave blank to keep the saved key"))
 		_, addressError := f.config.Base()
 		if IconButton(c, d.copy("获取模型 ID", "Fetch model IDs"), "download", false).Disabled(d.busy || addressError != nil).Clicked() {
 			d.fetchAIModels()
@@ -105,10 +106,47 @@ func (d *Desktop) aiSettings(c *native.Context) {
 		}
 	}
 	_, configErr := f.config.Endpoint()
-	changed := f.config != d.prefs.AI || strings.TrimSpace(f.key) != f.savedKey
+	changed := f.config != d.prefs.AI || strings.TrimSpace(f.key) != ""
 	if IconButton(c, d.copy("保存 AI 设置", "Save AI settings"), "save", true).FillWidth().Disabled(d.busy || !changed || (f.config.Provider != "" && configErr != nil)).Clicked() {
 		d.saveAISettings()
 	}
+	if f.config.Provider != "" && configErr == nil &&
+		IconButton(c, d.copy("移除保存的密钥", "Remove saved key"), "remove", false).Disabled(d.busy).Clicked() {
+		config := f.config
+		removeError := d.copy("无法移除系统凭据中的 AI 密钥", "Could not remove the AI key from the system credential store")
+		d.task(func(context.Context) (func(), error) {
+			err := keyring.Delete(aiKeyService, aiKeyAccount(config))
+			if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+				return nil, errors.New(removeError)
+			}
+			return func() { f.key = "" }, nil
+		})
+	}
+}
+
+const aiKeyService = "MyGittu AI API"
+
+func aiKeyAccount(config commitai.Config) string {
+	base, _ := config.Base()
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(config.Provider+"\x00"+base)))
+}
+
+func aiRequestKey(config commitai.Config, entered string) (string, error) {
+	if entered != "" {
+		return entered, nil
+	}
+	secret, err := keyring.Get(aiKeyService, aiKeyAccount(config))
+	if err == nil {
+		return string(secret), nil
+	}
+	form := aiSettingsForm{config: config}
+	if key := strings.TrimSpace(os.Getenv(form.environment())); key != "" {
+		return key, nil
+	}
+	if errors.Is(err, keyring.ErrNotFound) {
+		return "", nil
+	}
+	return "", errors.New("could not read the AI key from the system credential store")
 }
 
 func (f aiSettingsForm) environment() string {
@@ -127,11 +165,16 @@ func (d *Desktop) saveAISettings() {
 	prefs := d.prefs
 	prefs.AI = d.aiForm.config
 	key := strings.TrimSpace(d.aiForm.key)
+	storeError := d.copy("无法将 AI 密钥保存到系统凭据存储", "Could not save the AI key to the system credential store")
 	d.task(func(ctx context.Context) (func(), error) {
+		if key != "" {
+			if err := keyring.Set(aiKeyService, aiKeyAccount(prefs.AI), []byte(key)); err != nil {
+				return nil, errors.New(storeError)
+			}
+		}
 		e := d.Client.Call(ctx, "settings.update", ipc.Params{Settings: prefs}, &prefs)
 		return func() {
-			d.aiForm.savedKey = key
-			d.aiForm.key = key
+			d.aiForm.key = ""
 			d.applyPrefs(prefs)
 		}, e
 	})
@@ -151,13 +194,7 @@ func (d *Desktop) generateCommitMessage() {
 	if d.busy || d.selected == "" || d.stagedCount == 0 {
 		return
 	}
-	id, config, key := d.selected, d.prefs.AI, d.aiForm.savedKey
-	if key == "" {
-		form := aiSettingsForm{config: config}
-		if env := form.environment(); env != "" {
-			key = strings.TrimSpace(os.Getenv(env))
-		}
-	}
+	id, config := d.selected, d.prefs.AI
 	prompt := d.prefs.AIPrompt
 	d.aiGenerating = true
 	d.task(func(ctx context.Context) (func(), error) {
@@ -167,7 +204,11 @@ func (d *Desktop) generateCommitMessage() {
 		err := d.Client.Call(ctx, "git.diff.staged-for-message", ipc.Params{RepoID: id}, &staged)
 		var result string
 		if err == nil {
-			result, err = commitai.Generate(ctx, config, key, staged, prompt)
+			var key string
+			key, err = aiRequestKey(config, "")
+			if err == nil {
+				result, err = commitai.Generate(ctx, config, key, staged, prompt)
+			}
 		}
 		return func() {
 			d.aiGenerating = false
@@ -182,13 +223,6 @@ func (d *Desktop) generateCommitMessage() {
 			d.saveDraft()
 		}, nil
 	})
-}
-
-func (d *Desktop) aiActionLabel() string {
-	if d.aiGenerating {
-		return d.copy("生成中…", "Generating…")
-	}
-	return "AI"
 }
 
 func (d *Desktop) promptSettings(c *native.Context) {
@@ -226,14 +260,15 @@ func (d *Desktop) saveCommitPrompt(prompt string) {
 func (d *Desktop) fetchAIModels() {
 	f := &d.aiForm
 	config, key := f.config, strings.TrimSpace(f.key)
-	if key == "" {
-		key = strings.TrimSpace(os.Getenv(f.environment()))
-	}
 	f.models, f.modelError = nil, ""
 	d.task(func(ctx context.Context) (func(), error) {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
-		models, err := commitai.ListModels(ctx, config, key)
+		credential, err := aiRequestKey(config, key)
+		var models []string
+		if err == nil {
+			models, err = commitai.ListModels(ctx, config, credential)
+		}
 		return func() {
 			if f.config.Provider != config.Provider || f.config.BaseURL != config.BaseURL {
 				return

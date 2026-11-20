@@ -11,6 +11,10 @@ LICENSES = {
     "github.com/ebitengine/purego": "Apache-2.0",
     "github.com/fsnotify/fsnotify": "BSD-3-Clause",
     "github.com/go-text/typesetting": "Unlicense OR BSD-3-Clause",
+    "github.com/danieljoos/wincred": "MIT",
+    "github.com/go-keyring/keyring": "BSD-3-Clause",
+    "github.com/go-macos/keychain": "BSD-3-Clause",
+    "github.com/go-macos/objc": "BSD-3-Clause",
 }
 
 

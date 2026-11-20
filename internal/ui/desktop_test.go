@@ -82,13 +82,19 @@ func TestCommitAndCloneProgress(t *testing.T) {
 	} {
 		t.Run(operation.action, func(t *testing.T) {
 			d := New(nil, "", operation.action)
+			if operation.action == "commit" {
+				d.selected = "demo"
+			}
 			if operation.action == "clone" {
 				d.cloneURL = "https://github.com/example/demo.git"
 				d.cloneDestination = filepath.Join(t.TempDir(), "demo")
 			}
 			d.busy, d.operation = true, operation.key
 			tester := native.NewTester(d.view, 1160, 740)
-			if !tester.HasText(operation.label) {
+			if operation.action == "commit" && (tester.HasText(operation.label) || !tester.HasText(d.text("commit.submit"))) {
+				t.Fatal("commit progress should leave the workspace and its submit button visible")
+			}
+			if operation.action == "clone" && !tester.HasText(operation.label) {
 				t.Fatal("operation progress is missing")
 			}
 			if operation.action == "clone" {

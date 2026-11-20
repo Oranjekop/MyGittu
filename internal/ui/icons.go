@@ -66,6 +66,10 @@ var icons = func() map[string]*native.SVG {
 
 // IconButton renders an action with an accessible text label.
 func IconButton(c *native.Context, label, icon string, primary bool) native.Element {
+	return activityButton(c, label, icon, primary, false)
+}
+
+func activityButton(c *native.Context, label, icon string, primary, running bool) native.Element {
 	var button native.Element
 	if primary {
 		button = native.PrimaryButton(c, "")
@@ -73,13 +77,20 @@ func IconButton(c *native.Context, label, icon string, primary bool) native.Elem
 		button = native.Button(c, "")
 	}
 	return button.Label(label).Height(controlHeight(c)).Padding(0, 8).Gap(6).AlignItems(native.Center).Children(func() {
-		if vector := icons[strings.TrimPrefix(icon, "remote.")]; vector != nil {
+		if running {
+			activityIcon(c)
+		} else if vector := icons[strings.TrimPrefix(icon, "remote.")]; vector != nil {
 			native.Icon(c, vector).Width(14).Height(14)
 		}
 		if label != "" {
 			native.Text(c, label).SingleLine()
 		}
 	})
+}
+
+func activityIcon(c *native.Context) {
+	icon := native.Icon(c, icons["refresh"]).Size(14, 14)
+	icon.Rotate(icon.Loop("operation-progress", 900*time.Millisecond, native.Linear) * 360)
 }
 
 func controlHeight(c *native.Context) float32 { return max(27, c.Theme().FontSize+14.5) }

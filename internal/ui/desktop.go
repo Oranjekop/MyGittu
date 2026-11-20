@@ -331,7 +331,7 @@ func (d *Desktop) operationTask(operation string, work func(context.Context) (fu
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		if operation != "" {
+		if operation != "" && operation != "commit.running" {
 			go d.animateOperation(ctx, operation)
 		}
 		apply, e := work(ctx)
@@ -615,7 +615,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			}
 			native.TextArea(c, &d.message).Placeholder(d.text("commit.message")).FillWidth().MinHeight(46).Height(46).Disabled(d.busy)
 			native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
-				if IconButton(c, "AI", "sparkle", false).Label(d.copy("AI 生成提交信息", "Generate commit message with AI")).Tooltip(d.copy("AI 生成提交信息", "Generate commit message with AI")).Disabled(d.busy || !canCommit).Clicked() {
+				if activityButton(c, "AI", "sparkle", false, d.aiGenerating).Label(d.copy("AI 生成提交信息", "Generate commit message with AI")).Tooltip(d.copy("AI 生成提交信息", "Generate commit message with AI")).Disabled(d.busy || !canCommit).Clicked() {
 					d.requestCommitAI()
 				}
 				label := d.text("identity.edit")
@@ -635,7 +635,15 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				if d.stagedCount > 0 {
 					commitLabel = fmt.Sprintf(d.text("commit.submitCount"), d.stagedCount)
 				}
-				commit := native.PrimarySplitButton(c, commitLabel)
+				commit := native.PrimarySplitButton(c, "")
+				commit.Button.Label(commitLabel).Gap(detailSpacing).AlignItems(native.Center).Children(func() {
+					if d.operation == "commit.running" {
+						activityIcon(c)
+					} else {
+						native.Icon(c, icons["commit"]).Size(14, 14)
+					}
+					native.Text(c, commitLabel).SingleLine()
+				})
 				commit.Group.Height(controlHeight(c)).Disabled(d.busy || !canCommit || strings.TrimSpace(d.message) == "")
 				commit.Arrow.Label(d.text("commit.actions")).PopoverMenuButton(func(menu *native.Menu) {
 					if menu.Item(d.text("commit.push")).Chosen() {
@@ -736,12 +744,6 @@ func (d *Desktop) toolbarStatus(c *native.Context) {
 		switch {
 		case d.err != "" && !d.cloneOpen:
 			message, color = d.text("error")+": "+d.err, t.Danger
-		case d.busy && d.operation != "" && d.operation != cloneOperation:
-			action, _, _ := strings.Cut(d.operation, ".")
-			OperationIcon(c, 20, d.operationFrame, action)
-			message = d.text(d.operation)
-		case d.busy && d.aiGenerating:
-			message = d.aiActionLabel()
 		}
 		if message != "" {
 			native.Text(c, message).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(message).TextColor(color)
@@ -818,10 +820,7 @@ func (d *Desktop) windowContent(c *native.Context, t *native.Theme) {
 			if d.selected != "" {
 				for _, op := range []struct{ label, action string }{{"remote.fetch", "fetch"}, {"remote.pull", "pull"}, {"remote.push", "push"}} {
 					label := d.text(op.label)
-					if d.remoteRunning == op.action {
-						label = d.text(op.label + ".running")
-					}
-					if IconButton(c, label, op.label, false).Tooltip(d.text(op.label + ".hint")).Disabled(d.busy).Clicked() {
+					if activityButton(c, label, op.label, false, d.remoteRunning == op.action).Tooltip(d.text(op.label + ".hint")).Disabled(d.busy).Clicked() {
 						d.remoteAction(op.action)
 					}
 				}

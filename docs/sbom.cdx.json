@@ -29,6 +29,23 @@
     },
     {
       "type": "library",
+      "name": "github.com/danieljoos/wincred",
+      "version": "v1.2.3",
+      "purl": "pkg:golang/github.com/danieljoos/wincred@v1.2.3",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:v7dZC2x32Ut3nEfRH+vhoZGvN72+dQ/snVXo/vMFLdQ="
+        }
+      ]
+    },
+    {
+      "type": "library",
       "name": "github.com/ebitengine/purego",
       "version": "v0.11.1",
       "purl": "pkg:golang/github.com/ebitengine/purego@v0.11.1",
@@ -75,6 +92,57 @@
         {
           "name": "go:moduleSum",
           "value": "h1:b0/UzAf9yR5rhf3RPm9gf3ehBPpf0oZKIjtpKrx59Ho="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "github.com/go-keyring/keyring",
+      "version": "v0.4.0",
+      "purl": "pkg:golang/github.com/go-keyring/keyring@v0.4.0",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:4fTb1f/73XXMO1xBFf53za1dlHBRPUHQQpVXK1tel7w="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "github.com/go-macos/keychain",
+      "version": "v0.1.0",
+      "purl": "pkg:golang/github.com/go-macos/keychain@v0.1.0",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:QkKT97eeJ5m/FloDcoi4UmxIvZIosIwinRjexs3icqI="
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "github.com/go-macos/objc",
+      "version": "v0.1.1",
+      "purl": "pkg:golang/github.com/go-macos/objc@v0.1.1",
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause"
+        }
+      ],
+      "properties": [
+        {
+          "name": "go:moduleSum",
+          "value": "h1:fcuSplZNWzpZjimxMN3HkDHW7XnHFaGaEDIwrTbhdxs="
         }
       ]
     },

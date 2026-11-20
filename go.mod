@@ -7,12 +7,18 @@ require (
 	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.10.0
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/go-keyring/keyring v0.4.0
 	golang.org/x/image v0.46.0
 	golang.org/x/sys v0.49.0
 )
 
 require (
+	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/go-freedesktop/secretservice v0.1.0 // indirect
+	github.com/go-macos/keychain v0.1.0 // indirect
+	github.com/go-macos/objc v0.1.1 // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
