@@ -25,6 +25,7 @@ import (
 type Desktop struct {
 	Client                             *ipc.Client
 	win                                *mygo.Window
+	tray                               *mygo.Tray
 	action, initialDiffPath, result    string
 	repos                              []repository.Info
 	selected                           string
@@ -179,20 +180,14 @@ func (d *Desktop) Run() error {
 		d.win = NewRememberedWindow(options)
 		canHideOnClose := d.action == "" && supportsHideOnClose()
 		quitting := false
-		var tray *mygo.Tray
-		removeTray := func() {
-			if tray != nil {
-				item := tray
-				tray = nil
-				item.Destroy()
-			}
-		}
 		if canHideOnClose {
 			offQuit := mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 			offCanceled := mygo.App.OnQuitCanceled(func() { quitting = false })
-			d.win.OnShow(removeTray)
+			if runtime.GOOS == "darwin" {
+				d.win.OnShow(d.removeTray)
+			}
 			d.win.OnClosed(func() {
-				removeTray()
+				d.removeTray()
 				offQuit()
 				offCanceled()
 			})
@@ -201,22 +196,9 @@ func (d *Desktop) Run() error {
 			if canHideOnClose && d.prefs.MinimizeOnClose && !quitting && !d.projectAllowClose {
 				e.PreventDefault()
 				d.saveDraft()
-				if tray == nil {
-					item, err := mygo.NewTray(mygo.TrayOptions{Icon: brand.SmallPNG, ToolTip: "MyGittu"})
-					if err != nil {
-						label := d.copy("无法创建系统托盘图标：%v", "Unable to create the system tray icon: %v")
-						if runtime.GOOS == "darwin" {
-							label = d.copy("无法创建菜单栏图标：%v", "Unable to create the menu bar icon: %v")
-						}
-						d.err = fmt.Sprintf(label, err)
-						d.win.Invalidate()
-						return
-					}
-					tray = item
-					item.OnClick(func() {
-						d.win.Show()
-						d.win.Focus()
-					})
+				if !d.ensureTray() {
+					d.win.Invalidate()
+					return
 				}
 				d.win.Hide()
 				return
@@ -297,6 +279,13 @@ func (d *Desktop) applyPrefs(v settings.Values) {
 	previousAI := d.prefs.AI
 	previousLanguage := d.prefs.Language
 	d.prefs = v
+	if runtime.GOOS == "windows" && d.action == "" && d.win != nil && !d.win.IsDestroyed() {
+		if v.MinimizeOnClose {
+			d.ensureTray()
+		} else {
+			d.removeTray()
+		}
+	}
 	if d.action != "" && previousLanguage != v.Language && d.win != nil && !d.win.IsDestroyed() {
 		d.win.SetTitle(d.actionTitle())
 	}

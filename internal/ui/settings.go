@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/egoist/mygo"
 	native "github.com/egoist/mygo/ui"
 	"mygittu/internal/buildinfo"
 	"mygittu/internal/commitai"
@@ -180,10 +179,6 @@ func (d *Desktop) appearanceSettings(c *native.Context) {
 				prefs := d.prefs
 				prefs.MinimizeOnClose = hide
 				d.savePrefs(prefs)
-			}
-			if d.prefs.MinimizeOnClose && d.win != nil && d.action == "" &&
-				IconButton(c, d.copy("退出 MyGittu", "Quit MyGittu"), "close", false).Disabled(d.busy).Clicked() {
-				mygo.App.Quit()
 			}
 		})
 	}
