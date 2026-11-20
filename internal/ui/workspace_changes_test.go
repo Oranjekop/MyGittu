@@ -206,10 +206,15 @@ func TestEmptyChangesHidesGroupsWhilePulling(t *testing.T) {
 	if !tt.HasText("暂无变更") {
 		t.Fatal("expected the empty workspace illustration")
 	}
+	empty, _ := tt.Find("暂无变更")
+	background := tt.Image().RGBAAt(750, 450)
 	d.busy, d.remoteRunning = true, "pull"
 	tt.Frame()
-	if !tt.HasText(d.text("remote.pull")) || tt.HasText("已暂存的更改（0）") || tt.HasText("更改（0）") {
-		t.Fatal("empty groups should stay hidden while pulling")
+	if !tt.HasText(d.text("remote.pull")) || tt.HasText("0 个变更") || tt.HasText("全选") || tt.HasText(d.text("stage.all")) {
+		t.Fatal("empty changes should not expose bulk actions while pulling")
+	}
+	if after, visible := tt.Find("暂无变更"); !visible || after != empty || tt.Image().RGBAAt(750, 450) != background {
+		t.Fatal("pull should keep the underlying workspace visible without a scrim")
 	}
 	saveLayoutPreview(t, tt, "empty-changes-while-pulling.png")
 }

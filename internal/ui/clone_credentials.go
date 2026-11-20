@@ -50,7 +50,7 @@ func (d *Desktop) cloneSettings(c *native.Context) {
 			d.cloneCredentialList(c, f)
 		})
 		native.Box(c).Width(1).FillHeight().Background(c.Theme().Border)
-		native.Scroll(c).PaddingEnd(scrollbarGutter(c)).Grow(1).MinWidth(0).FillHeight().Children(func() {
+		scrollAtPanelEdge(native.Scroll(c)).Grow(1).MinWidth(0).FillHeight().Children(func() {
 			native.Column(c).FillWidth().PaddingEnd(detailSpacing).Gap(controlSpacing).Children(func() {
 				d.cloneCredentialEditor(c, f)
 			})
@@ -88,7 +88,7 @@ func (d *Desktop) cloneCredentialList(c *native.Context, f *cloneCredentials) {
 				kind = "GitHub"
 			}
 			native.Text(c, kind)
-		}).Grow(1).MinHeight(0).FillWidth().Disabled(d.busy)
+		}).Grow(1).MinHeight(0).Disabled(d.busy)
 		if row != before && row >= 0 && row < len(profiles) {
 			f.edit(profiles, profiles[row].ID)
 		}

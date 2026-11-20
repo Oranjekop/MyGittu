@@ -131,5 +131,5 @@ func (d *Desktop) showPatch(c *native.Context, view *patchView) native.Element {
 			text = "   " + text
 		}
 		native.Text(c, strings.ReplaceAll(text, "\t", "    ")).Font("monospace").SingleLine().Ellipsis("…").Selectable().Tooltip(line.text).TextColor(color)
-	}).FillWidth()
+	})
 }

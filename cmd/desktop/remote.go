@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo"
 	native "github.com/egoist/mygo/ui"
 	"mygittu/internal/app"
+	"mygittu/internal/brand"
 	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
@@ -40,6 +41,12 @@ func runRemote(client *ipc.Client, path, action string) error {
 	defer cancel()
 	mygo.App.WhenReady(func() {
 		d.win = ui.NewRememberedWindow(d.windowOptions())
+		if runtime.GOOS != "darwin" {
+			if err := d.win.SetIcon(brand.PNG); err != nil {
+				fmt.Printf("set MyGittu window icon: %v\n", err)
+			}
+			_ = mygo.App.Dock.SetIcon(brand.PNG)
+		}
 		configureRemoteCaption(d.win.NativeHandle())
 		d.win.OnClosed(cancel)
 		animationCtx, stopAnimation := context.WithCancel(ctx)

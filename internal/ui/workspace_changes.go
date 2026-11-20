@@ -55,9 +55,13 @@ func workspaceDiffSide(file git.FileStatus, staged bool) bool {
 	return workspaceChangeInGroup(file, true)
 }
 
+func (d *Desktop) showWorkspaceEmptyState() bool {
+	return d.err == "" && (!d.busy || d.remoteRunning != "" || d.snapshot.Branch != "")
+}
+
 func (d *Desktop) workspaceChangeList(c *native.Context, files []git.FileStatus) {
 	if len(files) == 0 {
-		if !d.busy && d.err == "" {
+		if d.showWorkspaceEmptyState() {
 			emptyState(c, emptyDiffArt, 88, d.copy("暂无变更", "No changes")).Grow(1)
 		} else {
 			native.Box(c).Grow(1)
@@ -76,14 +80,14 @@ func (d *Desktop) workspaceChangeList(c *native.Context, files []git.FileStatus)
 	d.files.Selected = &selected
 	d.files.RoundRows = true
 	d.files.Header = func(index int) bool { return rows[index].file < 0 }
-	native.List(c, &d.files, len(rows), func(index int) {
+	scrollAtPanelEdge(native.List(c, &d.files, len(rows), func(index int) {
 		row := rows[index]
 		if row.file < 0 {
 			d.workspaceChangeHeader(c, row)
 			return
 		}
 		d.workspaceChangeItem(c, files[row.file], row.staged, row.file == d.row && row.staged == d.staged)
-	}).FillWidth().Grow(1).MinHeight(0).MarginEnd(-6).PaddingEnd(scrollbarGutter(c)).Clip().Disabled(d.busy)
+	})).Grow(1).MinHeight(0).Clip().Disabled(d.busy)
 	if !d.busy && selected != before && selected >= 0 && selected < len(rows) {
 		row := rows[selected]
 		if row.file >= 0 {

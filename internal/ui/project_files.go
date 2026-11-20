@@ -106,7 +106,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			d.projectFileList.Selected = &d.projectFileRow
 			d.projectFileList.RoundRows = true
 			previous := d.projectFileRow
-			list := native.List(c, &d.projectFileList, len(d.projectTree), func(row int) {
+			list := scrollAtPanelEdge(native.List(c, &d.projectFileList, len(d.projectTree), func(row int) {
 				entry := d.projectTree[row]
 				name := path.Base(entry.path)
 				native.Row(c).FillWidth().MinWidth(0).Height(controlHeight(c)).Gap(detailSpacing).AlignItems(native.Center).
@@ -127,7 +127,7 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 						TextColor(fileIconColor(icon, t.Dark != (row == d.projectFileRow)))
 					native.Text(c, name).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
-			}).FillWidth().MinHeight(0).PaddingEnd(scrollbarGutter(c)).Clip().Disabled(d.busy)
+			})).MinHeight(0).Clip().Disabled(d.busy)
 			message := d.text("files.empty")
 			if len(d.projectFiles) > 0 {
 				message = d.copy("没有匹配的文件", "No matching files")

@@ -178,6 +178,11 @@ func TestWorkspaceCloneDialogAt150Percent(t *testing.T) {
 	if !d.cloneOpen || d.page != 1 || !tt.HasText(d.text("clone.title")) || !tt.HasText("配置克隆凭据") {
 		t.Fatal("clone form did not open over the current page")
 	}
+	closeButton, closeOK := tt.Find(d.text("close"))
+	runButton, runOK := tt.Find("配置克隆凭据")
+	if !closeOK || !runOK || absLayout(closeButton.X+closeButton.W-runButton.X-runButton.W) > 0.5 {
+		t.Fatalf("clone form and dialog header end at different edges: %v, %v", closeButton, runButton)
+	}
 	saveLayoutPreview(t, tt, "workspace-clone-dialog.png")
 	if err := tt.Click("配置克隆凭据"); err != nil {
 		t.Fatal(err)
@@ -346,6 +351,15 @@ func TestBranchListAtNarrow150Percent(t *testing.T) {
 	if d.tools.branchSelected != "feature/workspace" {
 		t.Fatal("branch row did not become selected")
 	}
+	compare, compareOK := tt.Find(d.text("compare.useSelected"))
+	switchButton, switchOK := tt.Find(d.text("branch.switch"))
+	merge, mergeOK := tt.Find(d.text("branch.merge"))
+	remove, removeOK := tt.Find(d.text("branch.delete"))
+	if !compareOK || !switchOK || !mergeOK || !removeOK ||
+		compare.X != merge.X || switchButton.X != remove.X ||
+		compare.Y != switchButton.Y || merge.Y != remove.Y || compare.W != remove.W {
+		t.Fatalf("branch buttons do not form an aligned grid: %v %v %v %v", compare, switchButton, merge, remove)
+	}
 	d.tools.compared = true
 	d.tools.comparison = app.BranchComparison{Commits: []app.BranchComparisonCommit{
 		{Side: "<", Commit: app.Commit{Subject: "修订主分支说明"}},
@@ -391,7 +405,25 @@ func TestWorkspaceRepositoryDropdown(t *testing.T) {
 	if !d.repositoriesOpen {
 		t.Fatal("repository search did not open from the dropdown")
 	}
+	tt.SetScale(1.5)
+	remove, removeOK := tt.Find(d.text("repo.forget"))
+	open, openOK := tt.Find(d.text("repo.open") + "…")
+	if !removeOK || !openOK || absLayout(remove.X+remove.W-open.X-open.W) > 0.5 {
+		t.Fatalf("recent repository remove button is inset from the dialog controls: %v, %v", remove, open)
+	}
+	saveLayoutPreview(t, tt, "recent-repositories-150.png")
+	for i := range 12 {
+		d.repos = append(d.repos, repository.Info{ID: fmt.Sprint(i), Root: fmt.Sprintf("work/overflow-%d", i), LastOpened: 1})
+	}
+	tt.Frame()
+	tt.Scroll(500, 300, 0, 2000)
+	tt.Frame()
+	if !tt.HasText("overflow-11") {
+		t.Fatal("the overflowing recent repository list cannot scroll to the last row")
+	}
 }
+
+func absLayout(value float32) float32 { return max(value, -value) }
 
 func saveLayoutPreview(t *testing.T, tt *native.Tester, name string) {
 	t.Helper()
@@ -809,6 +841,15 @@ func TestShellActionWindowsAt150Percent(t *testing.T) {
 			}
 			if _, ok := tt.Find(d.text("nav.branches")); ok {
 				t.Fatal("standalone action displayed the workspace navigation")
+			}
+			if tc.action == "clone" {
+				for _, width := range []int{int(options.MinWidth), 1000} {
+					tt.SetSize(width, int(options.Height))
+					button, ok := tt.Find(tc.control)
+					if !ok || absLayout(2*button.X+button.W-float32(width)) > 0.5 {
+						t.Fatalf("standalone clone form is off-center at width %d: %v", width, button)
+					}
+				}
 			}
 			if os.Getenv("MYGITTU_LAYOUT_PREVIEW") != "" {
 				tt.SetSize(int(options.Width), int(options.Height))

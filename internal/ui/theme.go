@@ -42,11 +42,15 @@ func ApplyTheme(c *native.Context, fontSize float32) *native.Theme {
 
 func roundedTable(c *native.Context, state *native.ListState, columns []native.TableColumn, rows int, cell func(row, column int)) native.Element {
 	state.RoundRows = true
-	return native.Table(c, state, columns, rows, cell).PaddingEnd(scrollbarGutter(c))
+	return scrollAtPanelEdge(native.Table(c, state, columns, rows, cell))
 }
 
-func scrollbarGutter(c *native.Context) float32 {
-	return (native.ScrollbarStyle{}).Resolve(c.Theme()).TrackWidth + 2
+// Put the track in the surrounding panel padding, keeping the content aligned
+// with its siblings whether it overflows or fits. Use layout stretch or grow
+// so the negative margin can extend the viewport into the panel padding.
+func scrollAtPanelEdge(scroll native.Element) native.Element {
+	return scroll.MarginEnd(-panelSpacing).PaddingEnd(panelSpacing).
+		ScrollbarStyle(native.ScrollbarStyle{TrackWidth: panelSpacing})
 }
 
 type fileTabBarState struct {

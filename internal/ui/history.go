@@ -75,7 +75,7 @@ func (d *Desktop) setHistoryPatch(patch string) {
 
 func (d *Desktop) showCommitSummary(c *native.Context, commit app.Commit) {
 	t := c.Theme()
-	native.Scroll(c).PaddingEnd(scrollbarGutter(c)).Grow(1).MinHeight(100).FillWidth().Background(t.Background).Radius(8).Children(func() {
+	native.Scroll(c).ScrollbarStyle(native.ScrollbarStyle{TrackWidth: panelSpacing}).Grow(1).MinHeight(100).FillWidth().Background(t.Background).Radius(8).Children(func() {
 		native.Column(c).FillWidth().Padding(panelSpacing).Gap(controlSpacing).Children(func() {
 			native.Text(c, commit.Subject).Bold().FillWidth()
 			native.Text(c, commit.Author+" · "+displayDateTime(commit.Date)).TextColor(t.TextMuted)
@@ -192,7 +192,7 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		} else {
 			native.Text(c, value)
 		}
-	}).FillWidth().Disabled(d.busy)
+	}).Disabled(d.busy)
 	noCommits := len(d.logs) == 0 && !d.busy && !d.historyLoading && d.historyLoadError == "" && d.err == ""
 	tableOrEmptyState(c, table, noCommits, emptyPreviewArt, d.text("history.empty"))
 	if !noCommits {

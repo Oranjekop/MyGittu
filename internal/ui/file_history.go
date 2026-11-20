@@ -73,7 +73,7 @@ func (d *Desktop) showFileHistory(c *native.Context) {
 					text = displayDateTime(text)
 				}
 				native.Text(c, text).SingleLine().Ellipsis("…").Tooltip(text)
-			}).Height(min(150, height*.23, 28*float32(len(w.fileCommits)+1))).FillWidth().Disabled(d.busy)
+			}).Height(min(150, height*.23, 28*float32(len(w.fileCommits)+1))).Disabled(d.busy)
 			if w.fileRow < 0 || w.fileRow >= len(w.fileCommits) {
 				return
 			}
@@ -150,5 +150,5 @@ func (d *Desktop) showFileBlame(c *native.Context, height float32) {
 		} else {
 			native.Text(c, []string{strconv.Itoa(line.Number), line.Author}[col]).SingleLine().Tooltip(line.Hash)
 		}
-	}).Height(height).FillWidth()
+	}).Height(height)
 }

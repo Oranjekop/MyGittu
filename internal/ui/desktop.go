@@ -576,7 +576,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	canCommit := d.stagedCount > 0 && !slices.ContainsFunc(files, func(file git.FileStatus) bool { return file.State == git.Conflicted })
 	filesPane := func() {
 		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
-			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Hidden(len(files) == 0 && !d.busy && d.err == "").Children(func() {
+			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Hidden(len(files) == 0).Children(func() {
 				native.Textf(c, d.text("changes"), len(files)).Grow(1)
 				if native.Button(c, d.copy("全选", "Select all")).Disabled(d.busy || len(files) == 0).Clicked() {
 					d.tools.batch = make(map[string]bool, len(files))
@@ -703,7 +703,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			} else if d.comparison != nil {
 				d.showCodeDiff(c, d.comparison, available-fileWidth, true)
 			} else if d.detail == "" || d.detail == d.text("diff.empty") {
-				if !d.busy && d.err == "" {
+				if d.showWorkspaceEmptyState() {
 					emptyState(c, emptyDiffArt, 128, d.text("diff.empty")).Grow(1)
 				}
 			} else {

@@ -54,7 +54,7 @@ func (d *Desktop) cloneView(c *native.Context) {
 		d.cloneProgress(c)
 		return
 	}
-	native.Column(c).FillWidth().MaxWidth(760).Padding(panelSpacing).Gap(panelSpacing).
+	native.Column(c).FillWidth().MaxWidth(760).AlignSelf(native.Center).Padding(panelSpacing).Gap(panelSpacing).
 		Background(c.Theme().Background).Radius(8).Children(func() { d.cloneForm(c) })
 }
 
@@ -77,7 +77,7 @@ func (d *Desktop) cloneDialog(c *native.Context) {
 				native.Column(c).Height(220).FillWidth().Children(func() { d.cloneProgress(c) })
 				return
 			}
-			native.Scroll(c).PaddingEnd(scrollbarGutter(c)).FillWidth().MaxHeight(height - 130).Children(func() {
+			scrollAtPanelEdge(native.Scroll(c)).MaxHeight(height - 130).Children(func() {
 				native.Column(c).FillWidth().Gap(panelSpacing).Children(func() {
 					if d.err != "" {
 						native.Text(c, d.err).FillWidth().TextColor(c.Theme().Danger)

@@ -152,7 +152,7 @@ func (d *Desktop) remoteManager(c *native.Context, w *repositoryTools) {
 			} else {
 				native.Text(c, item.URL).SingleLine().Ellipsis("…").Tooltip(item.URL)
 			}
-		}).Height(130).FillWidth().Disabled(d.busy)
+		}).Height(130).Disabled(d.busy)
 		if len(w.remotes) == 0 && !d.busy && w.err == "" {
 			table.Hidden(true)
 			emptyState(c, emptyPreviewArt, 64, d.copy("暂无远程仓库", "No remotes"))
@@ -231,7 +231,7 @@ func (d *Desktop) worktreeManager(c *native.Context, w *repositoryTools) {
 			} else {
 				native.Text(c, item.Path).SingleLine().Ellipsis("…").Tooltip(item.Path)
 			}
-		}).Height(160).FillWidth().Disabled(d.busy)
+		}).Height(160).Disabled(d.busy)
 		if len(w.trees) == 0 && !d.busy && w.err == "" {
 			table.Hidden(true)
 			emptyState(c, emptyPreviewArt, 64, d.copy("暂无工作树", "No worktrees"))

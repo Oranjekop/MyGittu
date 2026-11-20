@@ -20,7 +20,7 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 			table := roundedTable(c, &d.stashList, []native.TableColumn{{Title: d.text("stash.title")}}, len(d.references.Stashes), func(row, _ int) {
 				_, label, _ := strings.Cut(d.references.Stashes[row], "\t")
 				native.Text(c, label)
-			}).FillWidth().Disabled(d.busy)
+			}).Disabled(d.busy)
 			tableOrEmptyState(c, table, len(d.references.Stashes) == 0 && !d.busy && d.err == "", emptyPreviewArt, d.copy("暂无储藏", "No stashes"))
 			native.TextInput(c, &d.stashMessage).Placeholder(d.text("stash.message")).FillWidth().Disabled(d.busy)
 			native.Row(c).Gap(controlSpacing).Children(func() {
@@ -56,7 +56,7 @@ func (d *Desktop) showReferences(c *native.Context, t *native.Theme) {
 				} else {
 					native.Text(c, "—")
 				}
-			}).FillWidth().Disabled(d.busy)
+			}).Disabled(d.busy)
 			tableOrEmptyState(c, table, len(tags) == 0 && !d.busy && d.err == "", emptyPreviewArt, d.copy("暂无标签", "No tags"))
 			native.TextInput(c, &d.tagName).Placeholder(d.text("tag.name")).FillWidth().Disabled(d.busy)
 			native.Row(c).Gap(controlSpacing).Children(func() {

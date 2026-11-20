@@ -76,7 +76,7 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 						d.cloneSettings(c)
 						return
 					}
-					native.Scroll(c.Key(d.settingsTab)).PaddingEnd(scrollbarGutter(c)).Grow(1).MinHeight(0).FillWidth().Children(func() {
+					scrollAtPanelEdge(native.Scroll(c.Key(d.settingsTab))).Grow(1).MinHeight(0).Children(func() {
 						native.Column(c).FillWidth().Gap(12).Children(func() {
 							switch d.settingsTab {
 							case 0:

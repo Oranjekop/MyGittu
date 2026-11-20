@@ -172,8 +172,18 @@ func (d *Desktop) showRecovery(c *native.Context) {
 
 func (d *Desktop) showBranches(c *native.Context) {
 	w := &d.tools
+	const minimumPaneWidth = 294
+	const buttonChrome = 2*8 + 6 + 14 // Horizontal padding, icon gap, and icon.
+	buttonWidth := float32(minimumPaneWidth-2*panelSpacing-controlSpacing) / 2
+	for _, key := range []string{"compare.useSelected", "branch.switch", "branch.merge", "branch.delete"} {
+		width, _ := c.MeasureText(0, native.Span{Text: d.text(key)})
+		buttonWidth = max(buttonWidth, width+buttonChrome)
+	}
+	paneWidth := 2*buttonWidth + 2*panelSpacing + controlSpacing
 	native.Row(c).Grow(1).FillWidth().Gap(panelSpacing).Children(func() {
-		native.Column(c).Width(294).FillHeight().Padding(panelSpacing).Gap(controlSpacing).Radius(8).Background(c.Theme().Background).Children(func() {
+		native.Column(c).Width(paneWidth).FillHeight().Padding(panelSpacing).Gap(controlSpacing).Radius(8).Background(c.Theme().Background).Children(func() {
+			native.Text(c, d.text("nav.branches")).Bold().TextColor(c.Theme().TextMuted).PaddingStart(controlSpacing)
+			native.Divider(c)
 			row := -1
 			var selected app.BranchEntry
 			for i, branch := range w.branches {
@@ -184,10 +194,11 @@ func (d *Desktop) showBranches(c *native.Context) {
 			}
 			previous := row
 			w.branchList.Selected = &row
-			table := roundedTable(c, &w.branchList, []native.TableColumn{{Title: d.text("nav.branches")}}, len(w.branches), func(i, _ int) {
+			w.branchList.RoundRows = true
+			list := scrollAtPanelEdge(native.List(c, &w.branchList, len(w.branches), func(i int) {
 				branch := w.branches[i]
 				name := strings.TrimPrefix(branch.Name, "refs/remotes/")
-				native.Column(c).Gap(detailSpacing).Children(func() {
+				native.Column(c).FillWidth().Padding(detailSpacing, controlSpacing).Gap(detailSpacing).Children(func() {
 					native.Text(c, name).Bold().Ellipsis("…").Tooltip(branch.Name)
 					if branch.Current {
 						native.Text(c, d.text("branch.current")).FontSize(11)
@@ -196,14 +207,19 @@ func (d *Desktop) showBranches(c *native.Context) {
 						native.Text(c, "↗ "+branch.Upstream).FontSize(11).Ellipsis("…")
 					}
 				})
-			}).FillWidth().Disabled(d.busy)
-			tableOrEmptyState(c, table, len(w.branches) == 0 && !d.busy && d.err == "", emptyPreviewArt, d.copy("暂无分支", "No branches"))
+			})).MinHeight(0).Clip().Disabled(d.busy)
+			if len(w.branches) == 0 && !d.busy && d.err == "" {
+				list.Height(0)
+				emptyState(c, emptyPreviewArt, 88, d.copy("暂无分支", "No branches")).Grow(1)
+			} else {
+				list.Grow(1)
+			}
 			if row != previous && row >= 0 && row < len(w.branches) {
 				selected = w.branches[row]
 				w.branchSelected = selected.Name
 			}
-			native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
-				if IconButton(c, d.text("compare.useSelected"), "diff", false).Disabled(d.busy || selected.Name == "").Clicked() {
+			native.Row(c).FillWidth().Gap(controlSpacing).Children(func() {
+				if IconButton(c, d.text("compare.useSelected"), "diff", false).Width(buttonWidth).Center().Disabled(d.busy || selected.Name == "").Clicked() {
 					w.right, w.compared = selected.Name, false
 					for _, branch := range w.branches {
 						if branch.Current {
@@ -212,11 +228,11 @@ func (d *Desktop) showBranches(c *native.Context) {
 						}
 					}
 				}
-				for _, op := range []struct{ label, action string }{{"branch.switch", "switch"}, {"branch.merge", "merge"}, {"branch.delete", "delete"}} {
-					if IconButton(c, d.text(op.label), recoveryIcon(op.action), false).Disabled(d.busy || selected.Name == "" || selected.Current || selected.Remote).Clicked() {
-						d.mutate("git.branch", ipc.Params{Action: op.action, Name: selected.Name})
-					}
-				}
+				d.branchAction(c, selected, buttonWidth, "switch")
+			})
+			native.Row(c).FillWidth().Gap(controlSpacing).Children(func() {
+				d.branchAction(c, selected, buttonWidth, "merge")
+				d.branchAction(c, selected, buttonWidth, "delete")
 			})
 			native.Row(c).Gap(controlSpacing).Children(func() {
 				native.TextInput(c, &d.branch).Placeholder(d.text("branch.name")).Grow(1).MinWidth(0).Disabled(d.busy)
@@ -229,6 +245,13 @@ func (d *Desktop) showBranches(c *native.Context) {
 			d.showBranchComparison(c)
 		})
 	})
+}
+
+func (d *Desktop) branchAction(c *native.Context, branch app.BranchEntry, width float32, action string) {
+	if IconButton(c, d.text("branch."+action), recoveryIcon(action), false).Width(width).Center().
+		Disabled(d.busy || branch.Name == "" || branch.Current || branch.Remote).Clicked() {
+		d.mutate("git.branch", ipc.Params{Action: action, Name: branch.Name})
+	}
 }
 
 func (d *Desktop) showBranchComparison(c *native.Context) {
@@ -282,7 +305,7 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 					tooltip = value
 				}
 				native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(tooltip)
-			}).Grow(1).FillWidth()
+			}).Grow(1)
 		}
 	} else if !d.busy && d.err == "" {
 		emptyState(c, emptyDiffArt, 128, d.copy("选择分支进行对比", "Select branches to compare")).Grow(1)
