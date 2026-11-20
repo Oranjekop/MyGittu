@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"mygittu/internal/app"
+	"mygittu/internal/commitai"
 	git "mygittu/internal/git"
 	"mygittu/internal/repository"
 	"mygittu/internal/status"
@@ -46,6 +47,35 @@ func setup(t *testing.T) (*app.Service, string, string) {
 	}
 	return &app.Service{Runner: r, Registry: reg}, repo.ID, dir
 }
+func TestStagedCommitContextScalesWithDiffSize(t *testing.T) {
+	s, id, dir := setup(t)
+	ctx := context.Background()
+	command(t, dir, "config", "core.autocrlf", "false")
+	write(t, filepath.Join(dir, "z-last.txt"), "later staged change\n")
+	write(t, filepath.Join(dir, "unstaged.txt"), "unstaged content must stay local\n")
+	command(t, dir, "add", "z-last.txt")
+	small, err := s.StagedCommitContext(ctx, id)
+	if err != nil || !strings.HasPrefix(small, "diff --git ") || !strings.Contains(small, "+later staged change") {
+		t.Fatalf("expected complete small diff: %v", err)
+	}
+	for _, scenario := range []struct {
+		size     int
+		excerpts bool
+	}{
+		{128 << 10, true},
+		{9 << 20, false},
+	} {
+		write(t, filepath.Join(dir, "a-large.txt"), strings.Repeat("x", scenario.size)+"\n")
+		command(t, dir, "add", "a-large.txt")
+		got, err := s.StagedCommitContext(ctx, id)
+		if err != nil || len(got) > commitai.MaxPatch || !strings.Contains(got, "2 files changed") ||
+			!strings.Contains(got, "a-large.txt") || !strings.Contains(got, "z-last.txt") ||
+			strings.Contains(got, "unstaged") || strings.Contains(got, "+later staged change") != scenario.excerpts {
+			t.Fatalf("unexpected context for %d-byte change: %d bytes, error %v", scenario.size, len(got), err)
+		}
+	}
+}
+
 func TestConflictStatus(t *testing.T) {
 	s, id, dir := setup(t)
 	ctx := context.Background()

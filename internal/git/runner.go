@@ -3,6 +3,7 @@ package git
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,6 +21,8 @@ type Runner struct {
 	Timeout time.Duration
 }
 
+var ErrOutputLimit = errors.New("Git output exceeds capture limit")
+
 func NewRunner(binary string) (*Runner, error) {
 	if binary == "" {
 		binary = "git"
@@ -34,16 +37,18 @@ func NewRunner(binary string) (*Runner, error) {
 }
 
 type limitedBuffer struct {
-	bytes.Buffer
-	max int
+	buffer   bytes.Buffer
+	max      int
+	exceeded bool
 }
 
 func (b *limitedBuffer) Write(p []byte) (int, error) {
 	n := len(p)
-	if b.Len()+n > b.max {
+	if b.buffer.Len()+n > b.max {
+		b.exceeded = true
 		return 0, fmt.Errorf("Git output exceeds %d bytes", b.max)
 	}
-	return b.Buffer.Write(p)
+	return b.buffer.Write(p)
 }
 func (r *Runner) Run(ctx context.Context, repo string, args ...string) (Result, error) {
 	return r.run(ctx, repo, nil, args...)
@@ -70,7 +75,7 @@ func (r *Runner) runInput(ctx context.Context, repo string, env []string, input 
 	cmd.Stdout = out
 	cmd.Stderr = errout
 	err := cmd.Run()
-	res := Result{out.Bytes(), errout.Bytes(), 0}
+	res := Result{out.buffer.Bytes(), errout.buffer.Bytes(), 0}
 	if err != nil {
 		res.ExitCode = -1
 		if cmd.ProcessState != nil {
@@ -78,6 +83,9 @@ func (r *Runner) runInput(ctx context.Context, repo string, env []string, input 
 		}
 		if ctx.Err() != nil {
 			return res, ctx.Err()
+		}
+		if out.exceeded {
+			return res, fmt.Errorf("%w (%d bytes)", ErrOutputLimit, out.max)
 		}
 		message := Redact(strings.TrimSpace(string(res.Stderr)))
 		if len(message) > 2048 {

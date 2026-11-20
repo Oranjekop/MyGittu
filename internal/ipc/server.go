@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"mygittu/internal/app"
 	"mygittu/internal/buildinfo"
-	"mygittu/internal/commitai"
 	git "mygittu/internal/git"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
@@ -227,15 +226,7 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 			s.Cache.ScheduleRefresh(p.RepoID)
 		}
 	case "git.diff.staged-for-message":
-		var patch string
-		patch, e = s.Service.Diff(ctx, p.RepoID, "", true)
-		if e == nil {
-			if len(patch) > commitai.MaxPatch {
-				e = fmt.Errorf("staged diff exceeds 48 KiB")
-			} else {
-				result = patch
-			}
-		}
+		result, e = s.Service.StagedCommitContext(ctx, p.RepoID)
 	case "git.diff":
 		result, e = s.Service.Diff(ctx, p.RepoID, p.Path, p.Staged)
 	case "git.comparison":
