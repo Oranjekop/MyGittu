@@ -275,7 +275,7 @@ func (d *Desktop) chooseCloneProfile(c *native.Context, host, remote string) set
 		d.cloneProfileMenu(c, &choice, d.copy("Git 默认凭据", "Git default credentials"), available).Grow(1)
 		if IconButton(c, d.copy("配置克隆凭据", "Configure clone credentials"), "settings", false).Disabled(d.busy).Clicked() {
 			d.openSettings()
-			d.settingsTab = 6
+			d.settingsTab = 5
 			f.edit(d.prefs.CloneProfiles, choice)
 			if host == "github.com" && choice == "" {
 				f.draft.Kind, f.draft.Label = "github", "GitHub"

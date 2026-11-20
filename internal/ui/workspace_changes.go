@@ -75,13 +75,14 @@ func (d *Desktop) workspaceChangeList(c *native.Context, files []git.FileStatus)
 	before := selected
 	d.files.Selected = &selected
 	d.files.RoundRows = true
+	d.files.Header = func(index int) bool { return rows[index].file < 0 }
 	native.List(c, &d.files, len(rows), func(index int) {
 		row := rows[index]
 		if row.file < 0 {
 			d.workspaceChangeHeader(c, row)
 			return
 		}
-		d.workspaceChangeItem(c, files[row.file], row.staged)
+		d.workspaceChangeItem(c, files[row.file], row.staged, row.file == d.row && row.staged == d.staged)
 	}).FillWidth().Grow(1).Disabled(d.busy)
 	if !d.busy && selected != before && selected >= 0 && selected < len(rows) {
 		row := rows[selected]
@@ -109,7 +110,13 @@ func (d *Desktop) workspaceChangeHeader(c *native.Context, row workspaceChangeRo
 	})
 }
 
-func (d *Desktop) workspaceChangeItem(c *native.Context, file git.FileStatus, staged bool) {
+func (d *Desktop) workspaceChangeItem(c *native.Context, file git.FileStatus, staged, selected bool) {
+	theme := c.Theme()
+	darkBackground := theme.Dark != selected
+	pathColor := theme.Text.Mix(theme.Background, 0.3)
+	if selected {
+		pathColor = theme.AccentText.Mix(theme.Accent, 0.3)
+	}
 	native.Row(c).FillWidth().MinWidth(0).Height(controlHeight(c)+4).AlignItems(native.Center).
 		Gap(detailSpacing).Padding(0, detailSpacing).Children(func() {
 		checked := d.tools.batch[file.Path]
@@ -123,11 +130,12 @@ func (d *Desktop) workspaceChangeItem(c *native.Context, file git.FileStatus, st
 			delete(d.tools.batch, file.Path)
 		}
 		dir, name := filepath.Split(file.Path)
-		native.Icon(c, icons[projectFileIcon(name)]).Size(14, 14)
+		fileIcon := projectFileIcon(name)
+		native.Icon(c, icons[fileIcon]).Size(14, 14).TextColor(fileIconColor(fileIcon, darkBackground))
 		native.Row(c).Grow(1).MinWidth(0).Gap(detailSpacing).AlignItems(native.Center).Tooltip(file.Path).Children(func() {
 			native.Text(c, name).MinWidth(0).SingleLine().Ellipsis("…")
 			if dir != "" {
-				native.Text(c, strings.TrimRight(dir, "/")).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				native.Text(c, strings.TrimRight(dir, "/")).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").TextColor(pathColor)
 			}
 		})
 		state, method, icon, label := file.Worktree, "git.stage", "stage", d.text("stage")
@@ -135,7 +143,7 @@ func (d *Desktop) workspaceChangeItem(c *native.Context, file git.FileStatus, st
 			state, method, icon, label = file.Index, "git.unstage", "unstage", d.text("unstage")
 		}
 		native.Row(c).Shrink(0).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-			native.Text(c, d.text("state."+string(state))).SingleLine()
+			native.Text(c, d.text("state."+string(state))).SingleLine().TextColor(changeStatusColor(state, darkBackground))
 			const actionWidth = 26
 			if file.State == git.Conflicted {
 				native.Box(c).Width(actionWidth)

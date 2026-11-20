@@ -10,6 +10,8 @@ import (
 	"mygittu/internal/settings"
 )
 
+const sourceRepositoryURL = "https://github.com/Oranjekop/MyGittu"
+
 func (d *Desktop) openSettings() {
 	d.settingsOpen = true
 	d.settingsTab = 0
@@ -29,16 +31,19 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 	tabs := []struct{ label, icon string }{
 		{d.copy("外观", "Appearance"), "appearance"},
 		{d.text("identity.title"), "user"},
-		{d.copy("AI 供应商", "AI provider"), "sparkle"},
-		{d.copy("AI 提示词", "AI prompt"), "prompt"},
+		{d.copy("AI 配置", "AI settings"), "sparkle"},
 		{d.text("update.title"), "download"},
 		{d.copy("系统集成", "Integration"), "settings"},
 		{d.copy("克隆凭据", "Clone credentials"), "user"},
 	}
 	native.Modal(c, &d.settingsOpen, func() {
 		native.Column(c).Width(dialogWidth).MaxWidth(dialogWidth).Gap(14).Children(func() {
-			native.Row(c).FillWidth().AlignItems(native.Center).Children(func() {
+			native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 				native.Text(c, d.text("nav.settings")).FontSize(18).Bold().Grow(1)
+				sourceLabel := d.copy("打开开源仓库", "Open source repository")
+				if IconButton(c, "", "external", false).Label(sourceLabel).Tooltip(sourceRepositoryURL).Border(0, t.Border).Clicked() {
+					c.OpenURL(sourceRepositoryURL)
+				}
 				if IconButton(c, "", "close", false).Label(d.text("close")).Tooltip(d.text("close")).Border(0, t.Border).Clicked() {
 					d.settingsOpen = false
 				}
@@ -51,12 +56,10 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 						if IconButton(c, tab.label, tab.icon, d.settingsTab == i).FillWidth().Justify(native.Start).
 							Border(0, t.Border).Clicked() && d.settingsTab != i {
 							d.settingsTab = i
-							if i == 5 && !d.busy {
+							if i == 4 && !d.busy {
 								d.queryIntegration()
 							}
-							if i == 3 && d.aiPromptDraft == "" && d.prefs.AIPrompt == "" {
-								d.resetPromptDraft()
-							}
+
 							if i == 1 && d.Client != nil {
 								d.loadIdentity()
 							}
@@ -68,7 +71,7 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 					if d.err != "" {
 						native.Text(c, d.err).FillWidth().TextColor(t.Danger)
 					}
-					if d.settingsTab == 6 {
+					if d.settingsTab == 5 {
 						d.cloneSettings(c)
 						return
 					}
@@ -81,11 +84,11 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 								d.identitySettings(c)
 							case 2:
 								d.aiSettings(c)
-							case 3:
+
 								d.promptSettings(c)
-							case 4:
+							case 3:
 								d.updateSettings(c)
-							case 5:
+							case 4:
 								d.integrationSettings(c)
 							}
 						})
@@ -204,6 +207,6 @@ func (d *Desktop) changeFontSize(size float32) {
 func (d *Desktop) resetPromptDraft() {
 	d.aiPromptDraft = d.prefs.AIPrompt
 	if d.aiPromptDraft == "" {
-		d.aiPromptDraft = commitai.DefaultPrompt(d.prefs.Language)
+		d.aiPromptDraft = commitai.DefaultPrompt()
 	}
 }

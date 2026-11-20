@@ -19,6 +19,7 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	"mygittu/internal/app"
 	"mygittu/internal/buildinfo"
+	"mygittu/internal/commitai"
 	git "mygittu/internal/git"
 	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
@@ -180,7 +181,7 @@ func TestWorkspaceCloneDialogAt150Percent(t *testing.T) {
 	if err := tt.Click("配置克隆凭据"); err != nil {
 		t.Fatal(err)
 	}
-	if !d.settingsOpen || d.settingsTab != 6 {
+	if !d.settingsOpen || d.settingsTab != 5 {
 		t.Fatal("clone credential settings did not open")
 	}
 	tt.Key(0, native.KeyEscape)
@@ -423,7 +424,7 @@ func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
 		t.Fatal("appearance settings missing")
 	}
 	saveLayoutPreview(t, tt, "settings-appearance-150.png")
-	if err := tt.Click("AI 供应商"); err != nil {
+	if err := tt.Click("AI 配置"); err != nil {
 		t.Fatal(err)
 	}
 	if d.settingsTab != 2 || !tt.HasText("供应商") {
@@ -442,11 +443,8 @@ func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
 		t.Fatal("model retrieval button missing")
 	}
 	saveLayoutPreview(t, tt, "settings-ai-150.png")
-	if err := tt.Click("AI 提示词"); err != nil {
-		t.Fatal(err)
-	}
-	if d.settingsTab != 3 || !tt.HasText("提交信息提示词") || d.aiPromptDraft == "" {
-		t.Fatal("AI prompt tab did not open with its default template")
+	if d.settingsTab != 2 || !tt.HasText("提交信息提示词") || d.aiPromptDraft != commitai.DefaultPrompt() {
+		t.Fatal("AI settings did not show the default prompt")
 	}
 	saveLayoutPreview(t, tt, "settings-ai-prompt-150.png")
 	tt.Key(0, native.KeyEscape)
@@ -465,7 +463,7 @@ func TestSettingsTabsAndCommitAIAt150Percent(t *testing.T) {
 func TestIntegrationSettingsAt150Percent(t *testing.T) {
 	d := New(nil, "", "")
 	d.openSettings()
-	d.settingsTab = 5
+	d.settingsTab = 4
 	d.integrationLoaded = true
 	d.integration = integrationState{Menu: true, Modern: true, Overlays: true}
 	tt := native.NewTester(d.view, 960, 680)
@@ -565,7 +563,7 @@ func TestCloneCredentialProfilesAt150Percent(t *testing.T) {
 	if err := tt.Click("配置克隆凭据"); err != nil {
 		t.Fatal(err)
 	}
-	if d.settingsTab != 6 || d.cloneCredentials.draft.Username != "work-user" || !tt.HasText("在浏览器授权") {
+	if d.settingsTab != 5 || d.cloneCredentials.draft.Username != "work-user" || !tt.HasText("在浏览器授权") {
 		t.Fatal("GitHub authorization settings missing")
 	}
 	saveLayoutPreview(t, tt, "clone-credentials-150.png")
@@ -644,11 +642,39 @@ func TestHistoryPatchCanShowOneChangedFile(t *testing.T) {
 	if err := tt.Click("second.txt"); err != nil {
 		t.Fatal(err)
 	}
-	lines := d.historyFilePatch.lines
-	if len(lines) != 2 || lines[0].old != 1 || lines[0].text != "old second" || lines[1].next != 1 || lines[1].text != "new second" {
+	diff := &d.historyFileDiff
+	if diff.Old == nil || diff.New == nil || strings.TrimSpace(diff.Old.String()) != "old second" || strings.TrimSpace(diff.New.String()) != "new second" {
 		t.Fatal("expected the patch for only the selected file")
 	}
+	if diff.Layout != editor.DiffSplit {
+		t.Fatal("expected side-by-side history diff in a wide window")
+	}
 	saveLayoutPreview(t, tt, "history-file-patch.png")
+	if err := tt.Click("统一"); err != nil {
+		t.Fatal(err)
+	}
+	if diff.Layout != editor.DiffUnified {
+		t.Fatal("expected unified history diff after changing views")
+	}
+}
+
+func TestCloseHistoryDetails(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.page, d.logRow = "demo", 1, 0
+	d.logs = []app.Commit{{Hash: "example", Subject: "Example commit"}}
+	d.historyShown = d.logs[0]
+	summary := "Example commit\n\nDetails body"
+	d.historySummary = &summary
+	tt := native.NewTester(d.view, 960, 680)
+	if !tt.HasText("Details body") {
+		t.Fatal("expected commit details before closing")
+	}
+	if err := tt.Click("关闭提交详情"); err != nil {
+		t.Fatal(err)
+	}
+	if d.logRow != -1 || d.historySummary != nil || tt.HasText("Details body") || !tt.HasText("Example commit") {
+		t.Fatal("closing should clear the selection and hide details while keeping the commit list")
+	}
 }
 
 func TestHunkDialogShowsCodeAndConfirmsDiscard(t *testing.T) {

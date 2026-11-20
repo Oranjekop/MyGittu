@@ -27,7 +27,7 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.projectSearch, d.projectCollapsed = "", nil
 		d.resetProjectFiles()
 		d.hunksOpen = false
-		d.aiConfirm, d.aiError = false, ""
+		d.aiError = ""
 		d.tools = workbench{}
 		d.repositoryTools = repositoryTools{}
 		d.selected = id

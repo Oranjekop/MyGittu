@@ -19,10 +19,7 @@ const (
 	MaxPrompt = 4000
 )
 
-func DefaultPrompt(language string) string {
-	if language == "zh-CN" {
-		return "用简体中文写一条简洁的 Git 提交信息，概括本次改动及其目的。只返回提交信息，不加引号或 Markdown 代码块。"
-	}
+func DefaultPrompt() string {
 	return "Write a concise Git commit message in English that summarizes the change and its purpose. Return only the commit message, without quotes or Markdown fences."
 }
 
@@ -80,7 +77,7 @@ type message struct {
 	Content string `json:"content"`
 }
 
-func Generate(ctx context.Context, config Config, key, language, patch, prompt string) (string, error) {
+func Generate(ctx context.Context, config Config, key, patch, prompt string) (string, error) {
 	endpoint, err := config.Endpoint()
 	if err != nil {
 		return "", err
@@ -93,7 +90,7 @@ func Generate(ctx context.Context, config Config, key, language, patch, prompt s
 	}
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
-		prompt = DefaultPrompt(language)
+		prompt = DefaultPrompt()
 	}
 	if utf8.RuneCountInString(prompt) > MaxPrompt {
 		return "", errors.New("AI prompt exceeds 4000 characters")

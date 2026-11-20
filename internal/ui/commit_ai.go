@@ -144,38 +144,14 @@ func (d *Desktop) requestCommitAI() {
 		d.settingsTab = 2
 		return
 	}
-	d.aiConfirm = true
-}
-
-func (d *Desktop) commitAIDialog(c *native.Context) {
-	if !d.aiConfirm {
-		return
-	}
-	native.Modal(c, &d.aiConfirm, func() {
-		native.Column(c).Width(400).Gap(panelSpacing).Children(func() {
-			native.Text(c, d.copy("生成提交信息", "Generate commit message")).Bold()
-			native.Text(c, fmt.Sprintf(d.copy("将暂存区差异发送至 %s。", "Send the staged diff to %s."), d.prefs.AI.BaseURL)).FillWidth()
-			if strings.TrimSpace(d.message) != "" {
-				native.Text(c, d.copy("生成成功后会替换当前草稿。", "The generated message will replace the current draft.")).FillWidth()
-			}
-			native.Row(c).Gap(controlSpacing).Children(func() {
-				if IconButton(c, d.text("close"), "close", false).Clicked() {
-					d.aiConfirm = false
-				}
-				if IconButton(c, d.copy("发送并生成", "Send and generate"), "sparkle", true).Disabled(d.busy).Clicked() {
-					d.aiConfirm = false
-					d.generateCommitMessage()
-				}
-			})
-		})
-	})
+	d.generateCommitMessage()
 }
 
 func (d *Desktop) generateCommitMessage() {
 	if d.busy || d.selected == "" || d.stagedCount == 0 {
 		return
 	}
-	id, config, lang, key := d.selected, d.prefs.AI, d.prefs.Language, d.aiForm.savedKey
+	id, config, key := d.selected, d.prefs.AI, d.aiForm.savedKey
 	if key == "" {
 		form := aiSettingsForm{config: config}
 		if env := form.environment(); env != "" {
@@ -191,7 +167,7 @@ func (d *Desktop) generateCommitMessage() {
 		err := d.Client.Call(ctx, "git.diff.staged-for-message", ipc.Params{RepoID: id}, &staged)
 		var result string
 		if err == nil {
-			result, err = commitai.Generate(ctx, config, key, lang, staged, prompt)
+			result, err = commitai.Generate(ctx, config, key, staged, prompt)
 		}
 		return func() {
 			d.aiGenerating = false
@@ -218,7 +194,7 @@ func (d *Desktop) aiActionLabel() string {
 func (d *Desktop) promptSettings(c *native.Context) {
 	label := d.copy("提交信息提示词", "Commit message prompt")
 	native.Text(c, label).Bold()
-	defaultPrompt := commitai.DefaultPrompt(d.prefs.Language)
+	defaultPrompt := commitai.DefaultPrompt()
 	native.TextArea(c, &d.aiPromptDraft).Label(label).Placeholder(defaultPrompt).FillWidth().Height(150).Disabled(d.busy)
 	prompt := strings.TrimSpace(d.aiPromptDraft)
 	if prompt == defaultPrompt {

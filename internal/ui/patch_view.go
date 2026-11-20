@@ -19,6 +19,35 @@ type patchView struct {
 	lines []patchLine
 }
 
+func (d *Desktop) showCodeDiff(c *native.Context, diff *editor.DiffState, width float32, fullContext bool) {
+	t := c.Theme()
+	native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
+		native.Segmented(c, &d.diffLayout, d.copy("自动", "Auto"), d.copy("并排", "Side by side"), d.copy("统一", "Unified"))
+		native.Checkbox(c, &d.diffWrap, d.copy("自动换行", "Wrap lines"))
+		if fullContext {
+			native.Checkbox(c, &d.diffExpand, d.copy("展开上下文", "Expand context"))
+		}
+	})
+	diff.Font.Size = t.FontSize - 0.5
+	diff.Layout = editor.DiffSplit
+	if d.diffLayout == 2 || d.diffLayout == 0 && width < 550 {
+		diff.Layout = editor.DiffUnified
+	}
+	diff.Wrap = d.diffWrap
+	diff.ExpandUnchanged = fullContext && d.diffExpand
+	diff.KeepScrollbars = true
+	if diff.Layout == editor.DiffSplit {
+		// MyGo uses the accent for the divider while hovered or dragged.
+		diffTheme := *t
+		diffTheme.Accent = t.Border
+		native.Themed(c, &diffTheme).Grow(1).FillWidth().Children(func() {
+			editor.DiffView(c, diff).Grow(1).FillWidth()
+		})
+	} else {
+		editor.DiffView(c, diff).Grow(1).FillWidth()
+	}
+}
+
 func (d *Desktop) patchRows(files []editor.FilePatch, fileHeaders bool) []patchLine {
 	var rows []patchLine
 	for _, file := range files {

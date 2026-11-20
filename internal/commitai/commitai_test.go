@@ -16,7 +16,7 @@ func TestGenerateUsesStagedPatch(t *testing.T) {
 	var received atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestNumber := received.Add(1)
-		expectedPrompt := "简体中文"
+		expectedPrompt := "in English"
 		if requestNumber == 2 {
 			expectedPrompt = "Use Conventional Commits"
 		}
@@ -33,19 +33,19 @@ func TestGenerateUsesStagedPatch(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		fmt.Fprint(w, `{"choices":[{"message":{"content":"更新文件"}}]}`)
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"Update file"}}]}`)
 	}))
 	defer server.Close()
 	config := Config{Provider: "OpenAI-compatible", BaseURL: server.URL + "/v1", Model: "test-model"}
-	got, err := Generate(context.Background(), config, "test-only", "zh-CN", patch, "")
-	if err != nil || got != "更新文件" {
+	got, err := Generate(context.Background(), config, "test-only", patch, "")
+	if err != nil || got != "Update file" {
 		t.Fatalf("message=%q error=%v", got, err)
 	}
-	if _, err := Generate(context.Background(), config, "test-only", "en", patch, "Use Conventional Commits"); err != nil {
+	if _, err := Generate(context.Background(), config, "test-only", patch, "Use Conventional Commits"); err != nil {
 		t.Fatal(err)
 	}
 	for _, invalid := range []string{"", strings.Repeat("x", MaxPatch+1)} {
-		if _, err := Generate(context.Background(), config, "test-only", "en", invalid, ""); err == nil {
+		if _, err := Generate(context.Background(), config, "test-only", invalid, ""); err == nil {
 			t.Fatal("invalid staged diff accepted")
 		}
 	}

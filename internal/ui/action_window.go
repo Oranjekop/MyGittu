@@ -33,8 +33,10 @@ func (d *Desktop) windowOptions() mygo.WindowOptions {
 		StateKey: "workspace",
 		Content:  native.View(d.view),
 	}
-	if runtime.GOOS == "darwin" && d.action == "" {
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		options.TitleBarStyle = mygo.TitleBarHidden
+	}
+	if runtime.GOOS == "darwin" && d.action == "" {
 		options.TrafficLightPosition = &mygo.Point{X: panelSpacing, Y: panelSpacing + 9}
 	}
 	switch d.action {

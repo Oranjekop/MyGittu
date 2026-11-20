@@ -72,7 +72,7 @@ type Desktop struct {
 	historyFiles                       []editor.FilePatch
 	historyFileRow                     int
 	historyFileList                    native.ListState
-	historyFilePatch                   patchView
+	historyFileDiff                    editor.DiffState
 	changes                            []git.FileStatus
 	stagedCount                        int
 	prefs                              settings.Values
@@ -83,7 +83,7 @@ type Desktop struct {
 	integrationError                   string
 	aiPromptDraft                      string
 	aiForm                             aiSettingsForm
-	aiConfirm, aiGenerating            bool
+	aiGenerating                       bool
 	aiError                            string
 	languageIndex, themeIndex          int
 	identity                           app.Identity
@@ -254,9 +254,6 @@ func (d *Desktop) applyPrefs(v settings.Values) {
 	d.prefs = v
 	if d.action != "" && previousLanguage != v.Language && d.win != nil && !d.win.IsDestroyed() {
 		d.win.SetTitle(d.actionTitle())
-	}
-	if previousLanguage != v.Language && v.AIPrompt == "" {
-		d.resetPromptDraft()
 	}
 	if previousAI != v.AI {
 		d.aiForm.apply(v.AI)
@@ -637,20 +634,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			if d.binary {
 				emptyState(c, emptyDiffArt, 128, d.text("diff.binary")).Grow(1)
 			} else if d.comparison != nil {
-				native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
-					native.Segmented(c, &d.diffLayout, d.copy("自动", "Auto"), d.copy("并排", "Side by side"), d.copy("统一", "Unified"))
-					native.Checkbox(c, &d.diffWrap, d.copy("自动换行", "Wrap lines"))
-					native.Checkbox(c, &d.diffExpand, d.copy("展开上下文", "Expand context"))
-				})
-				d.comparison.Font.Size = t.FontSize - 0.5
-				d.comparison.Layout = editor.DiffSplit
-				if d.diffLayout == 2 || d.diffLayout == 0 && available-fileWidth < 550 {
-					d.comparison.Layout = editor.DiffUnified
-				}
-				d.comparison.Wrap = d.diffWrap
-				d.comparison.ExpandUnchanged = d.diffExpand
-				d.comparison.KeepScrollbars = true
-				editor.DiffView(c, d.comparison).Grow(1).FillWidth()
+				d.showCodeDiff(c, d.comparison, available-fileWidth, true)
 			} else if d.detail == "" || d.detail == d.text("diff.empty") {
 				if !d.busy && d.err == "" {
 					emptyState(c, emptyDiffArt, 128, d.text("diff.empty")).Grow(1)
@@ -724,9 +708,26 @@ func (d *Desktop) view(c *native.Context) {
 			d.captionStyled, d.captionDark = true, t.Dark
 		}
 	}
+	bar := c.TitleBar()
+	if bar.Height > 0 && (runtime.GOOS == "windows" || runtime.GOOS == "darwin" && d.action != "") {
+		native.Column(c).Fill().Background(t.Surface).Children(func() {
+			native.Row(c).FillWidth().Height(bar.Height).Shrink(0).AlignItems(native.Center).
+				Padding(0, bar.Right+panelSpacing, 0, bar.Left+panelSpacing).DragWindow().Children(func() {
+				native.Text(c, d.actionTitle()).MinWidth(0).SingleLine().Ellipsis("…")
+			})
+			native.Box(c).Grow(1).FillWidth().MinHeight(0).Children(func() {
+				d.windowContent(c, t)
+			})
+		})
+	} else {
+		d.windowContent(c, t)
+	}
+	d.dialogs(c)
+}
+
+func (d *Desktop) windowContent(c *native.Context, t *native.Theme) {
 	if d.action != "" {
 		d.actionView(c, t)
-		d.dialogs(c)
 		return
 	}
 	native.Column(c).Fill().Padding(panelSpacing).Gap(panelSpacing).Background(t.Surface).Children(func() {
@@ -829,13 +830,11 @@ func (d *Desktop) view(c *native.Context) {
 			})
 		})
 	})
-	d.dialogs(c)
 }
 
 func (d *Desktop) dialogs(c *native.Context) {
 	d.cloneDialog(c)
 	d.settingsDialog(c)
-	d.commitAIDialog(c)
 	d.showRepositoryTools(c)
 	d.repositoryDialog(c)
 	d.hunkDialog(c)

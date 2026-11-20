@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"path"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 )
 
 const historyBatchSize = 100
+const historyFileListWidth = 225
 
 func (d *Desktop) invalidateHistoryLoad() {
 	d.historyGeneration++
@@ -68,7 +70,7 @@ func (d *Desktop) setHistoryPatch(patch string) {
 	d.historyFiles, d.historyFileRow = files, 0
 	d.historyFileList = native.ListState{}
 	d.historyPatch = patchView{lines: d.patchRows(files, true)}
-	d.historyFilePatch = patchView{}
+	d.historyFileDiff = editor.DiffState{}
 }
 
 func (d *Desktop) showCommitSummary(c *native.Context, commit app.Commit) {
@@ -101,17 +103,40 @@ func (d *Desktop) showHistoryPatch(c *native.Context) {
 				native.Text(c, d.text("diff.all"))
 				return
 			}
-			name := patchFileName(d.historyFiles[row-1])
-			native.Text(c, name).SingleLine().Tooltip(name)
-		}).Width(225).FillHeight()
-		view := &d.historyPatch
-		if row := d.historyFileRow; row > 0 && row <= len(d.historyFiles) {
-			if before != row || len(d.historyFilePatch.lines) == 0 {
-				d.historyFilePatch = patchView{lines: d.patchRows(d.historyFiles[row-1:row], false)}
+			file := d.historyFiles[row-1]
+			name := patchFileName(file)
+			filename := file.NewName
+			if filename == "" {
+				filename = file.OldName
 			}
-			view = &d.historyFilePatch
+			icon := projectFileIcon(path.Base(filename))
+			darkBackground := c.Theme().Dark != (row == d.historyFileRow)
+			native.Row(c).FillWidth().MinWidth(0).Gap(detailSpacing).AlignItems(native.Center).Tooltip(name).Children(func() {
+				native.Icon(c, icons[icon]).Size(14, 14).TextColor(fileIconColor(icon, darkBackground))
+				native.Text(c, name).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			})
+		}).Width(historyFileListWidth).FillHeight()
+		if row := d.historyFileRow; row > 0 && row <= len(d.historyFiles) {
+			file := d.historyFiles[row-1]
+			if len(file.Hunks) > 0 && !file.Binary {
+				if before != row || d.historyFileDiff.Old == nil {
+					d.historyFileDiff = editor.DiffState{}
+					d.historyFileDiff.SetPatch(file)
+				}
+				width, _ := c.Size()
+				native.Column(c).Grow(1).MinWidth(0).FillHeight().Gap(controlSpacing).Children(func() {
+					d.showCodeDiff(c, &d.historyFileDiff, width-historyFileListWidth-sidebarWidth-4*panelSpacing, false)
+				})
+				return
+			}
+			message := d.copy("文件属性或路径变更", "File properties or path changed")
+			if file.Binary {
+				message = d.text("diff.binary")
+			}
+			emptyState(c, emptyDiffArt, 88, message).Grow(1).FillHeight()
+			return
 		}
-		d.showPatch(c, view).Grow(1).FillHeight()
+		d.showPatch(c, &d.historyPatch).Grow(1).FillHeight()
 	})
 }
 
@@ -179,6 +204,9 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 			var detail app.CommitDetails
 			e := d.Client.Call(ctx, "git.commit.details", ipc.Params{RepoID: id, Hash: commit.Hash}, &detail)
 			return func() {
+				if d.selected != id || d.logRow < 0 || d.logRow >= len(d.logs) || d.logs[d.logRow].Hash != commit.Hash {
+					return
+				}
 				d.historyShown = commit
 				d.historySummary = &detail.Summary
 				d.setHistoryPatch(detail.Patch)
@@ -205,12 +233,19 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 		}
 		native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 			native.Segmented(c, &d.historyMode, d.text("commit.details"), d.copy("提交差异", "Commit diff"))
-			native.Text(c, commit.Hash).TextColor(t.TextMuted)
+			native.Text(c, commit.Hash).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(commit.Hash).TextColor(t.TextMuted)
+			label := d.copy("关闭提交详情", "Close commit details")
+			if IconButton(c, "", "close", false).Label(label).Tooltip(label).Clicked() {
+				d.logRow, d.historySummary, d.historyShown = -1, nil, app.Commit{}
+				d.setHistoryPatch("")
+			}
 		})
-		if d.historyMode == 0 {
-			d.showCommitSummary(c, commit)
-		} else {
-			d.showHistoryPatch(c)
+		if d.historySummary != nil {
+			if d.historyMode == 0 {
+				d.showCommitSummary(c, commit)
+			} else {
+				d.showHistoryPatch(c)
+			}
 		}
 	}
 	if d.historyLoadError != "" {

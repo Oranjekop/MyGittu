@@ -95,7 +95,8 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 						native.Box(c).Width(12)
 						icon = projectFileIcon(name)
 					}
-					native.Icon(c, icons[icon]).Width(15).Height(15)
+					native.Icon(c, icons[icon]).Width(15).Height(15).
+						TextColor(fileIconColor(icon, t.Dark != (row == d.projectFileRow)))
 					native.Text(c, name).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
 			}).FillWidth().Disabled(d.busy)

@@ -114,7 +114,8 @@ func (d *Desktop) showProjectTabs(c *native.Context) {
 					item.Background(c.Theme().SurfaceHover)
 				}
 				item.Children(func() {
-					native.Icon(c, icons[projectFileIcon(name)]).Size(14, 14)
+					icon := projectFileIcon(name)
+					native.Icon(c, icons[icon]).Size(14, 14).TextColor(fileIconColor(icon, c.Theme().Dark))
 					native.Text(c, label).MaxWidth(180).SingleLine().Ellipsis("…")
 					close := native.ButtonBase(c).Label(closeLabel).Tooltip(closeLabel).Size(22, 22).Center().Radius(c.Theme().Radius)
 					if close.Hovered() {
