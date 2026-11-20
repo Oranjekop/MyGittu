@@ -177,46 +177,48 @@ func (d *Desktop) Run() error {
 		layoutPath := filePanePath(options.StateKey)
 		d.restoreFilePane(layoutPath)
 		d.win = NewRememberedWindow(options)
-		canMinimizeOnClose := d.action == "" && supportsMinimizeOnClose()
+		canHideOnClose := d.action == "" && supportsHideOnClose()
 		quitting := false
-		var menuBarItem *mygo.Tray
-		d.win.OnClosed(func() {
-			if menuBarItem != nil {
-				menuBarItem.Destroy()
+		var tray *mygo.Tray
+		removeTray := func() {
+			if tray != nil {
+				item := tray
+				tray = nil
+				item.Destroy()
 			}
-		})
-		if canMinimizeOnClose {
+		}
+		if canHideOnClose {
 			offQuit := mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
 			offCanceled := mygo.App.OnQuitCanceled(func() { quitting = false })
+			d.win.OnShow(removeTray)
 			d.win.OnClosed(func() {
+				removeTray()
 				offQuit()
 				offCanceled()
 			})
 		}
 		d.win.OnClose(func(e *mygo.CloseEvent) {
-			if canMinimizeOnClose && d.prefs.MinimizeOnClose && !quitting && !d.projectAllowClose {
+			if canHideOnClose && d.prefs.MinimizeOnClose && !quitting && !d.projectAllowClose {
 				e.PreventDefault()
 				d.saveDraft()
-				if runtime.GOOS == "darwin" {
-					if menuBarItem == nil {
-						item, err := mygo.NewTray(mygo.TrayOptions{Icon: brand.SmallPNG, ToolTip: "MyGittu"})
-						if err != nil {
-							d.err = fmt.Sprintf(d.copy("无法创建菜单栏图标：%v", "Unable to create the menu bar icon: %v"), err)
-							d.win.Invalidate()
-							return
+				if tray == nil {
+					item, err := mygo.NewTray(mygo.TrayOptions{Icon: brand.SmallPNG, ToolTip: "MyGittu"})
+					if err != nil {
+						label := d.copy("无法创建系统托盘图标：%v", "Unable to create the system tray icon: %v")
+						if runtime.GOOS == "darwin" {
+							label = d.copy("无法创建菜单栏图标：%v", "Unable to create the menu bar icon: %v")
 						}
-						menuBarItem = item
-						item.OnClick(func() {
-							d.win.Show()
-							d.win.Focus()
-							item.Destroy()
-							menuBarItem = nil
-						})
+						d.err = fmt.Sprintf(label, err)
+						d.win.Invalidate()
+						return
 					}
-					d.win.Hide()
-				} else {
-					d.win.Minimize()
+					tray = item
+					item.OnClick(func() {
+						d.win.Show()
+						d.win.Focus()
+					})
 				}
+				d.win.Hide()
 				return
 			}
 			if !d.projectAllowClose && d.hasUnsavedProjectFiles() {

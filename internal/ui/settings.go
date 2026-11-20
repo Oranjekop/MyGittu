@@ -163,22 +163,22 @@ func (d *Desktop) identitySettings(c *native.Context) {
 	})
 	native.Text(c, d.text("identity.future")).TextColor(t.TextMuted)
 }
-func supportsMinimizeOnClose() bool {
+func supportsHideOnClose() bool {
 	return runtime.GOOS == "windows" || runtime.GOOS == "darwin"
 }
 
 func (d *Desktop) appearanceSettings(c *native.Context) {
-	if supportsMinimizeOnClose() {
+	if supportsHideOnClose() {
 		native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Wrap().Children(func() {
-			minimize := d.prefs.MinimizeOnClose
-			label := d.copy("关闭主窗口时最小化到任务栏", "Minimize the main window to the taskbar on close")
+			hide := d.prefs.MinimizeOnClose
+			label := d.copy("关闭主窗口时隐藏到系统托盘", "Hide the main window to the system tray on close")
 			if runtime.GOOS == "darwin" {
 				label = d.copy("关闭主窗口时隐藏到菜单栏", "Hide the main window to the menu bar on close")
 			}
-			native.Checkbox(c, &minimize, label).Disabled(d.busy)
-			if minimize != d.prefs.MinimizeOnClose {
+			native.Checkbox(c, &hide, label).Disabled(d.busy)
+			if hide != d.prefs.MinimizeOnClose {
 				prefs := d.prefs
-				prefs.MinimizeOnClose = minimize
+				prefs.MinimizeOnClose = hide
 				d.savePrefs(prefs)
 			}
 			if d.prefs.MinimizeOnClose && d.win != nil && d.action == "" &&
