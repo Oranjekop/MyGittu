@@ -85,8 +85,8 @@ func (d *Desktop) showFileHistory(c *native.Context) {
 			if shown == "" {
 				shown = commit.Hash
 			}
-			native.Text(c, shown).SingleLine().Tooltip(shown).TextColor(c.Theme().TextMuted)
 			if len(w.filePatch.lines) > 0 {
+				native.Text(c, shown).SingleLine().Tooltip(shown).TextColor(c.Theme().TextMuted)
 				d.showPatch(c, &w.filePatch).Height(min(280, height*.43))
 			} else if d.busy && w.fileShown == "" {
 				native.Text(c, d.text("busy")).TextColor(c.Theme().TextMuted)

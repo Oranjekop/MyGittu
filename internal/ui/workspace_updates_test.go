@@ -2,12 +2,37 @@ package ui
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 
 	"mygittu/internal/app"
 	git "mygittu/internal/git"
 	"mygittu/internal/status"
 )
+
+func TestProjectFolderStateSurvivesRepositorySwitchAndRestart(t *testing.T) {
+	d := New(nil, "", "")
+	d.draftDir = filepath.Join(t.TempDir(), "drafts")
+	d.selectRepository("first", "first")
+	d.projectExpanded = map[string]bool{"docs": true, "docs/examples": true}
+	d.saveProjectFolders()
+	d.selectRepository("second", "second")
+	if len(d.projectExpanded) != 0 {
+		t.Fatal("folder state leaked between repositories")
+	}
+	d.selectRepository("first", "first")
+	if !d.projectExpanded["docs"] || !d.projectExpanded["docs/examples"] {
+		t.Fatal("folder state was lost when switching repositories")
+	}
+	delete(d.projectExpanded, "docs")
+	d.saveProjectFolders()
+	reopened := New(nil, "", "")
+	reopened.draftDir = d.draftDir
+	reopened.selectRepository("first", "first")
+	if reopened.projectExpanded["docs"] || !reopened.projectExpanded["docs/examples"] {
+		t.Fatal("restart did not restore the collapsed parent and expanded child")
+	}
+}
 
 func TestUpdatedDiffKeepsView(t *testing.T) {
 	d := New(nil, "", "")

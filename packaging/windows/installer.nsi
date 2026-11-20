@@ -17,7 +17,7 @@ VIAddVersionKey /LANG=2052 "LegalCopyright" "Copyright 2026 MyGittu contributors
 !include "x64.nsh"
 !include "WinVer.nsh"
 !define UninstallKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E775DC6-289F-4CA1-9058-985C56602F39}_is1"
-!define ShellDll "MyGittuShell-${AppVersion}.dll"
+!define ShellDll "MyGittuShell.dll"
 !define MUI_ICON "cmd\desktop\app.ico"
 !define MUI_UNICON "cmd\desktop\app.ico"
 !define MUI_FINISHPAGE_RUN
@@ -108,6 +108,11 @@ Section
     SetErrorLevel 2
     Abort
   ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\${ShellDll}.new"
+    MessageBox MB_ICONSTOP "MyGittu 外壳组件等待替换。请重启 Windows 后再运行安装程序。" /SD IDOK
+    SetErrorLevel 2
+    Abort
+  ${EndIf}
   Call CloseRunning
   StrCpy $ExistingIntegration 0
   StrCpy $1 1
@@ -133,7 +138,6 @@ Section
   ${EndIf}
   File "packaging\windows\restart-explorer.ps1"
   File "packaging\windows\integration.ps1"
-  File "packaging\windows\launch-installed.ps1"
   File "LICENSE"
   File "THIRD_PARTY_NOTICES.md"
   !ifdef ModernShellPackage
@@ -143,7 +147,7 @@ Section
   !ifdef ModernShellCertificate
     File /oname=MyGittu-Windows-Publisher.cer "${ModernShellCertificate}"
   !endif
-  IfErrors installFailed
+  IfErrors extractionFailed
 
   Delete /REBOOTOK "$INSTDIR\${ShellDll}"
   ClearErrors
@@ -182,8 +186,14 @@ Section
     Push "Maintain"
     Call RunAsDesktopUser
   ${EndIf}
+  Delete "$INSTDIR\launch-installed.ps1"
+  nsExec::ExecToLog /TIMEOUT=15000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\integration.ps1" -Action CleanupLegacy'
+  Pop $0
+  DetailPrint "MyGittu legacy shell cleanup: $0"
   Goto done
 
+  extractionFailed:
+    Delete "$INSTDIR\${ShellDll}.new"
   installFailed:
     MessageBox MB_ICONSTOP "无法写入 MyGittu 安装文件。请关闭正在使用这些文件的程序后重试。" /SD IDOK
     SetErrorLevel 2
@@ -199,6 +209,7 @@ Function RunAsDesktopUser
   Pop $0
   DetailPrint "MyGittu desktop shell launch: $0"
 FunctionEnd
+
 
 Function LaunchDesktop
   Push "Launch"
@@ -227,6 +238,7 @@ Section "Uninstall"
   DeleteRegValue HKLM "Software\MyGittu" "ShellPublisherThumbprint"
   DeleteRegKey /ifempty HKLM "Software\MyGittu"
   Delete /REBOOTOK "$INSTDIR\MyGittuShell-*.dll"
+  Delete /REBOOTOK "$INSTDIR\${ShellDll}"
   Delete /REBOOTOK "$INSTDIR\${ShellDll}.new"
   Delete "$INSTDIR\desktop.exe"
   Delete "$INSTDIR\agent.exe"

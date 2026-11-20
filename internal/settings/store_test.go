@@ -19,7 +19,7 @@ func TestLanguagePersistence(t *testing.T) {
 		t.Fatal("wrong default")
 	}
 	for _, language := range []string{"en", "zh-CN"} {
-		v := Values{Language: language, Theme: "dark", FontSize: 16.5, AIPrompt: "Use Conventional Commits",
+		v := Values{Language: language, Theme: "dark", FontSize: 16.5, AIPrompt: "Use Conventional Commits", MinimizeOnClose: language == "en",
 			AI: commitai.Config{Provider: "Ollama", BaseURL: "http://127.0.0.1:11434/v1", Model: "local-model"}}
 		if e = s.Update(v); e != nil {
 			t.Fatal(e)

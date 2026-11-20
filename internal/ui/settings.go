@@ -2,8 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
+	"github.com/egoist/mygo"
 	native "github.com/egoist/mygo/ui"
 	"mygittu/internal/buildinfo"
 	"mygittu/internal/commitai"
@@ -75,8 +77,8 @@ func (d *Desktop) settingsDialog(c *native.Context) {
 						d.cloneSettings(c)
 						return
 					}
-					native.Scroll(c.Key(d.settingsTab)).Grow(1).MinHeight(0).FillWidth().Children(func() {
-						native.Column(c).FillWidth().Gap(12).PaddingEnd(controlSpacing).Children(func() {
+					native.Scroll(c.Key(d.settingsTab)).PaddingEnd(scrollbarGutter(c)).Grow(1).MinHeight(0).FillWidth().Children(func() {
+						native.Column(c).FillWidth().Gap(12).Children(func() {
 							switch d.settingsTab {
 							case 0:
 								d.appearanceSettings(c)
@@ -161,7 +163,30 @@ func (d *Desktop) identitySettings(c *native.Context) {
 	})
 	native.Text(c, d.text("identity.future")).TextColor(t.TextMuted)
 }
+func supportsMinimizeOnClose() bool {
+	return runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+}
+
 func (d *Desktop) appearanceSettings(c *native.Context) {
+	if supportsMinimizeOnClose() {
+		native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Wrap().Children(func() {
+			minimize := d.prefs.MinimizeOnClose
+			label := d.copy("关闭主窗口时最小化到任务栏", "Minimize the main window to the taskbar on close")
+			if runtime.GOOS == "darwin" {
+				label = d.copy("关闭主窗口时隐藏到菜单栏", "Hide the main window to the menu bar on close")
+			}
+			native.Checkbox(c, &minimize, label).Disabled(d.busy)
+			if minimize != d.prefs.MinimizeOnClose {
+				prefs := d.prefs
+				prefs.MinimizeOnClose = minimize
+				d.savePrefs(prefs)
+			}
+			if d.prefs.MinimizeOnClose && d.win != nil && d.action == "" &&
+				IconButton(c, d.copy("退出 MyGittu", "Quit MyGittu"), "close", false).Disabled(d.busy).Clicked() {
+				mygo.App.Quit()
+			}
+		})
+	}
 	native.Text(c, d.text("settings.language"))
 	oldLanguage := d.languageIndex
 	native.Segmented(c, &d.languageIndex, "简体中文", "English").Disabled(d.busy)

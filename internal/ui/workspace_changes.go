@@ -83,7 +83,7 @@ func (d *Desktop) workspaceChangeList(c *native.Context, files []git.FileStatus)
 			return
 		}
 		d.workspaceChangeItem(c, files[row.file], row.staged, row.file == d.row && row.staged == d.staged)
-	}).FillWidth().Grow(1).MinHeight(0).Clip().Disabled(d.busy)
+	}).FillWidth().Grow(1).MinHeight(0).MarginEnd(-6).PaddingEnd(scrollbarGutter(c)).Clip().Disabled(d.busy)
 	if !d.busy && selected != before && selected >= 0 && selected < len(rows) {
 		row := rows[selected]
 		if row.file >= 0 {

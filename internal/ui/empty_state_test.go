@@ -30,6 +30,9 @@ func TestWorkspaceEmptyStatesFollowData(t *testing.T) {
 			if !tester.HasText(page.label) {
 				t.Fatalf("missing empty-state label %q", page.label)
 			}
+			if page.id == 0 && tester.HasText(d.text("diff.all")) {
+				t.Fatal("the empty difference pane should not show its content heading")
+			}
 			saveLayoutPreview(t, tester, page.preview)
 			d.busy = true
 			tester.Frame()

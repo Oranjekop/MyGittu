@@ -21,19 +21,23 @@ try{
  Start-Sleep -Seconds 1
  $health=(& (Join-Path $root 'mygittu.exe') -method health.ping)|ConvertFrom-Json
  if($LASTEXITCODE -or $health.app_version -ne $Version){throw 'Installed Agent health/version check failed'}
- if(!(Test-Path -LiteralPath (Join-Path $root "MyGittuShell-$Version.dll"))){throw 'Versioned shell DLL is missing'}
+ if(!(Test-Path -LiteralPath (Join-Path $root 'MyGittuShell.dll'))){throw 'Shell DLL is missing'}
+ if(Test-Path -LiteralPath (Join-Path $root 'launch-installed.ps1')){throw 'Installer-only script was left in the install directory'}
  $desktop=Start-Process -FilePath $file -PassThru
  Start-Sleep -Seconds 2
  if($desktop.HasExited){throw 'Installed desktop exited before the upgrade check'}
  # Simulate the old Inno uninstall entry in this isolated directory.
  $legacyUninstaller=Join-Path $root 'unins000.exe'
  New-Item -ItemType File -Path $legacyUninstaller | Out-Null
+ $legacyShell=Join-Path $root 'MyGittuShell-0.0.1.dll'
+ New-Item -ItemType File -Path $legacyShell | Out-Null
  Set-Content -LiteralPath $userFile -Value 'Keep during uninstall'
  $checkUserFile=$true
  Set-ItemProperty -LiteralPath $uninstallKey -Name UninstallString -Value ('"'+$legacyUninstaller+'"')
  Set-ItemProperty -LiteralPath $uninstallKey -Name InstallLocation -Value ($root+'\')
  $upgrade=Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
  if($upgrade.ExitCode -ne 0 -or !$agent.HasExited -or !$desktop.HasExited){throw 'Installation over a running desktop and Agent failed'}
+ if(Test-Path -LiteralPath $legacyShell){throw 'Unused versioned shell DLL was not cleaned up'}
  $entry=Get-ItemProperty -LiteralPath $uninstallKey
  if($entry.InstallLocation -ne $root -or $entry.UninstallString -ne ('"'+(Join-Path $root 'Uninstall.exe')+'"') -or (Test-Path -LiteralPath $legacyUninstaller)){
   throw 'The installer did not take over the legacy uninstall entry'

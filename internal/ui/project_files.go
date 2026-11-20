@@ -98,8 +98,11 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 			if before != d.projectSearch {
 				d.rebuildProjectTree()
 			}
-			native.Text(c, d.text("nav.files")).Bold().TextColor(t.TextMuted).PaddingStart(controlSpacing)
-			native.Divider(c)
+			empty := len(d.projectTree) == 0 && !d.busy && d.err == ""
+			if !empty {
+				native.Text(c, d.text("nav.files")).Bold().TextColor(t.TextMuted).PaddingStart(controlSpacing)
+				native.Divider(c)
+			}
 			d.projectFileList.Selected = &d.projectFileRow
 			d.projectFileList.RoundRows = true
 			previous := d.projectFileRow
@@ -124,13 +127,13 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 						TextColor(fileIconColor(icon, t.Dark != (row == d.projectFileRow)))
 					native.Text(c, name).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				})
-			}).FillWidth().MinHeight(0).Clip().Disabled(d.busy)
+			}).FillWidth().MinHeight(0).PaddingEnd(scrollbarGutter(c)).Clip().Disabled(d.busy)
 			message := d.text("files.empty")
 			if len(d.projectFiles) > 0 {
 				message = d.copy("没有匹配的文件", "No matching files")
 			}
-			if len(d.projectTree) == 0 && !d.busy && d.err == "" {
-				list.Height(0)
+			if empty {
+				list.Hidden(true)
 				emptyState(c, emptyPreviewArt, 88, message).Grow(1)
 			} else {
 				list.Grow(1)
@@ -146,6 +149,10 @@ func (d *Desktop) showProjectFiles(c *native.Context, t *native.Theme) {
 						d.projectExpanded = make(map[string]bool)
 					}
 					d.projectExpanded[entry.path] = !d.projectExpanded[entry.path]
+					if !d.projectExpanded[entry.path] {
+						delete(d.projectExpanded, entry.path)
+					}
+					d.saveProjectFolders()
 					d.projectFileRow = previous
 					d.rebuildProjectTree()
 					return
@@ -175,7 +182,9 @@ func (d *Desktop) showProjectPreview(c *native.Context, t *native.Theme) {
 			emptyState(c, emptyPreviewArt, 128, d.text("files.select")).Grow(1)
 		}
 	default:
-		native.Text(c, filename).Bold().FillWidth().MinWidth(0).SingleLine().Ellipsis("…").Tooltip(filename)
+		if !d.projectPreview.Binary {
+			native.Text(c, filename).Bold().FillWidth().MinWidth(0).SingleLine().Ellipsis("…").Tooltip(filename)
+		}
 		if d.projectBitmap == nil && !d.projectPreview.Binary && (d.projectShownPath != "" || d.projectLoadError == "") {
 			d.showCodePreview(c, filename)
 		} else {

@@ -77,7 +77,7 @@ func (d *Desktop) cloneDialog(c *native.Context) {
 				native.Column(c).Height(220).FillWidth().Children(func() { d.cloneProgress(c) })
 				return
 			}
-			native.Scroll(c).FillWidth().MaxHeight(height - 130).Children(func() {
+			native.Scroll(c).PaddingEnd(scrollbarGutter(c)).FillWidth().MaxHeight(height - 130).Children(func() {
 				native.Column(c).FillWidth().Gap(panelSpacing).Children(func() {
 					if d.err != "" {
 						native.Text(c, d.err).FillWidth().TextColor(c.Theme().Danger)

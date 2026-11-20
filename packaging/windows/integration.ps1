@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('Status','Menu','Modern','Overlays','Startup','Refresh','Maintain','Remove')]
+    [ValidateSet('Status','Menu','Modern','Overlays','Startup','Refresh','Maintain','ResumeIntegration','CleanupLegacy','Remove')]
     [string]$Action,
     [ValidateSet('On','Off')]
     [string]$State = 'Off',
@@ -101,6 +101,29 @@ function Trust-Publisher {
     } finally { $certificate.Dispose() }
 }
 
+if ($Action -eq 'CleanupLegacy') {
+    $inUse = @(1..4 | ForEach-Object { Read-Default (Join-Path (COMPath $_) 'InprocServer32') })
+    if ([Environment]::OSVersion.Version.Build -ge 22000) {
+        $inUse += @(Get-AppxPackage -AllUsers -Name Oranjekop.MyGittu.Shell | ForEach-Object {
+            Join-Path $root ('MyGittuShell-{0}.{1}.{2}.dll' -f $_.Version.Major, $_.Version.Minor, $_.Version.Build)
+        })
+    }
+    Get-ChildItem -LiteralPath $root -Filter 'MyGittuShell-*.dll' -File |
+        Where-Object { $_.BaseName -match '^MyGittuShell-[0-9]+\.[0-9]+\.[0-9]+$' -and $_.FullName -notin $inUse } |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -ErrorAction Continue }
+    return
+}
+if ($Action -eq 'ResumeIntegration') {
+    $register = Join-Path $root 'register-modern.ps1'
+    try {
+        if (Test-Path -LiteralPath $register) {
+            & $register -IfRegistered -PackagePath (Join-Path $root 'MyGittuShell.msix') -InstallPath $root
+        }
+    } finally {
+        Start-Process -FilePath (Join-Path $root 'agent.exe') -WindowStyle Hidden
+    }
+    return
+}
 if ($Action -eq 'Status') {
     @{
         startup = [bool](Read-Run $userRun MyGittu)
@@ -150,10 +173,7 @@ if (!$Elevated -and $Action -in 'Menu','Overlays') {
     return
 }
 if ($Action -in 'Menu','Overlays','Maintain' -and ($State -eq 'On' -or $Action -eq 'Maintain')) {
-    $dll = Get-ChildItem -LiteralPath $root -Filter 'MyGittuShell-*.dll' -File |
-        Where-Object { $_.BaseName -match '^MyGittuShell-[0-9]+\.[0-9]+\.[0-9]+$' } |
-        Sort-Object { [version]($_.BaseName -replace '^MyGittuShell-','') } -Descending | Select-Object -First 1
-    if (!$dll) { throw 'MyGittu Explorer DLL is missing.' }
+    $dll = Get-Item -LiteralPath (Join-Path $root 'MyGittuShell.dll') -ErrorAction Stop
 }
 if ($Action -eq 'Menu') {
     if ($State -eq 'On') {

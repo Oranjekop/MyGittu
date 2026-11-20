@@ -75,7 +75,7 @@ func (d *Desktop) setHistoryPatch(patch string) {
 
 func (d *Desktop) showCommitSummary(c *native.Context, commit app.Commit) {
 	t := c.Theme()
-	native.Scroll(c).Grow(1).MinHeight(100).FillWidth().Background(t.Background).Radius(8).Children(func() {
+	native.Scroll(c).PaddingEnd(scrollbarGutter(c)).Grow(1).MinHeight(100).FillWidth().Background(t.Background).Radius(8).Children(func() {
 		native.Column(c).FillWidth().Padding(panelSpacing).Gap(controlSpacing).Children(func() {
 			native.Text(c, commit.Subject).Bold().FillWidth()
 			native.Text(c, commit.Author+" · "+displayDateTime(commit.Date)).TextColor(t.TextMuted)

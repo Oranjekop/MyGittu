@@ -105,6 +105,7 @@ type Desktop struct {
 	diffLayout                         int
 	diffWrap, diffExpand               bool
 	workspacePatch                     *editor.State
+	changeTabs                         []changeTab
 	binary                             bool
 	projectFiles                       []string
 	projectSearch                      string
@@ -176,7 +177,48 @@ func (d *Desktop) Run() error {
 		layoutPath := filePanePath(options.StateKey)
 		d.restoreFilePane(layoutPath)
 		d.win = NewRememberedWindow(options)
+		canMinimizeOnClose := d.action == "" && supportsMinimizeOnClose()
+		quitting := false
+		var menuBarItem *mygo.Tray
+		d.win.OnClosed(func() {
+			if menuBarItem != nil {
+				menuBarItem.Destroy()
+			}
+		})
+		if canMinimizeOnClose {
+			offQuit := mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { quitting = true })
+			offCanceled := mygo.App.OnQuitCanceled(func() { quitting = false })
+			d.win.OnClosed(func() {
+				offQuit()
+				offCanceled()
+			})
+		}
 		d.win.OnClose(func(e *mygo.CloseEvent) {
+			if canMinimizeOnClose && d.prefs.MinimizeOnClose && !quitting && !d.projectAllowClose {
+				e.PreventDefault()
+				d.saveDraft()
+				if runtime.GOOS == "darwin" {
+					if menuBarItem == nil {
+						item, err := mygo.NewTray(mygo.TrayOptions{Icon: brand.SmallPNG, ToolTip: "MyGittu"})
+						if err != nil {
+							d.err = fmt.Sprintf(d.copy("无法创建菜单栏图标：%v", "Unable to create the menu bar icon: %v"), err)
+							d.win.Invalidate()
+							return
+						}
+						menuBarItem = item
+						item.OnClick(func() {
+							d.win.Show()
+							d.win.Focus()
+							item.Destroy()
+							menuBarItem = nil
+						})
+					}
+					d.win.Hide()
+				} else {
+					d.win.Minimize()
+				}
+				return
+			}
 			if !d.projectAllowClose && d.hasUnsavedProjectFiles() {
 				e.PreventDefault()
 				d.askAction(d.copy("关闭窗口并放弃未保存的文件修改？", "Close the window and discard unsaved file edits?"), "", func() {
@@ -474,6 +516,13 @@ func (d *Desktop) visible() []git.FileStatus {
 	return d.changes
 }
 func (d *Desktop) diff(path string) {
+	d.rememberChangeTab(path)
+	if d.comparisonPath != path || d.comparisonStaged != d.staged {
+		d.detail, d.comparison, d.binary = "", nil, false
+	}
+	if d.Client == nil {
+		return
+	}
 	id, staged := d.selected, d.staged
 	original := ""
 	for _, f := range d.changes {
@@ -535,7 +584,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	canCommit := d.stagedCount > 0 && !slices.ContainsFunc(files, func(file git.FileStatus) bool { return file.State == git.Conflicted })
 	filesPane := func() {
 		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
-			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Hidden(len(files) == 0 && !d.busy && d.err == "").Children(func() {
 				native.Textf(c, d.text("changes"), len(files)).Grow(1)
 				canStage := slices.ContainsFunc(files, func(file git.FileStatus) bool {
 					return file.State != git.Conflicted && file.Worktree != git.Clean && file.Worktree != ""
@@ -603,13 +652,20 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	}
 	diffPane := func() {
 		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
-			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-				native.Text(c, func() string {
-					if d.row >= 0 && d.row < len(files) {
-						return files[d.row].Path
-					}
-					return d.text("diff.all")
-				}()).Grow(1)
+			d.showChangeTabs(c)
+			noDiff := d.comparison == nil && (d.detail == "" || d.detail == d.text("diff.empty"))
+			hasSelectedFile := d.row >= 0 && d.row < len(files)
+			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Hidden(noDiff && !hasSelectedFile && !d.binary).Children(func() {
+				if d.binary || noDiff {
+					native.Box(c).Grow(1)
+				} else {
+					native.Text(c, func() string {
+						if d.row >= 0 && d.row < len(files) {
+							return files[d.row].Path
+						}
+						return d.text("diff.all")
+					}()).Grow(1)
+				}
 				if d.row >= 0 && d.row < len(files) {
 					file := files[d.row]
 					d.restoreFileButton(c, file)

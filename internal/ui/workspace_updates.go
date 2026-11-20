@@ -111,6 +111,15 @@ func (d *Desktop) applyWorkspaceStatus(snapshot status.Snapshot) bool {
 		selected = d.changes[d.row]
 	}
 	d.changes, d.stagedCount = changes, staged
+	if len(d.changeTabs) > 0 {
+		available := make(map[string]bool, len(changes))
+		for _, file := range changes {
+			available[file.Path] = true
+		}
+		d.changeTabs = slices.DeleteFunc(d.changeTabs, func(tab changeTab) bool {
+			return !available[tab.path]
+		})
+	}
 	d.row = slices.IndexFunc(changes, func(file git.FileStatus) bool { return file.Path == selected.Path })
 	if d.row < 0 {
 		d.comparison, d.binary = nil, false

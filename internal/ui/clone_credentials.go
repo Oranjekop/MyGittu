@@ -50,7 +50,7 @@ func (d *Desktop) cloneSettings(c *native.Context) {
 			d.cloneCredentialList(c, f)
 		})
 		native.Box(c).Width(1).FillHeight().Background(c.Theme().Border)
-		native.Scroll(c).Grow(1).MinWidth(0).FillHeight().Children(func() {
+		native.Scroll(c).PaddingEnd(scrollbarGutter(c)).Grow(1).MinWidth(0).FillHeight().Children(func() {
 			native.Column(c).FillWidth().PaddingEnd(detailSpacing).Gap(controlSpacing).Children(func() {
 				d.cloneCredentialEditor(c, f)
 			})

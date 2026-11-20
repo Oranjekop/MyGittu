@@ -54,6 +54,36 @@ func TestPartiallyStagedFileAppearsInBothGroups(t *testing.T) {
 	saveLayoutPreview(t, tt, "grouped-changes-150.png")
 }
 
+func TestChangeTabsOpenSwitchAndClose(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected = "demo"
+	d.changes = []git.FileStatus{
+		{Path: "src/first.go", Index: git.Modified, Worktree: git.Modified},
+		{Path: "docs/second.md", Worktree: git.Modified},
+	}
+	d.activateChangeTab(changeTab{path: "src/first.go", staged: true})
+	d.activateChangeTab(changeTab{path: "docs/second.md"})
+	tt := native.NewTester(d.showChangeTabs, 700, 100)
+	if err := tt.Click("first.go"); err != nil {
+		t.Fatal(err)
+	}
+	if d.row != 0 || !d.staged || len(d.changeTabs) != 2 {
+		t.Fatal("switching tabs did not restore the staged side")
+	}
+	if err := tt.Click("关闭 src/first.go"); err != nil {
+		t.Fatal(err)
+	}
+	if d.row != 1 || d.staged || len(d.changeTabs) != 1 {
+		t.Fatal("closing the active tab did not select its neighbor")
+	}
+	if err := tt.Click("关闭 docs/second.md"); err != nil {
+		t.Fatal(err)
+	}
+	if d.row != -1 || len(d.changeTabs) != 0 {
+		t.Fatal("closing the last tab did not reset the preview")
+	}
+}
+
 func TestRetryPushAndUpdateControlsAreScoped(t *testing.T) {
 	d := New(nil, "", "")
 	d.selected = "demo"
@@ -75,13 +105,13 @@ func TestRetryPushAndUpdateControlsAreScoped(t *testing.T) {
 	d.recordCommitPush("demo", nil)
 	d.settingsOpen = false
 	tt.Frame()
-	before, ok := tt.Find("全部差异")
+	before, ok := tt.Find(d.text("diff.empty"))
 	if !ok {
-		t.Fatal("missing workspace heading")
+		t.Fatal("missing workspace empty state")
 	}
 	d.remoteNotice = "当前分支已是最新"
 	tt.Frame()
-	after, ok := tt.Find("全部差异")
+	after, ok := tt.Find(d.text("diff.empty"))
 	if !ok || after.Y != before.Y || !tt.HasText(d.remoteNotice) {
 		t.Fatal("the toolbar notice should not move the workspace")
 	}

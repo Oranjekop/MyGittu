@@ -19,6 +19,7 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.snapshot = status.Snapshot{}
 		d.remoteNotice = ""
 		d.row, d.changes, d.stagedCount = -1, nil, 0
+		d.changeTabs = nil
 		d.stagedCollapsed, d.changesCollapsed = true, true
 		d.files = native.ListState{}
 		d.detail, d.comparison, d.binary = "", nil, false
@@ -27,7 +28,7 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.historyGraphBuilder = commitGraphBuilder{}
 		d.invalidateHistoryLoad()
 		d.historyMore = false
-		d.projectSearch, d.projectExpanded = "", nil
+		d.projectSearch, d.projectExpanded = "", d.loadProjectFolders(id)
 		d.resetProjectFiles()
 		d.hunksOpen = false
 		d.aiError = ""
@@ -47,10 +48,14 @@ func (d *Desktop) selectRepository(id, root string) {
 }
 
 func (d *Desktop) draftPath(id string) string {
-	if d.draftDir == "" || id == "" || id == "." || id == ".." || strings.ContainsAny(id, "/\\:") {
+	if d.draftDir == "" || !validRepositoryStateID(id) {
 		return ""
 	}
 	return filepath.Join(d.draftDir, id+".txt")
+}
+
+func validRepositoryStateID(id string) bool {
+	return id != "" && id != "." && id != ".." && !strings.ContainsAny(id, "/\\:")
 }
 
 func (d *Desktop) loadDraft(id string) string {

@@ -27,13 +27,13 @@ func emptyStateBitmap(data []byte) func() *native.Bitmap {
 func emptyState(c *native.Context, art func() *native.Bitmap, size float32, message string) native.Element {
 	return native.Column(c).FillWidth().MinHeight(0).Center().Gap(controlSpacing).Children(func() {
 		native.Image(c, art()).Width(size).MaxWidthPercent(100).Height(size).MinHeight(0).Shrink(1).Fit(native.Contain)
-		native.Text(c, message).MaxWidthPercent(100).TextColor(c.Theme().TextMuted)
+		native.Text(c, message).MaxWidthPercent(100).TextAlign(native.Center).TextColor(c.Theme().TextMuted)
 	})
 }
 
 func tableOrEmptyState(c *native.Context, table native.Element, empty bool, art func() *native.Bitmap, message string) {
 	if empty {
-		table.Height(28)
+		table.Hidden(true)
 		emptyState(c, art, 88, message).Grow(1)
 	} else {
 		table.Grow(1)

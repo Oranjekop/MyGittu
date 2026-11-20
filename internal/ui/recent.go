@@ -64,7 +64,7 @@ func (d *Desktop) repositoryDialog(c *native.Context) {
 			})
 			native.TextInput(c, &d.repositorySearch).Placeholder(d.text("repo.search")).FillWidth()
 			query := strings.ToLower(strings.TrimSpace(d.repositorySearch))
-			native.Scroll(c).Height(300).FillWidth().Children(func() {
+			native.Scroll(c).PaddingEnd(scrollbarGutter(c)).Height(300).FillWidth().Children(func() {
 				native.Column(c).FillWidth().Gap(controlSpacing).Children(func() {
 					found := false
 					for _, repo := range d.repos {

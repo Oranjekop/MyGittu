@@ -19,7 +19,7 @@ New-Item -ItemType Directory -Force "$stage/Assets","$root/dist/release" | Out-N
 [xml]$manifest=Get-Content "$PSScriptRoot/sparse/AppxManifest.xml"
 $manifest.Package.Identity.Version="$Version.0"
 $manifest.Package.Identity.Publisher=$Publisher
-if(!$ShellFilename){$ShellFilename="MyGittuShell-$Version.dll"}
+if(!$ShellFilename){$ShellFilename='MyGittuShell.dll'}
 $manifest.SelectSingleNode("//*[local-name()='Class']").SetAttribute('Path',$ShellFilename)
 $manifest.Save("$stage/AppxManifest.xml")
 Add-Type -AssemblyName System.Drawing

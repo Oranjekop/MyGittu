@@ -95,7 +95,8 @@ func (d *Desktop) showProjectTabs(c *native.Context) {
 	d.rememberProjectTab()
 	active := slices.IndexFunc(tabs, func(tab *projectTab) bool { return tab.path == d.projectShownPath })
 	selected := max(0, active)
-	native.ScrollHorizontal(c).FillWidth().Height(controlHeight(c) + detailSpacing).Children(func() {
+	gutter := scrollbarGutter(c)
+	native.ScrollHorizontal(c).FillWidth().Height(controlHeight(c)+gutter).Padding(0, 0, gutter, 0).Children(func() {
 		parts := native.TabsBase(c, &selected, len(tabs))
 		parts.List.Gap(detailSpacing).Children(func() {
 			for i, tab := range tabs {

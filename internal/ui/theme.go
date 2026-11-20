@@ -42,5 +42,9 @@ func ApplyTheme(c *native.Context, fontSize float32) *native.Theme {
 
 func roundedTable(c *native.Context, state *native.ListState, columns []native.TableColumn, rows int, cell func(row, column int)) native.Element {
 	state.RoundRows = true
-	return native.Table(c, state, columns, rows, cell)
+	return native.Table(c, state, columns, rows, cell).PaddingEnd(scrollbarGutter(c))
+}
+
+func scrollbarGutter(c *native.Context) float32 {
+	return (native.ScrollbarStyle{}).Resolve(c.Theme()).TrackWidth + 2
 }

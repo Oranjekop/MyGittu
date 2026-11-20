@@ -154,7 +154,7 @@ func (d *Desktop) remoteManager(c *native.Context, w *repositoryTools) {
 			}
 		}).Height(130).FillWidth().Disabled(d.busy)
 		if len(w.remotes) == 0 && !d.busy && w.err == "" {
-			table.Height(28)
+			table.Hidden(true)
 			emptyState(c, emptyPreviewArt, 64, d.copy("暂无远程仓库", "No remotes"))
 		}
 		if w.remoteRow >= 0 && w.remoteRow < len(w.remotes) && previous != w.remoteRow {
@@ -233,7 +233,7 @@ func (d *Desktop) worktreeManager(c *native.Context, w *repositoryTools) {
 			}
 		}).Height(160).FillWidth().Disabled(d.busy)
 		if len(w.trees) == 0 && !d.busy && w.err == "" {
-			table.Height(28)
+			table.Hidden(true)
 			emptyState(c, emptyPreviewArt, 64, d.copy("暂无工作树", "No worktrees"))
 		}
 		if w.treeRow >= 0 && w.treeRow < len(w.trees) {

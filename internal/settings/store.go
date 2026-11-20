@@ -22,14 +22,15 @@ type CloneProfile struct {
 }
 
 type Values struct {
-	CloneProfiles []CloneProfile  `json:"clone_profiles,omitempty"`
-	CloneUsername string          `json:"clone_username,omitempty"`
-	CloneSSHKey   string          `json:"clone_ssh_key,omitempty"`
-	AIPrompt      string          `json:"ai_prompt,omitempty"`
-	FontSize      float32         `json:"font_size,omitempty"`
-	AI            commitai.Config `json:"ai,omitempty"`
-	Language      string          `json:"language"`
-	Theme         string          `json:"theme"`
+	MinimizeOnClose bool            `json:"minimize_on_close,omitempty"`
+	CloneProfiles   []CloneProfile  `json:"clone_profiles,omitempty"`
+	CloneUsername   string          `json:"clone_username,omitempty"`
+	CloneSSHKey     string          `json:"clone_ssh_key,omitempty"`
+	AIPrompt        string          `json:"ai_prompt,omitempty"`
+	FontSize        float32         `json:"font_size,omitempty"`
+	AI              commitai.Config `json:"ai,omitempty"`
+	Language        string          `json:"language"`
+	Theme           string          `json:"theme"`
 }
 type Store struct {
 	mu     sync.RWMutex
