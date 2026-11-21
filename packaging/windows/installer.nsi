@@ -156,6 +156,11 @@ Section
   ${If} $0 != 0
     Pop $1
     Delete "$INSTDIR\${ShellDll}.new"
+    IfSilent 0 +5
+    FileOpen $2 "$INSTDIR\shell-update-error.txt" w
+    FileWrite $2 "$0$\r$\n$1"
+    FileClose $2
+    Goto +2
     MessageBox MB_ICONSTOP "无法更新资源管理器扩展（$0）。$\r$\n$1" /SD IDOK
     SetErrorLevel 3
     Abort
@@ -250,6 +255,7 @@ Section "Uninstall"
   Delete /REBOOTOK "$INSTDIR\${ShellDll}"
   Delete /REBOOTOK "$INSTDIR\${ShellDll}.retired-*"
   Delete /REBOOTOK "$INSTDIR\${ShellDll}.new"
+  Delete "$INSTDIR\shell-update-error.txt"
   Delete "$INSTDIR\desktop.exe"
   Delete "$INSTDIR\agent.exe"
   Delete "$INSTDIR\mygittu.exe"
