@@ -17,9 +17,38 @@ import (
 // events during a scan queue a follow-up without discarding that snapshot.
 // Watch count is capped; other repositories still reconcile every 30 seconds.
 func (c *Cache) Run(ctx context.Context) {
+	go c.watchUpstreams(ctx)
 	c.watch(ctx)
 	if ctx.Err() == nil {
 		c.poll(ctx)
+	}
+}
+
+func (c *Cache) watchUpstreams(ctx context.Context) {
+	const interval = 2 * time.Minute
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	for {
+		for _, repo := range c.Service.Registry.List() {
+			if ctx.Err() != nil {
+				return
+			}
+			if repo.LastOpened == 0 {
+				continue
+			}
+			request, cancel := context.WithTimeout(ctx, 12*time.Second)
+			fetched, _ := c.Service.FetchUpstream(request, repo.ID)
+			cancel()
+			if fetched {
+				c.ScheduleRefresh(repo.ID)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			timer.Reset(interval)
+		}
 	}
 }
 

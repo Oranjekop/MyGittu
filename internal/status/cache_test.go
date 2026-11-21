@@ -33,6 +33,57 @@ func fixture(tb testing.TB) (*Cache, repository.Info) {
 	}
 	return New(&app.Service{Runner: r, Registry: reg}), info
 }
+func TestRepositoryOverlayTracksFetchedChanges(t *testing.T) {
+	c, repo := fixture(t)
+	ctx := context.Background()
+	run := func(dir string, args ...string) {
+		t.Helper()
+		if _, err := c.Service.Runner.Run(ctx, dir, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commit := func(dir string) {
+		run(dir, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+			"-c", "commit.gpgsign=false", "commit", "-m", "Update")
+	}
+	file := filepath.Join(repo.Root, "tracked.txt")
+	if err := os.WriteFile(file, []byte("original\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run(repo.Root, "add", "tracked.txt")
+	commit(repo.Root)
+	run(repo.Root, "branch", "-M", "main")
+	upstream := t.TempDir()
+	run(upstream, "clone", repo.Root, ".")
+	run(repo.Root, "remote", "add", "upstream", upstream)
+	run(repo.Root, "fetch", "upstream")
+	run(repo.Root, "branch", "--set-upstream-to=upstream/main")
+	check := func(want git.State) {
+		t.Helper()
+		if err := c.Refresh(ctx, repo.ID); err != nil {
+			t.Fatal(err)
+		}
+		if got := c.Lookup(repo.Root).State; got != want {
+			t.Fatalf("repository overlay = %s, want %s", got, want)
+		}
+		if got := c.Lookup(file).State; got != git.Clean {
+			t.Fatalf("tracked file overlay = %s, want clean", got)
+		}
+	}
+	check(git.Clean)
+	if err := os.WriteFile(filepath.Join(upstream, "tracked.txt"), []byte("updated\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run(upstream, "add", "tracked.txt")
+	commit(upstream)
+	if fetched, err := c.Service.FetchUpstream(ctx, repo.ID); err != nil || !fetched {
+		t.Fatalf("background fetch: fetched=%t, error=%v", fetched, err)
+	}
+	check(git.Modified)
+	run(repo.Root, "merge", "--ff-only", "upstream/main")
+	check(git.Clean)
+}
+
 func TestWatcherRefreshAndStop(t *testing.T) {
 	c, repo := fixture(t)
 	ctx, cancel := context.WithCancel(context.Background())

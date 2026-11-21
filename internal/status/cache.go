@@ -83,6 +83,11 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 			}
 		}
 	}
+	// Show pending upstream changes on the repository folder. Individual files
+	// still report their local state, and conflicts keep their higher priority.
+	if branch.Compared && branch.Behind > 0 {
+		states["."] = git.Aggregate(states["."], git.Modified)
+	}
 	c.mu.Lock()
 	if c.epochs[id] != epoch {
 		c.mu.Unlock()
