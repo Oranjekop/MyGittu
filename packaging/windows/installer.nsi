@@ -98,18 +98,13 @@ FunctionEnd
   File "dist\windows\${ARCH}\agent.exe"
   File "dist\windows\${ARCH}\desktop.exe"
   File "dist\windows\${ARCH}\mygittu.exe"
-  File /oname=${ShellDll}.new "dist\windows\${ARCH}\MyGittuShell.dll"
+  File /oname=${ShellDll}.stage "dist\windows\${ARCH}\MyGittuShell.dll"
 !macroend
 
 Section
   ${If} $PreviousDir != ""
   ${AndIf} $PreviousDir != $INSTDIR
     MessageBox MB_ICONSTOP "请使用现有安装目录 $PreviousDir，或先卸载旧版 MyGittu。" /SD IDOK
-    SetErrorLevel 2
-    Abort
-  ${EndIf}
-  ${If} ${FileExists} "$INSTDIR\${ShellDll}.new"
-    MessageBox MB_ICONSTOP "MyGittu 外壳组件等待替换。请重启 Windows 后再运行安装程序。" /SD IDOK
     SetErrorLevel 2
     Abort
   ${EndIf}
@@ -155,7 +150,7 @@ Section
   Pop $0
   ${If} $0 != 0
     Pop $1
-    Delete "$INSTDIR\${ShellDll}.new"
+    Delete "$INSTDIR\${ShellDll}.stage"
     IfSilent 0 +5
     FileOpen $2 "$INSTDIR\shell-update-error.txt" w
     FileWrite $2 "$0$\r$\n$1"
@@ -207,7 +202,7 @@ Section
   Goto done
 
   extractionFailed:
-    Delete "$INSTDIR\${ShellDll}.new"
+    Delete "$INSTDIR\${ShellDll}.stage"
   installFailed:
     MessageBox MB_ICONSTOP "无法写入 MyGittu 安装文件。请关闭正在使用这些文件的程序后重试。" /SD IDOK
     SetErrorLevel 2
@@ -255,6 +250,7 @@ Section "Uninstall"
   Delete /REBOOTOK "$INSTDIR\${ShellDll}"
   Delete /REBOOTOK "$INSTDIR\${ShellDll}.retired-*"
   Delete /REBOOTOK "$INSTDIR\${ShellDll}.new"
+  Delete "$INSTDIR\${ShellDll}.stage"
   Delete "$INSTDIR\shell-update-error.txt"
   Delete "$INSTDIR\desktop.exe"
   Delete "$INSTDIR\agent.exe"

@@ -41,10 +41,22 @@ try{
  Set-ItemProperty -LiteralPath $uninstallKey -Name UninstallString -Value ('"'+$legacyUninstaller+'"')
  Set-ItemProperty -LiteralPath $uninstallKey -Name InstallLocation -Value ($root+'\')
  if($ShellSmoke){ Set-LegacyOverlaySmokeRegistration }
+ $shellDll=Join-Path $root 'MyGittuShell.dll'
+ $legacyPending="$shellDll.new"
+ Copy-Item -LiteralPath $shellDll -Destination $legacyPending
+ $pendingKey='HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager'
+ $pendingName='PendingFileRenameOperations'
+ $before=(Get-ItemProperty -LiteralPath $pendingKey -Name $pendingName -ErrorAction SilentlyContinue).$pendingName
+ $legacyMoves=[string[]]@("\??\$shellDll",'',"\??\$legacyPending","!\??\$shellDll")
+ Set-ItemProperty -LiteralPath $pendingKey -Name $pendingName -Value ([string[]](@($before | Where-Object { $null -ne $_ }) + $legacyMoves)) -Type MultiString
  $upgrade=Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
  $errorLog=Join-Path $root 'shell-update-error.txt'
  if(Test-Path -LiteralPath $errorLog){Write-Host (Get-Content -LiteralPath $errorLog -Raw)}
- if($upgrade.ExitCode -ne 0 -or !$agent.HasExited -or !$desktop.HasExited){throw "Upgrade failed: installer exit=$($upgrade.ExitCode), Agent exited=$($agent.HasExited), desktop exited=$($desktop.HasExited), staged DLL present=$(Test-Path -LiteralPath (Join-Path $root MyGittuShell.dll.new))"}
+ if($upgrade.ExitCode -ne 0 -or !$agent.HasExited -or !$desktop.HasExited){throw "Upgrade failed: installer exit=$($upgrade.ExitCode), Agent exited=$($agent.HasExited), desktop exited=$($desktop.HasExited), staged DLL present=$(Test-Path -LiteralPath (Join-Path $root MyGittuShell.dll.stage))"}
+ $after=(Get-ItemProperty -LiteralPath $pendingKey -Name $pendingName -ErrorAction SilentlyContinue).$pendingName
+ if((Test-Path -LiteralPath $legacyPending) -or $after -contains "\??\$shellDll" -or $after -contains "\??\$legacyPending"){
+  throw 'Upgrade left a shell replacement queued for reboot'
+ }
  if($ShellSmoke){
   Test-OverlayMigration
   $agent=Start-Process -FilePath (Join-Path $root 'agent.exe') -WindowStyle Hidden -PassThru
