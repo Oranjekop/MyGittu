@@ -42,7 +42,7 @@ try{
  Set-ItemProperty -LiteralPath $uninstallKey -Name InstallLocation -Value ($root+'\')
  if($ShellSmoke){ Set-LegacyOverlaySmokeRegistration }
  $upgrade=Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
- if($upgrade.ExitCode -ne 0 -or !$agent.HasExited -or !$desktop.HasExited){throw 'Installation over a running desktop and Agent failed'}
+ if($upgrade.ExitCode -ne 0 -or !$agent.HasExited -or !$desktop.HasExited){throw "Upgrade failed: installer exit=$($upgrade.ExitCode), Agent exited=$($agent.HasExited), desktop exited=$($desktop.HasExited), staged DLL present=$(Test-Path -LiteralPath (Join-Path $root MyGittuShell.dll.new))"}
  if($ShellSmoke){
   Test-OverlayMigration
   $agent=Start-Process -FilePath (Join-Path $root 'agent.exe') -WindowStyle Hidden -PassThru

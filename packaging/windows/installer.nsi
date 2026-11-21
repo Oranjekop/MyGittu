@@ -151,12 +151,18 @@ Section
 
   InitPluginsDir
   File /oname=$PLUGINSDIR\replace-shell.ps1 "packaging\windows\replace-shell.ps1"
-  nsExec::ExecToLog /TIMEOUT=45000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\replace-shell.ps1" -InstallPath "$INSTDIR\."'
+  nsExec::ExecToStack /TIMEOUT=45000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\replace-shell.ps1" -InstallPath "$INSTDIR\."'
   Pop $0
   ${If} $0 != 0
-    Goto extractionFailed
+    Pop $1
+    Delete "$INSTDIR\${ShellDll}.new"
+    MessageBox MB_ICONSTOP "无法更新资源管理器扩展（$0）。$\r$\n$1" /SD IDOK
+    SetErrorLevel 3
+    Abort
   ${EndIf}
 
+  Pop $1
+  ClearErrors
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   IfErrors installFailed
   !ifdef ModernShellThumbprint
