@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"mygittu/internal/ipc"
 	"mygittu/internal/platform"
@@ -11,12 +12,23 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/egoist/mygo"
 )
 
+func launchFlags(flags *flag.FlagSet) (path, action *string) {
+	return flags.String("path", "", "repository or selected file"),
+		flags.String("action", "status", "status, commit, log, diff, clone, pull, push")
+}
+
 func main() {
-	path := flag.String("path", "", "repository or selected file")
-	action := flag.String("action", "status", "status, commit, log, diff, clone, pull, push")
+	path, action := launchFlags(flag.CommandLine)
 	flag.Parse()
+	mainWindow := *action == "status" || *action == ""
+	mygo.App.SetName("MyGittu")
+	if mainWindow && !mygo.App.RequestSingleInstanceLock() {
+		return
+	}
 	client := &ipc.Client{Dial: platform.Dial}
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	e := client.Call(ctx, "health.ping", ipc.Params{}, nil)
@@ -54,7 +66,22 @@ func main() {
 		}
 		return
 	}
-	if e = ui.New(client, *path, *action).Run(); e != nil {
+	desktop := ui.New(client, *path, *action)
+	if mainWindow {
+		mygo.App.OnSecondInstance(func(args []string, workingDir string) {
+			flags := flag.NewFlagSet("MyGittu", flag.ContinueOnError)
+			flags.SetOutput(io.Discard)
+			path, _ := launchFlags(flags)
+			if flags.Parse(args) != nil {
+				return
+			}
+			if *path != "" && !filepath.IsAbs(*path) {
+				*path = filepath.Join(workingDir, *path)
+			}
+			desktop.Activate(*path)
+		})
+	}
+	if e = desktop.Run(); e != nil {
 		log.Fatal(e)
 	}
 }

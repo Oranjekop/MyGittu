@@ -30,6 +30,7 @@ type Desktop struct {
 	repos                              []repository.Info
 	selected                           string
 	path, message, branch, detail, err string
+	pendingLaunchPath                  string
 	draftDir, savedMessage             string
 	drafts                             map[string]string
 	statusPolling                      bool
@@ -196,6 +197,12 @@ func (d *Desktop) Run() error {
 			offCanceled := mygo.App.OnQuitCanceled(func() { quitting = false })
 			if isMac {
 				d.win.OnShow(d.removeTray)
+				offActivate := mygo.App.OnActivate(func(hasVisibleWindows bool) {
+					if !hasVisibleWindows && d.tray != nil {
+						d.Activate("")
+					}
+				})
+				d.win.OnClosed(offActivate)
 			}
 			d.win.OnClosed(func() {
 				d.removeTray()
@@ -365,6 +372,7 @@ func (d *Desktop) operationTask(operation string, work func(context.Context) (fu
 			if d.win != nil {
 				d.win.Invalidate()
 			}
+			d.openPendingLaunch()
 		})
 	}()
 }

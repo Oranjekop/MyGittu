@@ -27,13 +27,7 @@ func (d *Desktop) ensureTray() bool {
 		return false
 	}
 	d.tray = tray
-	show := func() {
-		if runtime.GOOS == "darwin" {
-			mygo.App.Dock.Show()
-		}
-		d.win.Show()
-		d.win.Focus()
-	}
+	show := func() { d.Activate("") }
 	tray.OnClick(show)
 	tray.OnRightClick(func() {
 		menu := mygo.NewMenu([]*mygo.MenuItem{
@@ -49,6 +43,33 @@ func (d *Desktop) ensureTray() bool {
 		tray.PopUpMenu()
 	})
 	return true
+}
+
+// Activate restores the main window and optionally opens a repository from a subsequent launch.
+func (d *Desktop) Activate(path string) {
+	if d.win != nil && !d.win.IsDestroyed() {
+		if runtime.GOOS == "darwin" {
+			mygo.App.Dock.Show()
+		}
+		d.win.Show()
+		if d.win.IsMinimized() {
+			d.win.Restore()
+		}
+		d.win.Focus()
+	}
+	if path != "" {
+		d.pendingLaunchPath = path
+		d.openPendingLaunch()
+	}
+}
+
+func (d *Desktop) openPendingLaunch() {
+	if d.win == nil || d.busy || d.pendingLaunchPath == "" {
+		return
+	}
+	path := d.pendingLaunchPath
+	d.pendingLaunchPath = ""
+	d.open(path)
 }
 
 func (d *Desktop) removeTray() {

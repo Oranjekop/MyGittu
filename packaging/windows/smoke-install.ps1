@@ -9,6 +9,7 @@ $process=Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait
 if($process.ExitCode -ne 0){throw "Installer exited $($process.ExitCode)"}
 $agent=$null
 $desktop=$null
+$duplicate=$null
 $userFile=Join-Path $root 'smoke-user-file.txt'
 $checkUserFile=$false
 try{
@@ -31,6 +32,10 @@ try{
  $desktop=Start-Process -FilePath $file -PassThru
  Start-Sleep -Seconds 2
  if($desktop.HasExited){throw 'Installed desktop exited before the upgrade check'}
+ $duplicate=Start-Process -FilePath $file -WindowStyle Hidden -PassThru
+ if(!$duplicate.WaitForExit(5000) -or $duplicate.ExitCode -ne 0 -or $desktop.HasExited){
+  throw 'A second launch did not hand off to the running desktop'
+ }
  # Simulate the old Inno uninstall entry in this isolated directory.
  $legacyUninstaller=Join-Path $root 'unins000.exe'
  New-Item -ItemType File -Path $legacyUninstaller | Out-Null
@@ -69,6 +74,7 @@ try{
  }
  Write-Host "Installed native $native package and verified Agent $Version"
 }finally{
+ if($duplicate -and !$duplicate.HasExited){Stop-Process -Id $duplicate.Id -Force}
  if($desktop -and !$desktop.HasExited){Stop-Process -Id $desktop.Id -Force}
  if($agent -and !$agent.HasExited){Stop-Process -Id $agent.Id -Force}
  $uninstaller=Join-Path $root 'Uninstall.exe'
