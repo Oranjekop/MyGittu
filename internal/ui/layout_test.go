@@ -815,6 +815,7 @@ func TestCloseHistoryDetails(t *testing.T) {
 	if d.historySplit <= 50 {
 		t.Fatal("dragging down should give more space to the commit list")
 	}
+	saveLayoutPreview(t, tt, "history-resized-details.png")
 	if err := tt.Click("关闭提交详情"); err != nil {
 		t.Fatal(err)
 	}

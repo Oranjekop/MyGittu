@@ -149,10 +149,13 @@ Section
   !endif
   IfErrors extractionFailed
 
-  Delete /REBOOTOK "$INSTDIR\${ShellDll}"
-  ClearErrors
-  Rename /REBOOTOK "$INSTDIR\${ShellDll}.new" "$INSTDIR\${ShellDll}"
-  IfErrors installFailed
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\replace-shell.ps1 "packaging\windows\replace-shell.ps1"
+  nsExec::ExecToLog /TIMEOUT=45000 '"$PowerShell" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\replace-shell.ps1" -InstallPath "$INSTDIR\."'
+  Pop $0
+  ${If} $0 != 0
+    Goto extractionFailed
+  ${EndIf}
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   IfErrors installFailed
@@ -239,6 +242,7 @@ Section "Uninstall"
   DeleteRegKey /ifempty HKLM "Software\MyGittu"
   Delete /REBOOTOK "$INSTDIR\MyGittuShell-*.dll"
   Delete /REBOOTOK "$INSTDIR\${ShellDll}"
+  Delete /REBOOTOK "$INSTDIR\${ShellDll}.retired-*"
   Delete /REBOOTOK "$INSTDIR\${ShellDll}.new"
   Delete "$INSTDIR\desktop.exe"
   Delete "$INSTDIR\agent.exe"
