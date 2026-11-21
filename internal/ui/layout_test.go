@@ -804,6 +804,17 @@ func TestCloseHistoryDetails(t *testing.T) {
 	if !tt.HasText("Details body") {
 		t.Fatal("expected commit details before closing")
 	}
+	divider, ok := tt.AccessByRole(native.RoleSplitter, "")
+	if !ok {
+		t.Fatal("expected a divider with commit details open")
+	}
+	x, y := divider.Bounds.X+divider.Bounds.W/2, divider.Bounds.Y+divider.Bounds.H/2
+	tt.Press(x, y)
+	tt.Move(x, y+70)
+	tt.Release(x, y+70)
+	if d.historySplit <= 50 {
+		t.Fatal("dragging down should give more space to the commit list")
+	}
 	if err := tt.Click("关闭提交详情"); err != nil {
 		t.Fatal(err)
 	}

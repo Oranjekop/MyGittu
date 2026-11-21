@@ -133,7 +133,10 @@ func TestChangeTabsOpenSwitchAndClose(t *testing.T) {
 	if d.row != 1 || d.staged || len(d.changeTabs) != 1 {
 		t.Fatal("closing the active tab did not select its neighbor")
 	}
-	if err := tt.Click("关闭 docs/second.md"); err != nil {
+	if err := tt.RightClick("second.md"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("关闭所有标签"); err != nil {
 		t.Fatal(err)
 	}
 	if d.row != -1 || len(d.changeTabs) != 0 {

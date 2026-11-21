@@ -95,6 +95,7 @@ func (d *Desktop) showProjectTabs(c *native.Context) {
 	d.rememberProjectTab()
 	active := slices.IndexFunc(tabs, func(tab *projectTab) bool { return tab.path == d.projectShownPath })
 	selected := max(0, active)
+	closeAll := false
 	d.fileTabBar(c, &d.projectTabBar, func() {
 		parts := native.TabsBase(c, &selected, len(tabs))
 		parts.List.Gap(detailSpacing).Children(func() {
@@ -107,6 +108,7 @@ func (d *Desktop) showProjectTabs(c *native.Context) {
 				closeLabel := d.copy("关闭 ", "Close ") + tab.path
 				item := parts.Tab(i).Label(label).Tooltip(tab.path).Height(controlHeight(c)).
 					Padding(0, 4, 0, 8).Gap(6).AlignItems(native.Center).Radius(c.Theme().Radius).Disabled(d.busy)
+				d.tabContextMenu(item, func() { closeAll = true })
 				switch {
 				case i == active:
 					item.Background(c.Theme().SurfacePressed)
@@ -139,6 +141,25 @@ func (d *Desktop) showProjectTabs(c *native.Context) {
 			d.openProjectTab(tabs[selected].path)
 		}
 	})
+	if closeAll {
+		d.requestCloseAllProjectTabs()
+	}
+}
+
+func (d *Desktop) requestCloseAllProjectTabs() {
+	d.rememberProjectTab()
+	id := d.selected
+	closeAll := func() {
+		delete(d.projectTabs, id)
+		if d.selected == id {
+			d.clearProjectTabPreview()
+		}
+	}
+	if slices.ContainsFunc(d.projectTabs[id], (*projectTab).dirty) {
+		d.askAction(d.copy("关闭所有标签并放弃未保存的修改？", "Close all tabs and discard unsaved edits?"), "", closeAll)
+		return
+	}
+	closeAll()
 }
 
 func (d *Desktop) closeProjectTab(tab *projectTab) {
@@ -154,13 +175,17 @@ func (d *Desktop) closeProjectTab(tab *projectTab) {
 	if tab.path != d.projectShownPath {
 		return
 	}
-	d.cancelProjectPreview()
-	d.projectShownPath, d.projectLoadError, d.projectFailedPath = "", "", ""
-	d.projectPreview, d.projectCode, d.projectBitmap = app.FilePreview{}, nil, nil
-	d.projectFileRow = -1
+	d.clearProjectTabPreview()
 	if remaining := d.projectTabs[d.selected]; len(remaining) > 0 {
 		d.openProjectTab(remaining[min(i, len(remaining)-1)].path)
 	}
+}
+
+func (d *Desktop) clearProjectTabPreview() {
+	d.cancelProjectPreview()
+	d.projectShownPath, d.projectLoadError, d.projectFailedPath = "", "", ""
+	d.projectPreview, d.projectCode, d.projectBitmap = app.FilePreview{}, nil, nil
+	d.projectFileRow, d.projectLargeText = -1, false
 }
 
 func (d *Desktop) projectEditable() bool {

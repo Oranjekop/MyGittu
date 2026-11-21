@@ -73,6 +73,7 @@ type Desktop struct {
 	historyShown                       app.Commit
 	historyPatch                       patchView
 	historyMode                        int
+	historySplit                       float32
 	historyFiles                       []editor.FilePatch
 	historyFileRow                     int
 	historyFileList                    native.ListState

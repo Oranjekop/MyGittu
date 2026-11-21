@@ -78,18 +78,25 @@ func (d *Desktop) fileTabBar(c *native.Context, state *fileTabBarState, tabs fun
 			}
 		})
 		scroll.Children(tabs)
-		if reserved == 0 {
-			return
+		if reserved != 0 {
+			left := d.copy("向左滚动标签", "Scroll tabs left")
+			right := d.copy("向右滚动标签", "Scroll tabs right")
+			offset, end := state.scroll.X, state.scroll.MaxX
+			step := max(96, scroll.Bounds().W*0.75)
+			if IconButton(c, "", "left", false).Width(buttonWidth).Padding(0).Center().Label(left).Tooltip(left).Disabled(offset <= 0).Clicked() {
+				state.scroll.X = max(0, offset-step)
+			}
+			if IconButton(c, "", "right", false).Width(buttonWidth).Padding(0).Center().Label(right).Tooltip(right).Disabled(offset >= end).Clicked() {
+				state.scroll.X = min(end, offset+step)
+			}
 		}
-		left := d.copy("向左滚动标签", "Scroll tabs left")
-		right := d.copy("向右滚动标签", "Scroll tabs right")
-		offset, end := state.scroll.X, state.scroll.MaxX
-		step := max(96, scroll.Bounds().W*0.75)
-		if IconButton(c, "", "left", false).Width(buttonWidth).Padding(0).Center().Label(left).Tooltip(left).Disabled(offset <= 0).Clicked() {
-			state.scroll.X = max(0, offset-step)
-		}
-		if IconButton(c, "", "right", false).Width(buttonWidth).Padding(0).Center().Label(right).Tooltip(right).Disabled(offset >= end).Clicked() {
-			state.scroll.X = min(end, offset+step)
+	})
+}
+
+func (d *Desktop) tabContextMenu(tab native.Element, closeAll func()) {
+	tab.ContextMenu(func(menu *native.Menu) {
+		if menu.Item(d.copy("关闭所有标签", "Close all tabs")).Disabled(d.busy).Chosen() {
+			closeAll()
 		}
 	})
 }

@@ -164,92 +164,112 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 			cell.Tooltip(d.copy("圆点表示普通提交，菱形表示合并提交。", "Circles are commits; diamonds are merge commits."))
 		}
 	}
-	previous := d.logRow
-	native.Column(c).Grow(1).MinHeight(110).FillWidth().Padding(panelSpacing).Gap(controlSpacing).
-		Background(t.Background).Radius(8).Children(func() {
-		table := roundedTable(c, &d.history, []native.TableColumn{
-			{Title: d.copy("分支图", "Graph"), Width: max(56, d.historyGraphWidth), Fixed: true},
-			{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190},
-		}, len(d.logs), func(row, col int) {
-			l := d.logs[row]
-			if col == 0 {
-				if row < len(d.historyGraph) {
-					graph := d.historyGraph[row]
-					native.Box(c).Absolute().Left(8).Right(0).Top(0).Bottom(0).Draw(graph.draw)
+	showList := func() {
+		native.Themed(c, t).Fill().MinHeight(0).Gap(controlSpacing).Clip().Children(func() {
+			previous := d.logRow
+			native.Column(c).Grow(1).MinHeight(110).FillWidth().Padding(panelSpacing).Gap(controlSpacing).
+				Background(t.Background).Radius(8).Children(func() {
+				table := roundedTable(c, &d.history, []native.TableColumn{
+					{Title: d.copy("分支图", "Graph"), Width: max(56, d.historyGraphWidth), Fixed: true},
+					{Title: d.text("nav.commit"), Width: 110}, {Title: d.text("subject")}, {Title: d.text("author"), Width: 130}, {Title: d.text("date"), Width: 190},
+				}, len(d.logs), func(row, col int) {
+					l := d.logs[row]
+					if col == 0 {
+						if row < len(d.historyGraph) {
+							graph := d.historyGraph[row]
+							native.Box(c).Absolute().Left(8).Right(0).Top(0).Bottom(0).Draw(graph.draw)
+						}
+						return
+					}
+					if col == 2 && l.Refs != "" {
+						native.Row(c).FillWidth().MinWidth(0).Gap(6).AlignItems(native.Center).Tooltip(l.Refs + " · " + l.Subject).Children(func() {
+							native.Text(c, l.Refs).MaxWidth(140).SingleLine().Ellipsis("…").Bold()
+							native.Text(c, l.Subject).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+						})
+						return
+					}
+					values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
+					value := values[col-1]
+					if col == 4 {
+						value = displayDateTime(value)
+						native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(value)
+					} else {
+						native.Text(c, value)
+					}
+				}).Disabled(d.busy)
+				noCommits := len(d.logs) == 0 && !d.busy && !d.historyLoading && d.historyLoadError == "" && d.err == ""
+				tableOrEmptyState(c, table, noCommits, emptyPreviewArt, d.text("history.empty"))
+				if !noCommits {
+					table.MinHeight(110)
 				}
-				return
-			}
-			if col == 2 && l.Refs != "" {
-				native.Row(c).FillWidth().MinWidth(0).Gap(6).AlignItems(native.Center).Tooltip(l.Refs + " · " + l.Subject).Children(func() {
-					native.Text(c, l.Refs).MaxWidth(140).SingleLine().Ellipsis("…").Bold()
-					native.Text(c, l.Subject).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			})
+			if previous != d.logRow && d.logRow >= 0 && d.logRow < len(d.logs) && !d.busy && d.Client != nil {
+				id, commit := d.selected, d.logs[d.logRow]
+				d.task(func(ctx context.Context) (func(), error) {
+					var detail app.CommitDetails
+					e := d.Client.Call(ctx, "git.commit.details", ipc.Params{RepoID: id, Hash: commit.Hash}, &detail)
+					return func() {
+						if d.selected != id || d.logRow < 0 || d.logRow >= len(d.logs) || d.logs[d.logRow].Hash != commit.Hash {
+							return
+						}
+						d.historyShown = commit
+						d.historySummary = &detail.Summary
+						d.setHistoryPatch(detail.Patch)
+					}, e
 				})
-				return
 			}
-			values := []string{l.Hash[:min(10, len(l.Hash))], l.Subject, l.Author, l.Date}
-			value := values[col-1]
-			if col == 4 {
-				value = displayDateTime(value)
-				native.Text(c, value).SingleLine().Ellipsis("…").Tooltip(value)
-			} else {
-				native.Text(c, value)
-			}
-		}).Disabled(d.busy)
-		noCommits := len(d.logs) == 0 && !d.busy && !d.historyLoading && d.historyLoadError == "" && d.err == ""
-		tableOrEmptyState(c, table, noCommits, emptyPreviewArt, d.text("history.empty"))
-		if !noCommits {
-			table.MinHeight(110)
-		}
-	})
-	if previous != d.logRow && d.logRow >= 0 && d.logRow < len(d.logs) && !d.busy && d.Client != nil {
-		id, commit := d.selected, d.logs[d.logRow]
-		d.task(func(ctx context.Context) (func(), error) {
-			var detail app.CommitDetails
-			e := d.Client.Call(ctx, "git.commit.details", ipc.Params{RepoID: id, Hash: commit.Hash}, &detail)
-			return func() {
-				if d.selected != id || d.logRow < 0 || d.logRow >= len(d.logs) || d.logs[d.logRow].Hash != commit.Hash {
-					return
+			native.Row(c).Gap(controlSpacing).Children(func() {
+				valid := d.logRow >= 0 && d.logRow < len(d.logs)
+				if IconButton(c, d.text("recover.undo"), "undo", false).Disabled(d.busy || !valid || d.historyQuery != "" || !d.isHistoryHead()).Clicked() && valid {
+					d.confirmRecovery("undo", d.logs[d.logRow].Hash)
 				}
-				d.historyShown = commit
-				d.historySummary = &detail.Summary
-				d.setHistoryPatch(detail.Patch)
-			}, e
+				if IconButton(c, d.text("recover.revert"), "revert", false).Disabled(d.busy || !valid).Clicked() && valid {
+					d.confirmRecovery("revert", d.logs[d.logRow].Hash)
+				}
+				if IconButton(c, d.copy("拣选提交", "Cherry-pick"), "branch", false).Disabled(d.busy || !valid).Clicked() && valid {
+					hash := d.logs[d.logRow].Hash
+					d.askAction(d.copy("将该提交应用到当前分支？", "Apply this commit to the current branch?"), hash, func() { d.runCherry("start", hash) })
+				}
+			})
 		})
 	}
-	native.Row(c).Gap(controlSpacing).Children(func() {
-		valid := d.logRow >= 0 && d.logRow < len(d.logs)
-		if IconButton(c, d.text("recover.undo"), "undo", false).Disabled(d.busy || !valid || d.historyQuery != "" || !d.isHistoryHead()).Clicked() && valid {
-			d.confirmRecovery("undo", d.logs[d.logRow].Hash)
-		}
-		if IconButton(c, d.text("recover.revert"), "revert", false).Disabled(d.busy || !valid).Clicked() && valid {
-			d.confirmRecovery("revert", d.logs[d.logRow].Hash)
-		}
-		if IconButton(c, d.copy("拣选提交", "Cherry-pick"), "branch", false).Disabled(d.busy || !valid).Clicked() && valid {
-			hash := d.logs[d.logRow].Hash
-			d.askAction(d.copy("将该提交应用到当前分支？", "Apply this commit to the current branch?"), hash, func() { d.runCherry("start", hash) })
-		}
-	})
 	if d.historySummary != nil && d.logRow >= 0 && d.logRow < len(d.logs) {
-		commit := d.historyShown
-		if commit.Hash == "" {
-			commit = d.logs[d.logRow]
+		if d.historySplit == 0 {
+			d.historySplit = 50
 		}
-		native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-			native.Segmented(c, &d.historyMode, d.text("commit.details"), d.copy("提交差异", "Commit diff"))
-			native.Text(c, commit.Hash).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(commit.Hash).TextColor(t.TextMuted)
-			label := d.copy("关闭提交详情", "Close commit details")
-			if IconButton(c, "", "close", false).Label(label).Tooltip(label).Clicked() {
-				d.logRow, d.historySummary, d.historyShown = -1, nil, app.Commit{}
-				d.setHistoryPatch("")
+		dividerTheme := *t
+		dividerTheme.Accent = t.Border
+		native.Themed(c, &dividerTheme).Grow(1).MinHeight(0).FillWidth().Children(func() {
+			split := native.SplitVerticalPercent(c, &d.historySplit, showList, func() {
+				native.Themed(c, t).Fill().MinHeight(0).Gap(controlSpacing).Clip().Children(func() {
+					commit := d.historyShown
+					if commit.Hash == "" {
+						commit = d.logs[d.logRow]
+					}
+					native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+						native.Segmented(c, &d.historyMode, d.text("commit.details"), d.copy("提交差异", "Commit diff"))
+						native.Text(c, commit.Hash).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(commit.Hash).TextColor(t.TextMuted)
+						label := d.copy("关闭提交详情", "Close commit details")
+						if IconButton(c, "", "close", false).Label(label).Tooltip(label).Clicked() {
+							d.logRow, d.historySummary, d.historyShown = -1, nil, app.Commit{}
+							d.setHistoryPatch("")
+						}
+					})
+					if d.historySummary != nil {
+						if d.historyMode == 0 {
+							d.showCommitSummary(c, commit)
+						} else {
+							d.showHistoryPatch(c)
+						}
+					}
+				})
+			}).Fill().SplitReset(50)
+			if split.Changed() {
+				d.historySplit = max(25, min(75, d.historySplit))
 			}
 		})
-		if d.historySummary != nil {
-			if d.historyMode == 0 {
-				d.showCommitSummary(c, commit)
-			} else {
-				d.showHistoryPatch(c)
-			}
-		}
+	} else {
+		native.Column(c).Grow(1).MinHeight(0).FillWidth().Children(showList)
 	}
 	if d.historyLoadError != "" {
 		native.Row(c).Gap(controlSpacing).Children(func() {

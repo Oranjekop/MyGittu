@@ -47,6 +47,7 @@ func (d *Desktop) showChangeTabs(c *native.Context) {
 	selected := max(0, active)
 	closing := -1
 	activated := false
+	closeAll := false
 	d.fileTabBar(c, &d.changeTabBar, func() {
 		parts := native.TabsBase(c, &selected, len(tabs))
 		parts.List.Gap(detailSpacing).Children(func() {
@@ -54,6 +55,7 @@ func (d *Desktop) showChangeTabs(c *native.Context) {
 				name := path.Base(tab.path)
 				item := parts.Tab(i).Label(name).Tooltip(tab.path).Height(controlHeight(c)).
 					Padding(0, 4, 0, 8).Gap(6).AlignItems(native.Center).Radius(c.Theme().Radius).Disabled(d.busy)
+				d.tabContextMenu(item, func() { closeAll = true })
 				if i == active {
 					item.Background(c.Theme().SurfacePressed)
 				} else if item.Hovered() {
@@ -84,7 +86,11 @@ func (d *Desktop) showChangeTabs(c *native.Context) {
 	if d.busy {
 		return
 	}
-	if closing >= 0 {
+	if closeAll {
+		d.changeTabs = nil
+		d.row, d.detail, d.comparison, d.binary = -1, "", nil, false
+		d.workspacePatch = nil
+	} else if closing >= 0 {
 		d.changeTabs = slices.Delete(tabs, closing, closing+1)
 		if closing == active {
 			d.row, d.detail, d.comparison, d.binary = -1, "", nil, false
