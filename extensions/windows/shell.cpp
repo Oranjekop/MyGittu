@@ -4,6 +4,7 @@
 #include <iterator>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <sddl.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -171,8 +172,10 @@ static bool english() {
   }
   return value.load();
 }
-static int query(const std::wstring &path) {
+static std::optional<int> query(const std::wstring &path) {
   auto reply = rpc("overlay.lookup", "{\"path\":\"" + jsonPath(path) + "\"}");
+  if (reply.empty())
+    return std::nullopt;
   if (reply.find("\"state\":\"conflicted\"") != std::string::npos)
     return 3;
   if (reply.find("\"state\":\"clean\"") != std::string::npos)
@@ -187,6 +190,7 @@ static int cachedQuery(const std::wstring &path) {
   struct Entry {
     int state;
     ULONGLONG until;
+    ULONGLONG staleUntil;
   };
   static std::mutex mutex;
   static std::unordered_map<std::wstring, Entry> cache;
@@ -197,14 +201,25 @@ static int cachedQuery(const std::wstring &path) {
     if (i != cache.end() && i->second.until > now)
       return i->second.state;
   }
-  int state = query(path);
-  if (state != 0) {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (cache.size() >= 2048)
-      cache.clear();
-    cache[path] = {state, now + 500};
+  auto state = query(path);
+  std::lock_guard<std::mutex> lock(mutex);
+  auto existing = cache.find(path);
+  if (!state) {
+    if (existing != cache.end() && existing->second.staleUntil > GetTickCount64()) {
+      // One failure can otherwise make all three overlay handlers miss.
+      existing->second.until = now + 100;
+      return existing->second.state;
+    }
+    return 0;
   }
-  return state;
+  if (*state != 0) {
+    if (existing == cache.end() && cache.size() >= 2048)
+      cache.erase(cache.begin());
+    cache[path] = {*state, now + 500, now + 5000};
+  } else {
+    cache.erase(path);
+  }
+  return *state;
 }
 // CommandLineToArgvW compatible quoting; the executable is never supplied by
 // IPC.

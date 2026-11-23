@@ -129,10 +129,12 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		e = s.Service.Registry.Unregister(p.RepoID)
 		s.Cache.Invalidate(p.RepoID)
 	case "overlay.lookup":
-		if s.Cache.Lookup(p.Path).State == git.Unknown && filepath.IsAbs(p.Path) {
+		overlay := s.Cache.Lookup(p.Path)
+		if overlay.State == git.Unknown && filepath.IsAbs(p.Path) {
 			s.ensureRepository(p.Path)
+			overlay = s.Cache.Lookup(p.Path)
 		}
-		result = s.Cache.Lookup(p.Path)
+		result = overlay
 	case "ui.open":
 		e = s.Service.OpenDesktop(ctx, p.Path, p.Action)
 	case "status.refresh":
