@@ -3,7 +3,6 @@ package status
 import (
 	"context"
 	"errors"
-	"maps"
 	"mygittu/internal/app"
 	git "mygittu/internal/git"
 	"mygittu/internal/platform"
@@ -93,23 +92,46 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 		c.mu.Unlock()
 		return ErrStale
 	}
-	changed := !maps.Equal(c.snapshots[id].states, states)
+	previousStates := c.snapshots[id].states
 	c.generation++
 	_, mergeErr := os.Stat(filepath.Join(repo.GitDir, "MERGE_HEAD"))
 	_, cherryErr := os.Stat(filepath.Join(repo.GitDir, "CHERRY_PICK_HEAD"))
 	cherryPicking := cherryErr == nil
 	c.snapshots[id] = Snapshot{Files: files, Generation: c.generation, Updated: time.Now(), Branch: branch.Name, Merging: mergeErr == nil, CherryPicking: cherryPicking, Tracking: branch, states: states}
 	c.mu.Unlock()
-	if changed {
+	changed, broad := overlayChanges(previousStates, states)
+	if broad || len(changed) != 0 {
 		// Let Explorer's 500 ms native lookup cache expire before repainting.
 		time.AfterFunc(550*time.Millisecond, func() {
-			platform.NotifyRepositoryOverlay(repo.Root)
+			platform.NotifyRepositoryOverlay(repo.Root, changed, broad)
 			for _, alias := range repo.Aliases {
-				platform.NotifyRepositoryOverlay(alias)
+				platform.NotifyRepositoryOverlay(alias, changed, broad)
 			}
 		})
 	}
 	return nil
+}
+
+func overlayChanges(previous, current map[string]git.State) (paths []string, broad bool) {
+	// Bound Explorer notifications for bulk operations such as a checkout.
+	const maxItems = 64
+	for path, state := range current {
+		if old, ok := previous[path]; !ok || old != state {
+			if len(paths) == maxItems {
+				return nil, true
+			}
+			paths = append(paths, path)
+		}
+	}
+	for path := range previous {
+		if _, ok := current[path]; !ok {
+			if len(paths) == maxItems {
+				return nil, true
+			}
+			paths = append(paths, path)
+		}
+	}
+	return paths, false
 }
 func (c *Cache) Invalidate(id string) {
 	c.mu.Lock()

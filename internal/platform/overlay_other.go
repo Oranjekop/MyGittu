@@ -2,4 +2,4 @@
 
 package platform
 
-func NotifyRepositoryOverlay(string) {}
+func NotifyRepositoryOverlay(string, []string, bool) {}

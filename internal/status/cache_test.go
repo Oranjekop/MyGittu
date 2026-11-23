@@ -9,9 +9,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"testing"
 	"time"
 )
+
+func TestOverlayChangesIncludesFilesEvenWhenRootStaysModified(t *testing.T) {
+	before := map[string]git.State{".": git.Modified, "old.txt": git.Modified, "edited.txt": git.Modified}
+	after := map[string]git.State{".": git.Modified, "new.txt": git.Modified, "edited.txt": git.Conflicted}
+	paths, broad := overlayChanges(before, after)
+	slices.Sort(paths)
+	if broad || !slices.Equal(paths, []string{"edited.txt", "new.txt", "old.txt"}) {
+		t.Fatalf("changed paths = %v, broad = %v", paths, broad)
+	}
+	for i := range 65 {
+		after[strconv.Itoa(i)] = git.Modified
+	}
+	if paths, broad := overlayChanges(before, after); !broad || len(paths) != 0 {
+		t.Fatalf("bulk changes should use a repository notification, got %v, broad = %v", paths, broad)
+	}
+}
 
 func fixture(tb testing.TB) (*Cache, repository.Info) {
 	tb.Helper()
