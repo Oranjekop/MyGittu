@@ -2,7 +2,7 @@ param([switch]$Uninstall,[string]$Directory=[IO.Path]::GetFullPath((Join-Path $P
 $ErrorActionPreference='Stop'
 $dll=Join-Path $Directory 'MyGittuShell.dll'
 $base='HKCU:\Software\Classes'
-$ids=1..4 | ForEach-Object { '{29810E41-632A-4A9B-A190-4D659366810'+$_+'}' }
+$ids=@(1, 2, 3, 4, 6, 7, 8, 9, 10) | ForEach-Object { '{29810E41-632A-4A9B-A190-4D659366810'+$_.ToString('x')+'}' }
 if (!$Uninstall -and !(Test-Path -LiteralPath $dll)) { throw "Build MyGittuShell.dll into $Directory first" }
 foreach ($id in $ids) {
  $key="$base\CLSID\$id"
@@ -20,7 +20,7 @@ foreach ($type in @('*','Directory','Directory\Background')) {
 $overlay='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers'
 $admin=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if ($admin) {
- $names=@('MyGittu Clean','MyGittu Modified','MyGittu Conflict')
+ $names=@('MyGittu Clean','MyGittu Modified','MyGittu Conflict','MyGittu State Added','MyGittu State Deleted','MyGittu State Untracked','MyGittu State Ignored','MyGittu State Upstream')
  for ($i=0;$i -lt $names.Count;$i++) {
   $legacyKey="$overlay\$($names[$i])"
   $key="$overlay\ $($names[$i])"

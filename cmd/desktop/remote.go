@@ -10,7 +10,6 @@ import (
 	"github.com/egoist/mygo"
 	native "github.com/egoist/mygo/ui"
 	"mygittu/internal/app"
-	"mygittu/internal/brand"
 	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
@@ -45,14 +44,6 @@ func runRemote(client *ipc.Client, path, action string) error {
 		if d.hidesTaskbar() {
 			if err := excludeRemoteFromTaskbar(handle); err != nil {
 				fmt.Printf("exclude MyGittu pull window from taskbar: %v\n", err)
-			}
-		} else if runtime.GOOS != "darwin" {
-			if err := d.win.SetIcon(brand.PNG); err != nil {
-				fmt.Printf("set MyGittu window icon: %v\n", err)
-			}
-			_ = mygo.App.Dock.SetIcon(brand.PNG)
-			if err := setRemoteTaskbarIdentity(handle); err != nil {
-				fmt.Printf("set MyGittu taskbar identity: %v\n", err)
 			}
 		}
 		configureRemoteCaption(handle)

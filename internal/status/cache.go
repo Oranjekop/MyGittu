@@ -15,12 +15,15 @@ import (
 )
 
 type Overlay struct {
-	State      git.State `json:"state"`
-	Generation uint64    `json:"generation"`
-	Cached     bool      `json:"cached"`
+	State        git.State `json:"state"`
+	Generation   uint64    `json:"generation"`
+	Cached       bool      `json:"cached"`
+	OverlayState git.State `json:"overlay_state,omitempty"`
 }
 
 var ErrStale = errors.New("repository changed during refresh; retry")
+
+const overlayBehind git.State = "behind"
 
 type Snapshot struct {
 	Files         []git.FileStatus `json:"files"`
@@ -84,8 +87,8 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 	}
 	// Show pending upstream changes on the repository folder. Individual files
 	// still report their local state, and conflicts keep their higher priority.
-	if branch.Compared && branch.Behind > 0 {
-		states["."] = git.Aggregate(states["."], git.Modified)
+	if branch.Compared && branch.Behind > 0 && states["."] == git.Clean {
+		states["."] = overlayBehind
 	}
 	c.mu.Lock()
 	if c.epochs[id] != epoch {
@@ -101,8 +104,8 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 	c.mu.Unlock()
 	changed, broad := overlayChanges(previousStates, states)
 	if broad || len(changed) != 0 {
-		// Let Explorer's 500 ms native lookup cache expire before repainting.
-		time.AfterFunc(550*time.Millisecond, func() {
+		// Let Explorer's 200 ms native lookup cache expire before repainting.
+		time.AfterFunc(250*time.Millisecond, func() {
 			platform.NotifyRepositoryOverlay(repo.Root, changed, broad)
 			for _, alias := range repo.Aliases {
 				platform.NotifyRepositoryOverlay(alias, changed, broad)
@@ -115,23 +118,40 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 func overlayChanges(previous, current map[string]git.State) (paths []string, broad bool) {
 	// Bound Explorer notifications for bulk operations such as a checkout.
 	const maxItems = 64
+	var dirs map[string]struct{}
+	add := func(path string) {
+		if !broad && len(paths) < maxItems {
+			paths = append(paths, path)
+			return
+		}
+		if !broad {
+			broad = true
+			dirs = make(map[string]struct{})
+			for _, item := range paths {
+				dirs[filepath.Dir(item)] = struct{}{}
+			}
+		}
+		if len(dirs) < maxItems {
+			dirs[filepath.Dir(path)] = struct{}{}
+		}
+	}
 	for path, state := range current {
 		if old, ok := previous[path]; !ok || old != state {
-			if len(paths) == maxItems {
-				return nil, true
-			}
-			paths = append(paths, path)
+			add(path)
 		}
 	}
 	for path := range previous {
 		if _, ok := current[path]; !ok {
-			if len(paths) == maxItems {
-				return nil, true
-			}
-			paths = append(paths, path)
+			add(path)
 		}
 	}
-	return paths, false
+	if broad {
+		paths = paths[:0]
+		for dir := range dirs {
+			paths = append(paths, dir)
+		}
+	}
+	return paths, broad
 }
 func (c *Cache) Invalidate(id string) {
 	c.mu.Lock()
@@ -221,5 +241,9 @@ func (c *Cache) Lookup(path string) Overlay {
 			}
 		}
 	}
-	return Overlay{state, s.Generation, true}
+	result := Overlay{State: state, Generation: s.Generation, Cached: true}
+	if state == overlayBehind {
+		result.State, result.OverlayState = git.Modified, overlayBehind
+	}
+	return result
 }

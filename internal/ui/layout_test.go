@@ -982,11 +982,18 @@ func TestShellActionWindowsAt150Percent(t *testing.T) {
 				}
 			}
 			if tc.action == "commit" || tc.action == "clone" {
-				d.result = "操作完成"
+				button := d.text("remote.push")
+				d.result, d.offerCommitPush = "提交成功", true
+				if tc.action == "clone" {
+					d.result = "克隆成功"
+					d.clonedRepo = &repository.Info{Root: "D:/Projects/demo"}
+					button = d.text("repo.open")
+				}
 				tt.Frame()
-				if !tt.HasText(d.result) || !tt.HasText(d.text("close")) || tt.HasText(tc.control) {
+				if !tt.HasText(d.result) || !tt.HasText(d.text("close")) || !tt.HasText(button) || tt.HasText(tc.control) {
 					t.Fatal("successful action did not stay in its own result window")
 				}
+				saveLayoutPreview(t, tt, tc.action+"-completed.png")
 			}
 		})
 	}

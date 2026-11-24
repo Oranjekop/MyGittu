@@ -57,6 +57,30 @@ function Test-InstalledOverlays($Root,$ShellSmoke) {
             $slots += $slot
             Write-Host "Installed overlay state $expected matched at $slot after $($timer.ElapsedMilliseconds) ms"
         }
+        & git -C $fixture merge --abort
+        if ($LASTEXITCODE) { throw 'Could not restore the overlay fixture' }
+        $tests = @(
+            @{ Name = 'added.txt'; State = 4 },
+            @{ Name = 'sample.txt'; State = 5 },
+            @{ Name = 'untracked.txt'; State = 6 },
+            @{ Name = 'ignored.txt'; State = 7 }
+        )
+        Set-Content -LiteralPath (Join-Path $fixture '.git/info/exclude') 'ignored.txt'
+        foreach ($name in 'added.txt', 'untracked.txt', 'ignored.txt') {
+            Set-Content -LiteralPath (Join-Path $fixture $name) $name
+        }
+        Invoke-FixtureGit add added.txt
+        Invoke-FixtureGit rm sample.txt
+        foreach ($test in $tests) {
+            $path = Join-Path $fixture $test.Name
+            $timer = [Diagnostics.Stopwatch]::StartNew()
+            do {
+                $output = & $ShellSmoke (Join-Path $Root 'MyGittuShell.dll') $path $test.State --overlay-only
+                if (!$LASTEXITCODE) { break }
+                Start-Sleep -Milliseconds 250
+            } while ($timer.Elapsed.TotalSeconds -lt 12)
+            if ($LASTEXITCODE) { throw "Overlay for $($test.Name) did not reach state $($test.State): $output" }
+        }
     } finally {
         $resolved = (Resolve-Path -LiteralPath $fixture).Path
         $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')

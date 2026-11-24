@@ -1,6 +1,7 @@
 #include <windows.h>
 #include "menu_icons.h"
 #include <shlobj.h>
+#include <shellapi.h>
 #include <iostream>
 #include <chrono>
 #include <iterator>
@@ -23,6 +24,7 @@ int wmain(int argc, wchar_t **argv) {
   if (!get || !unload)
     return 4;
   const bool verifyShell = argc > 4 && std::wstring(argv[4]) == L"--explorer";
+  const bool overlayOnly = argc > 4 && std::wstring(argv[4]) == L"--overlay-only";
   if (verifyShell) {
     SHFILEINFOW info{};
     if (!SHGetFileInfoW(argv[2], 0, &info, sizeof(info),
@@ -39,8 +41,8 @@ int wmain(int argc, wchar_t **argv) {
               0x632a,
               0x4a9b,
               {0xa1, 0x90, 0x4d, 0x65, 0x93, 0x66, 0x81, 0x01}};
-  for (int k = 1; k <= 3; k++) {
-    id.Data4[7] = static_cast<BYTE>(k + 1);
+  for (int k = 1; k <= 8; k++) {
+    id.Data4[7] = static_cast<BYTE>(k + (k > 3 ? 2 : 1));
     IClassFactory *factory = nullptr;
     if (FAILED(get(id, IID_IClassFactory, reinterpret_cast<void **>(&factory))))
       return 5;
@@ -52,8 +54,12 @@ int wmain(int argc, wchar_t **argv) {
     int index = -1;
     DWORD flags = 0;
     if (FAILED(overlay->GetOverlayInfo(icon, 32768, &index, &flags)) ||
-        index != k - 1)
+        index != (k <= 3 ? k - 1 : k + 7))
       return 7;
+    HICON image = nullptr;
+    if (ExtractIconExW(icon, index, nullptr, &image, 1) != 1 || !image)
+      return 37;
+    DestroyIcon(image);
     auto start = std::chrono::steady_clock::now();
     auto result = overlay->IsMemberOf(argv[2], 0);
     auto ms = std::chrono::duration<double, std::milli>(
@@ -66,7 +72,7 @@ int wmain(int argc, wchar_t **argv) {
     overlay->Release();
     factory->Release();
   }
-  if (verifyShell) {
+  if (verifyShell || overlayOnly) {
     // The Shell may retain its own handler instances until process exit.
     FreeLibrary(dll);
     CoUninitialize();

@@ -16,6 +16,7 @@ func (d *Desktop) remoteAction(action string) {
 	}
 	id := d.selected
 	retry := action == "push" && d.pushRetryRepo == id
+	completedCommit := action == "push" && d.action == "commit" && d.offerCommitPush
 	diverged := d.text("remote.pull.diverged")
 	d.remoteRunning, d.remoteNotice = action, ""
 	d.remoteDiverged = false
@@ -27,10 +28,14 @@ func (d *Desktop) remoteAction(action string) {
 			if d.selected != id {
 				return
 			}
-			if retry {
+			if retry || completedCommit {
 				d.recordCommitPush(id, err)
 				if err == nil && d.action == "commit" {
 					d.result = d.text("commit.pushDone")
+					d.offerCommitPush = false
+					return
+				}
+				if completedCommit {
 					return
 				}
 			}

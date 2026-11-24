@@ -95,13 +95,25 @@ func repositoryRelativePath(repo repository.Info, path string) string {
 func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 	native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Surface).Children(func() {
 		if d.result != "" {
-			native.Column(c).Grow(1).FillWidth().Center().Gap(controlSpacing).Children(func() {
-				native.Text(c, d.result).Bold()
-				native.Text(c, d.path).FillWidth().SingleLine().Ellipsis("…").TextAlign(native.Center).Tooltip(d.path)
-				if IconButton(c, d.text("close"), "close", true).Clicked() && d.win != nil {
-					d.win.Close()
-				}
-			})
+			if d.action == "clone" && d.clonedRepo != nil {
+				d.cloneResult(c)
+			} else {
+				native.Column(c).Grow(1).FillWidth().Center().Gap(controlSpacing).Children(func() {
+					d.resultHeading(c, emptyDiffArt, d.result, d.path)
+					if d.offerCommitPush {
+						native.Text(c, d.copy("推送本次提交？", "Push this commit?"))
+						d.showCommitPushFailure(c)
+					}
+					native.Row(c).Gap(controlSpacing).Children(func() {
+						if IconButton(c, d.text("close"), "close", !d.offerCommitPush).Disabled(d.busy).Clicked() && d.win != nil {
+							d.win.Close()
+						}
+						if d.offerCommitPush && d.pushFailure == "" && activityButton(c, d.text("remote.push"), "push", true, d.remoteRunning == "push").Disabled(d.busy).Clicked() {
+							d.remoteAction("push")
+						}
+					})
+				})
+			}
 			return
 		}
 		if d.action != "clone" {
@@ -144,4 +156,10 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 			d.showHistory(c, t)
 		}
 	})
+}
+
+func (d *Desktop) resultHeading(c *native.Context, art func() *native.Bitmap, title, path string) {
+	native.Image(c, art()).Width(128).Height(128).Fit(native.Contain)
+	native.Text(c, title).Bold()
+	native.Text(c, path).FillWidth().SingleLine().Ellipsis("…").TextAlign(native.Center).Tooltip(path)
 }

@@ -70,11 +70,16 @@ func (d *Desktop) cloneDialog(c *native.Context) {
 				native.Text(c, d.text("clone.title")).FontSize(18).Bold().Grow(1)
 				if IconButton(c, d.text("close"), "close", false).Disabled(running).Clicked() {
 					d.cloneOpen = false
+					d.clonedRepo = nil
 					d.err = ""
 				}
 			})
 			if running {
 				native.Column(c).Height(220).FillWidth().Children(func() { d.cloneProgress(c) })
+				return
+			}
+			if d.clonedRepo != nil {
+				native.Column(c).Height(250).FillWidth().Children(func() { d.cloneResult(c) })
 				return
 			}
 			scrollAtPanelEdge(native.Scroll(c)).MaxHeight(height - 130).Children(func() {
@@ -91,6 +96,7 @@ func (d *Desktop) cloneDialog(c *native.Context) {
 		d.cloneOpen = running
 		if !running {
 			d.err = ""
+			d.clonedRepo = nil
 		}
 	}
 }
@@ -183,19 +189,53 @@ func (d *Desktop) cloneForm(c *native.Context) {
 			var repo repository.Info
 			err := d.Client.Call(ctx, "git.clone", ipc.Params{URL: remote, Destination: destination, CloneAuth: auth}, &repo)
 			return func() {
+				d.clonedRepo = &repo
 				if d.action == "clone" {
 					d.path = repo.Root
 					d.result = d.copy("克隆成功", "Clone completed")
 					return
 				}
 				d.repos = append(d.repos, repo)
-				d.cloneOpen = false
-				d.selectRepository(repo.ID, repo.Root)
-				d.page = 0
-				d.refresh()
 			}, err
 		})
 	}
+}
+
+func (d *Desktop) cloneResult(c *native.Context) {
+	repo := *d.clonedRepo
+	native.Column(c).Grow(1).FillWidth().Center().Gap(controlSpacing).Children(func() {
+		d.resultHeading(c, emptyPreviewArt, d.copy("克隆成功", "Clone completed"), repo.Root)
+		native.Text(c, d.copy("现在打开这个仓库？", "Open this repository now?"))
+		if d.err != "" {
+			native.Text(c, d.err).FillWidth().TextAlign(native.Center).TextColor(c.Theme().Danger)
+		}
+		native.Row(c).Gap(controlSpacing).Children(func() {
+			if IconButton(c, d.text("close"), "close", false).Disabled(d.busy).Clicked() {
+				if d.action == "clone" && d.win != nil {
+					d.win.Close()
+				} else {
+					d.cloneOpen, d.clonedRepo = false, nil
+				}
+			}
+			if IconButton(c, d.text("repo.open"), "open", true).Disabled(d.busy).Clicked() {
+				if d.action == "clone" {
+					d.task(func(ctx context.Context) (func(), error) {
+						err := d.Client.Call(ctx, "ui.open", ipc.Params{Path: repo.Root, Action: "status"}, nil)
+						return func() {
+							if d.win != nil {
+								d.win.Close()
+							}
+						}, err
+					})
+					return
+				}
+				d.cloneOpen, d.clonedRepo = false, nil
+				d.selectRepository(repo.ID, repo.Root)
+				d.page = 0
+				d.refresh()
+			}
+		})
+	})
 }
 
 func (d *Desktop) cloneAddressInput(c *native.Context, placeholder string) {

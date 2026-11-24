@@ -24,9 +24,9 @@ func TestOverlayChangesIncludesFilesEvenWhenRootStaysModified(t *testing.T) {
 		t.Fatalf("changed paths = %v, broad = %v", paths, broad)
 	}
 	for i := range 65 {
-		after[strconv.Itoa(i)] = git.Modified
+		after[filepath.Join("nested", strconv.Itoa(i))] = git.Modified
 	}
-	if paths, broad := overlayChanges(before, after); !broad || len(paths) != 0 {
+	if paths, broad := overlayChanges(before, after); !broad || !slices.Contains(paths, "nested") {
 		t.Fatalf("bulk changes should use a repository notification, got %v, broad = %v", paths, broad)
 	}
 }
@@ -81,7 +81,12 @@ func TestRepositoryOverlayTracksFetchedChanges(t *testing.T) {
 		if err := c.Refresh(ctx, repo.ID); err != nil {
 			t.Fatal(err)
 		}
-		if got := c.Lookup(repo.Root).State; got != want {
+		overlay := c.Lookup(repo.Root)
+		got := overlay.State
+		if overlay.OverlayState != "" {
+			got = overlay.OverlayState
+		}
+		if got != want {
 			t.Fatalf("repository overlay = %s, want %s", got, want)
 		}
 		if got := c.Lookup(file).State; got != git.Clean {
@@ -97,7 +102,7 @@ func TestRepositoryOverlayTracksFetchedChanges(t *testing.T) {
 	if fetched, err := c.Service.FetchUpstream(ctx, repo.ID); err != nil || !fetched {
 		t.Fatalf("background fetch: fetched=%t, error=%v", fetched, err)
 	}
-	check(git.Modified)
+	check(overlayBehind)
 	run(repo.Root, "merge", "--ff-only", "upstream/main")
 	check(git.Clean)
 }

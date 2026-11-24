@@ -7,7 +7,6 @@ import (
 	native "github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
 	"mygittu/internal/app"
-	"mygittu/internal/brand"
 	git "mygittu/internal/git"
 	"mygittu/internal/i18n"
 	"mygittu/internal/ipc"
@@ -27,6 +26,7 @@ type Desktop struct {
 	win                                *mygo.Window
 	tray                               *mygo.Tray
 	action, initialDiffPath, result    string
+	offerCommitPush                    bool
 	repos                              []repository.Info
 	selected                           string
 	path, message, branch, detail, err string
@@ -55,6 +55,7 @@ type Desktop struct {
 	query                              string
 	cloneURL, cloneDestination         string
 	cloneOpen                          bool
+	clonedRepo                         *repository.Info
 	cloneProvider                      int
 	cloneParent, cloneAccount          string
 	cloneRepoSearch, cloneRepoChoice   string
@@ -233,10 +234,6 @@ func (d *Desktop) Run() error {
 				d.win.Invalidate()
 			}
 		})
-		if runtime.GOOS != "darwin" {
-			_ = d.win.SetIcon(brand.PNG)
-			_ = mygo.App.Dock.SetIcon(brand.PNG)
-		}
 		updateContext, cancelUpdates := context.WithCancel(context.Background())
 		d.win.OnClosed(func() {
 			saveFilePane(layoutPath, d.filePane, d.filePaneChanged)
@@ -518,6 +515,7 @@ func (d *Desktop) commitChanges(push bool) {
 			}
 			if d.action == "commit" && pushErr == nil {
 				d.result = d.copy("提交成功", "Commit completed")
+				d.offerCommitPush = !push
 				if push {
 					d.result = d.text("commit.pushDone")
 				}

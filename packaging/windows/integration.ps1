@@ -17,9 +17,12 @@ $menuClasses = @('*','Directory','Directory\Background')
 $legacyOverlayNames = @('MyGittu Clean','MyGittu Modified','MyGittu Conflict')
 # Explorer allocates a limited number of overlay slots in key-name order.
 # A single leading space keeps these together ahead of unprefixed handlers.
-$overlayNames = @($legacyOverlayNames | ForEach-Object { ' ' + $_ })
+$overlayNames = @($legacyOverlayNames | ForEach-Object { ' ' + $_ }) +
+    @(' MyGittu State Added',' MyGittu State Deleted',' MyGittu State Untracked',
+      ' MyGittu State Ignored',' MyGittu State Upstream')
+$overlayClassIDs = @(2, 3, 4, 6, 7, 8, 9, 10)
 
-function ClassID([int]$Index) { '{29810E41-632A-4A9B-A190-4D659366810' + $Index + '}' }
+function ClassID([int]$Index) { '{29810E41-632A-4A9B-A190-4D659366810' + $Index.ToString('x') + '}' }
 function MenuPath([string]$Kind) { Join-Path $classes "$Kind\shellex\ContextMenuHandlers\MyGittu" }
 function COMPath([int]$Index) { Join-Path $classes ('CLSID\' + (ClassID $Index)) }
 function RegistryPath([string]$Path) { $Path.Substring('HKLM:\'.Length) }
@@ -65,7 +68,7 @@ function OverlaysEnabled {
 }
 function Set-OverlayRegistration([bool]$Enabled,[string]$Dll) {
     for ($i=0; $i -lt $overlayNames.Count; $i++) {
-        $index = $i + 2
+        $index = $overlayClassIDs[$i]
         $path = Join-Path $overlayRoot $overlayNames[$i]
         if ($Enabled) {
             Set-COM $index $Dll
@@ -74,7 +77,9 @@ function Set-OverlayRegistration([bool]$Enabled,[string]$Dll) {
             Remove-Key $path
             Remove-Key (COMPath $index)
         }
-        Remove-Key (Join-Path $overlayRoot $legacyOverlayNames[$i])
+        if ($i -lt $legacyOverlayNames.Count) {
+            Remove-Key (Join-Path $overlayRoot $legacyOverlayNames[$i])
+        }
     }
 }
 

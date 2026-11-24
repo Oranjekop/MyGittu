@@ -15,22 +15,10 @@
 #include "menu_icons.h"
 
 // Independently implemented COM handlers; no Git process runs inside Explorer.
-static const CLSID ids[] = {{0x29810e41,
-                             0x632a,
-                             0x4a9b,
-                             {0xa1, 0x90, 0x4d, 0x65, 0x93, 0x66, 0x81, 0x01}},
-                            {0x29810e41,
-                             0x632a,
-                             0x4a9b,
-                             {0xa1, 0x90, 0x4d, 0x65, 0x93, 0x66, 0x81, 0x02}},
-                            {0x29810e41,
-                             0x632a,
-                             0x4a9b,
-                             {0xa1, 0x90, 0x4d, 0x65, 0x93, 0x66, 0x81, 0x03}},
-                            {0x29810e41,
-                             0x632a,
-                             0x4a9b,
-                             {0xa1, 0x90, 0x4d, 0x65, 0x93, 0x66, 0x81, 0x04}}};
+static const CLSID baseID = {0x29810e41, 0x632a, 0x4a9b,
+                            {0xa1, 0x90, 0x4d, 0x65, 0x93, 0x66, 0x81, 0x01}};
+static constexpr int modernKind = -1;
+
 static HMODULE moduleHandle;
 static std::atomic<long> objects{0};
 static std::wstring modulePath() {
@@ -176,14 +164,14 @@ static std::optional<int> query(const std::wstring &path) {
   auto reply = rpc("overlay.lookup", "{\"path\":\"" + jsonPath(path) + "\"}");
   if (reply.empty())
     return std::nullopt;
-  if (reply.find("\"state\":\"conflicted\"") != std::string::npos)
-    return 3;
-  if (reply.find("\"state\":\"clean\"") != std::string::npos)
-    return 1;
-  for (auto state : {"modified", "added", "deleted", "untracked"})
-    if (reply.find(std::string("\"state\":\"") + state + "\"") !=
+  if (reply.find("\"overlay_state\":\"behind\"") != std::string::npos)
+    return 8;
+  constexpr const char *states[]{"clean", "modified", "conflicted", "added",
+                                  "deleted", "untracked", "ignored"};
+  for (int i = 0; i < static_cast<int>(std::size(states)); ++i)
+    if (reply.find(std::string("\"state\":\"") + states[i] + "\"") !=
         std::string::npos)
-      return 2;
+      return i + 1;
   return 0;
 }
 static int cachedQuery(const std::wstring &path) {
@@ -215,7 +203,7 @@ static int cachedQuery(const std::wstring &path) {
   if (*state != 0) {
     if (existing == cache.end() && cache.size() >= 2048)
       cache.erase(cache.begin());
-    cache[path] = {*state, now + 500, now + 5000};
+    cache[path] = {*state, now + 200, now + 5000};
   } else {
     cache.erase(path);
   }
@@ -527,7 +515,7 @@ public:
     if (file.empty() || static_cast<int>(file.size()) >= capacity)
       return E_FAIL;
     wcscpy_s(p, capacity, file.c_str());
-    *index = kind - 1;
+    *index = kind <= 3 ? kind - 1 : kind + 7;
     *flags = ISIOI_ICONFILE | ISIOI_ICONINDEX;
     return S_OK;
   } catch (...) {
@@ -570,7 +558,7 @@ public:
     if (outer)
       return CLASS_E_NOAGGREGATION;
     IUnknown *s = nullptr;
-    if (kind == 4)
+    if (kind == modernKind)
       s = static_cast<IExplorerCommand *>(new (std::nothrow) Modern());
     else
       s = static_cast<IShellExtInit *>(new (std::nothrow) Shell(kind));
@@ -593,19 +581,12 @@ extern "C" HRESULT __stdcall DllGetClassObject(REFCLSID clsid, REFIID iid,
   if (!pp)
     return E_POINTER;
   *pp = nullptr;
-  auto modernID = ids[0];
-  modernID.Data4[7] = 5;
-  if (clsid == modernID) {
-    auto f = new (std::nothrow) Factory(4);
-    if (!f)
-      return E_OUTOFMEMORY;
-    auto hr = f->QueryInterface(iid, pp);
-    f->Release();
-    return hr;
-  }
-  for (int k = 0; k < 4; k++) {
-    if (clsid == ids[k]) {
-      auto f = new (std::nothrow) Factory(k);
+  for (int id = 1; id <= 10; ++id) {
+    auto candidate = baseID;
+    candidate.Data4[7] = static_cast<BYTE>(id);
+    if (clsid == candidate) {
+      const int kind = id == 5 ? modernKind : id - (id > 5 ? 2 : 1);
+      auto f = new (std::nothrow) Factory(kind);
       if (!f)
         return E_OUTOFMEMORY;
       auto hr = f->QueryInterface(iid, pp);

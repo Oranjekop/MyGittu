@@ -28,6 +28,11 @@ func NotifyRepositoryOverlay(root string, paths []string, broad bool) {
 		notify(updateItem, root)
 		notify(updateDir, filepath.Dir(root))
 		notify(updateDir, root)
+		for _, path := range paths {
+			if path != "." {
+				notify(updateDir, filepath.Join(root, path))
+			}
+		}
 		return
 	}
 	dirs := make(map[string]struct{})

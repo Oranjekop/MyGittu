@@ -3,10 +3,13 @@ package ui
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/egoist/mygo"
+	"mygittu/internal/brand"
 	"mygittu/internal/platform"
 )
 
@@ -19,7 +22,25 @@ func NewRememberedWindow(options mygo.WindowOptions) *mygo.Window {
 			path: filepath.Join(dir, "windows", options.StateKey+".json"),
 		})
 	}
-	return mygo.NewWindow(options)
+	taskbarPopup := runtime.GOOS == "windows" && options.StateKey != "workspace" && !options.SkipTaskbar
+	showAfterBranding := taskbarPopup && !options.Hidden
+	if showAfterBranding {
+		options.Hidden = true
+	}
+	window := mygo.NewWindow(options)
+	if runtime.GOOS != "darwin" && !options.SkipTaskbar {
+		_ = window.SetIcon(brand.PNG)
+		_ = mygo.App.Dock.SetIcon(brand.PNG)
+	}
+	if taskbarPopup {
+		if err := setTaskbarIdentity(window.NativeHandle()); err != nil {
+			log.Printf("set MyGittu taskbar identity: %v", err)
+		}
+	}
+	if showAfterBranding {
+		window.Show()
+	}
+	return window
 }
 
 type windowStateFile struct {
