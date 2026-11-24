@@ -67,6 +67,12 @@ func TestSelectAllChangesIncludesCollapsedGroups(t *testing.T) {
 	if !selectOK || !clearOK {
 		t.Fatal("selection buttons must be present before selecting files")
 	}
+	stageAll, stageAllOK := tt.Find(d.text("stage.all"))
+	stageSelected, stageSelectedOK := tt.Find(d.text("batch.stage"))
+	if !stageAllOK || !stageSelectedOK || stageAll.Y != stageSelected.Y {
+		t.Fatal("stage all and stage selected must share a row")
+	}
+	saveLayoutPreview(t, tt, "staging-controls-unselected.png")
 	if err := tt.Click("全选"); err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +86,7 @@ func TestSelectAllChangesIncludesCollapsedGroups(t *testing.T) {
 	if bounds, ok := tt.Find(d.text("batch.clear")); !ok || bounds != clearBefore {
 		t.Fatalf("clear selection moved: %v -> %v", clearBefore, bounds)
 	}
+	saveLayoutPreview(t, tt, "staging-controls-selected.png")
 	if err := tt.Click(d.text("batch.clear")); err != nil {
 		t.Fatal(err)
 	}

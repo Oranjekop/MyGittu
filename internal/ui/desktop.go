@@ -598,19 +598,9 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 	canCommit := d.stagedCount > 0 && !slices.ContainsFunc(files, func(file git.FileStatus) bool { return file.State == git.Conflicted })
 	filesPane := func() {
 		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
-			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Hidden(len(files) == 0).Children(func() {
-				native.Textf(c, d.text("changes"), len(files)).Grow(1)
-				canStage := slices.ContainsFunc(files, func(file git.FileStatus) bool {
-					return file.State != git.Conflicted && file.Worktree != git.Clean && file.Worktree != ""
-				})
-				if IconButton(c, d.text("stage.all"), "stage", false).Disabled(d.busy || !canStage).Clicked() {
-					var paths []string
-					for _, file := range files {
-						paths = stagingPaths(paths, file, true)
-					}
-					d.mutate("git.stage", ipc.Params{Paths: paths})
-				}
-			})
+			if len(files) > 0 {
+				d.showStagingActions(c, files)
+			}
 			if d.snapshot.CherryPicking {
 				d.cherryControls(c, files)
 			}
@@ -618,9 +608,6 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				if IconButton(c, d.text("recover.merge.continue"), "merge", false).Disabled(d.busy).Clicked() {
 					d.confirmRecovery("merge.continue", "")
 				}
-			}
-			if len(files) > 0 {
-				d.showStagingActions(c, files)
 			}
 			d.workspaceChangeList(c, files)
 			if d.action == "diff" {

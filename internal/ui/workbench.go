@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	native "github.com/egoist/mygo/ui"
@@ -71,9 +72,15 @@ func (d *Desktop) stagingSelection(files []git.FileStatus) (stage, unstage []str
 }
 func (d *Desktop) showStagingActions(c *native.Context, files []git.FileStatus) {
 	stage, unstage, count := d.stagingSelection(files)
+	canStageAll := slices.ContainsFunc(files, func(file git.FileStatus) bool {
+		return file.State != git.Conflicted && file.Worktree != git.Clean && file.Worktree != ""
+	})
 	native.Column(c).FillWidth().Padding(controlSpacing).Gap(detailSpacing).Radius(6).Background(c.Theme().Surface).Children(func() {
+		native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+			native.Textf(c, d.text("changes"), len(files)).Bold().Grow(1)
+			native.Textf(c, d.text("batch.count"), count).SingleLine().TextColor(c.Theme().TextMuted)
+		})
 		native.Row(c).FillWidth().Gap(detailSpacing).AlignItems(native.Center).Children(func() {
-			native.Textf(c, d.text("batch.count"), count).Bold().Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 			if native.Button(c, d.text("batch.selectAll")).Disabled(d.busy || count == len(files)).Clicked() {
 				d.tools.batch = make(map[string]bool, len(files))
 				for _, file := range files {
@@ -85,6 +92,13 @@ func (d *Desktop) showStagingActions(c *native.Context, files []git.FileStatus) 
 			}
 		})
 		native.Row(c).Gap(detailSpacing).Wrap().Children(func() {
+			if IconButton(c, d.text("stage.all"), "stage", false).Gap(3).Padding(0, 5).Disabled(d.busy || !canStageAll).Clicked() {
+				var paths []string
+				for _, file := range files {
+					paths = stagingPaths(paths, file, true)
+				}
+				d.mutate("git.stage", ipc.Params{Paths: paths})
+			}
 			if IconButton(c, d.text("batch.stage"), "stage", false).Gap(3).Padding(0, 5).Disabled(d.busy || count == 0 || len(stage) == 0).Clicked() {
 				d.mutate("git.stage", ipc.Params{Paths: stage})
 			}
