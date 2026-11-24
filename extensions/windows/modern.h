@@ -204,7 +204,7 @@ public:
   HRESULT STDMETHODCALLTYPE GetCanonicalName(GUID *out) override {
     if (!out)
       return E_POINTER;
-    *out = ids[0];
+    *out = baseID;
     out->Data4[7] = static_cast<BYTE>(action + 16);
     return S_OK;
   }
