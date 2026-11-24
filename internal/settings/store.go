@@ -21,7 +21,22 @@ type CloneProfile struct {
 	SSHKey   string `json:"ssh_key,omitempty"`
 }
 
+type BadgeMask uint16
+
+const (
+	BadgeClean BadgeMask = 1 << iota
+	BadgeModified
+	BadgeConflict
+	BadgeAdded
+	BadgeDeleted
+	BadgeUntracked
+	BadgeIgnored
+	BadgeBehind
+	badgeLimit
+)
+
 type Values struct {
+	HiddenBadges    BadgeMask       `json:"hidden_badges,omitempty"`
 	MinimizeOnClose bool            `json:"minimize_on_close,omitempty"`
 	CloneProfiles   []CloneProfile  `json:"clone_profiles,omitempty"`
 	CloneUsername   string          `json:"clone_username,omitempty"`
@@ -63,6 +78,9 @@ func (v Values) TextSize() float32 {
 	return v.FontSize
 }
 func Validate(v Values) error {
+	if v.HiddenBadges >= badgeLimit {
+		return fmt.Errorf("unsupported Git badge selection")
+	}
 	if len(v.CloneProfiles) > 64 {
 		return fmt.Errorf("too many clone credentials")
 	}
@@ -104,6 +122,11 @@ func (s *Store) Get() Values {
 	v := s.values
 	v.CloneProfiles = slices.Clone(v.CloneProfiles)
 	return v
+}
+func (s *Store) HiddenBadges() BadgeMask {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.values.HiddenBadges
 }
 func (s *Store) Update(v Values) error {
 	if e := Validate(v); e != nil {

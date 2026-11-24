@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	native "github.com/egoist/mygo/ui"
+	"mygittu/internal/settings"
 	"strings"
 )
 
@@ -61,6 +62,9 @@ func (d *Desktop) integrationSettings(c *native.Context) {
 	if explorerSupported {
 		d.integrationSwitch(c, d.copy("资源管理器右键菜单", "Explorer context menu"), "Menu", d.integration.Menu)
 		d.integrationSwitch(c, d.copy("Git 状态徽标", "Git status badges"), "Overlays", d.integration.Overlays)
+		if d.integration.Overlays {
+			d.badgeSettings(c)
+		}
 		if modernSupported() && d.integration.Menu && !d.integration.Modern {
 			if d.integrationError == "" {
 				native.Text(c, d.copy("可通过「显示更多选项」使用 MyGittu 菜单。", "Use MyGittu under Show more options.")).FillWidth().TextColor(t.TextMuted)
@@ -73,6 +77,33 @@ func (d *Desktop) integrationSettings(c *native.Context) {
 			d.runIntegration("Refresh", false)
 		}
 	}
+}
+
+func (d *Desktop) badgeSettings(c *native.Context) {
+	native.Row(c).FillWidth().PaddingStart(panelSpacing).Gap(panelSpacing).Wrap().Children(func() {
+		for _, badge := range []struct {
+			mask   settings.BadgeMask
+			zh, en string
+		}{
+			{settings.BadgeClean, "无变更", "Clean"},
+			{settings.BadgeModified, "已修改", "Modified"},
+			{settings.BadgeConflict, "冲突", "Conflict"},
+			{settings.BadgeAdded, "已新增", "Added"},
+			{settings.BadgeDeleted, "已删除", "Deleted"},
+			{settings.BadgeUntracked, "未跟踪", "Untracked"},
+			{settings.BadgeIgnored, "已忽略", "Ignored"},
+			{settings.BadgeBehind, "落后上游", "Behind upstream"},
+		} {
+			visible := d.prefs.HiddenBadges&badge.mask == 0
+			before := visible
+			native.Checkbox(c, &visible, d.copy(badge.zh, badge.en)).Disabled(d.busy)
+			if visible != before {
+				prefs := d.prefs
+				prefs.HiddenBadges ^= badge.mask
+				d.savePrefs(prefs)
+			}
+		}
+	})
 }
 
 func (d *Desktop) integrationSwitch(c *native.Context, label, action string, current bool) {

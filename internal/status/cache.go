@@ -7,6 +7,7 @@ import (
 	git "mygittu/internal/git"
 	"mygittu/internal/platform"
 	"mygittu/internal/repository"
+	"mygittu/internal/settings"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,13 +37,84 @@ type Snapshot struct {
 	states        map[string]git.State
 }
 type Cache struct {
-	mu         sync.RWMutex
-	snapshots  map[string]Snapshot
-	refresh    sync.Map
-	Service    *app.Service
-	generation uint64
-	epochs     map[string]uint64
-	queued     map[string]struct{}
+	mu          sync.RWMutex
+	snapshots   map[string]Snapshot
+	refresh     sync.Map
+	Service     *app.Service
+	generation  uint64
+	epochs      map[string]uint64
+	queued      map[string]struct{}
+	overlayMu   sync.Mutex
+	overlayDirs map[string]time.Time
+}
+
+// OverlayVisibilityChanged repaints recently queried Explorer directories without rerunning Git.
+func (c *Cache) OverlayVisibilityChanged() {
+	time.AfterFunc(250*time.Millisecond, func() {
+		dirs := make(map[string]struct{})
+		for _, repo := range c.Service.Registry.List() {
+			dirs[repo.Root] = struct{}{}
+			for _, alias := range repo.Aliases {
+				dirs[alias] = struct{}{}
+			}
+		}
+		c.overlayMu.Lock()
+		for path, seen := range c.overlayDirs {
+			if time.Since(seen) <= 5*time.Minute {
+				dirs[path] = struct{}{}
+			}
+		}
+		c.overlayMu.Unlock()
+		for dir := range dirs {
+			platform.NotifyRepositoryOverlay(dir, nil, true)
+		}
+	})
+}
+
+func (c *Cache) NoteOverlayLookup(path string) {
+	dir := filepath.Dir(path)
+	c.overlayMu.Lock()
+	defer c.overlayMu.Unlock()
+	if c.overlayDirs == nil {
+		c.overlayDirs = make(map[string]time.Time)
+	}
+	if _, known := c.overlayDirs[dir]; !known && len(c.overlayDirs) >= 128 {
+		for old := range c.overlayDirs {
+			delete(c.overlayDirs, old)
+			break
+		}
+	}
+	c.overlayDirs[dir] = time.Now()
+}
+
+func (o Overlay) WithVisibility(hidden settings.BadgeMask) Overlay {
+	state := o.State
+	if o.OverlayState != "" {
+		state = o.OverlayState
+	}
+	var badge settings.BadgeMask
+	switch state {
+	case git.Clean:
+		badge = settings.BadgeClean
+	case git.Modified:
+		badge = settings.BadgeModified
+	case git.Conflicted:
+		badge = settings.BadgeConflict
+	case git.Added:
+		badge = settings.BadgeAdded
+	case git.Deleted:
+		badge = settings.BadgeDeleted
+	case git.Untracked:
+		badge = settings.BadgeUntracked
+	case git.Ignored:
+		badge = settings.BadgeIgnored
+	case overlayBehind:
+		badge = settings.BadgeBehind
+	}
+	if hidden&badge != 0 {
+		o.State, o.OverlayState = git.Unknown, ""
+	}
+	return o
 }
 
 func New(s *app.Service) *Cache {

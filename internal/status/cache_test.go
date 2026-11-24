@@ -6,6 +6,7 @@ import (
 	"mygittu/internal/app"
 	git "mygittu/internal/git"
 	"mygittu/internal/repository"
+	"mygittu/internal/settings"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,16 @@ import (
 	"testing"
 	"time"
 )
+
+func TestOverlayVisibilityDistinguishesBehindFromModified(t *testing.T) {
+	behind := Overlay{State: git.Modified, OverlayState: overlayBehind, Cached: true}
+	if got := behind.WithVisibility(settings.BadgeModified); got != behind {
+		t.Fatalf("hiding modified changed the behind badge: %+v", got)
+	}
+	if got := behind.WithVisibility(settings.BadgeBehind); got.State != git.Unknown || got.OverlayState != "" || !got.Cached {
+		t.Fatalf("hidden behind badge still visible: %+v", got)
+	}
+}
 
 func TestOverlayChangesIncludesFilesEvenWhenRootStaysModified(t *testing.T) {
 	before := map[string]git.State{".": git.Modified, "old.txt": git.Modified, "edited.txt": git.Modified}

@@ -111,8 +111,12 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		if s.Service.Settings == nil {
 			e = fmt.Errorf("settings store unavailable")
 		} else {
+			hidden := s.Service.Settings.HiddenBadges()
 			e = s.Service.Settings.Update(p.Settings)
 			result = s.Service.Settings.Get()
+			if e == nil && hidden != p.Settings.HiddenBadges && s.Cache != nil {
+				s.Cache.OverlayVisibilityChanged()
+			}
 		}
 	case "repo.list":
 		result = s.Service.Registry.List()
@@ -133,6 +137,10 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		if overlay.State == git.Unknown && filepath.IsAbs(p.Path) {
 			s.ensureRepository(p.Path)
 			overlay = s.Cache.Lookup(p.Path)
+		}
+		if overlay.Cached && s.Service.Settings != nil {
+			s.Cache.NoteOverlayLookup(p.Path)
+			overlay = overlay.WithVisibility(s.Service.Settings.HiddenBadges())
 		}
 		result = overlay
 	case "ui.open":

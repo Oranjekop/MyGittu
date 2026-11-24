@@ -609,7 +609,7 @@ func TestIntegrationSettingsAt150Percent(t *testing.T) {
 		}
 	}
 	if explorerSupported {
-		for _, label := range []string{"资源管理器右键菜单", "Git 状态徽标", "重启资源管理器以应用"} {
+		for _, label := range []string{"资源管理器右键菜单", "Git 状态徽标", "无变更", "已修改", "冲突", "已新增", "已删除", "未跟踪", "已忽略", "落后上游", "重启资源管理器以应用"} {
 			if !tt.HasText(label) {
 				t.Fatalf("missing Explorer setting %q", label)
 			}
