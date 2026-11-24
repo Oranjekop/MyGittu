@@ -20,6 +20,7 @@ import (
 )
 
 type Params struct {
+	Mainline       int             `json:"mainline,omitempty"`
 	AllBranches    bool            `json:"all_branches,omitempty"`
 	FileContent    []byte          `json:"file_content,omitempty"`
 	PreviewOffset  int64           `json:"preview_offset,omitempty"`
@@ -207,7 +208,7 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 	case "git.amend":
 		e = s.Service.Amend(ctx, p.RepoID, p.Hash, p.Message)
 	case "git.cherry-pick":
-		e = s.Service.CherryPick(ctx, p.RepoID, p.Action, p.Hash)
+		e = s.Service.CherryPick(ctx, p.RepoID, p.Action, p.Hash, p.Mainline)
 	case "git.worktrees":
 		result, e = s.Service.Worktrees(ctx, p.RepoID)
 	case "git.worktree.edit":

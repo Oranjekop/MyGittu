@@ -59,42 +59,37 @@ func stagingPaths(paths []string, file git.FileStatus, stage bool) []string {
 }
 
 func (d *Desktop) stagingSelection(files []git.FileStatus) (stage, unstage []string, count int) {
-	for i, file := range files {
-		if !d.tools.batch[file.Path] && (len(d.tools.batch) != 0 || d.row != i) {
+	for _, file := range files {
+		if !d.tools.batch[file.Path] {
 			continue
 		}
 		count++
 		stage = stagingPaths(stage, file, true)
 		unstage = stagingPaths(unstage, file, false)
-		if len(d.tools.batch) == 0 {
-			break
-		}
 	}
 	return stage, unstage, count
 }
 func (d *Desktop) showStagingActions(c *native.Context, files []git.FileStatus) {
 	stage, unstage, count := d.stagingSelection(files)
-	if count == 0 {
-		return
-	}
-	batch := len(d.tools.batch) > 0
-	stageLabel, unstageLabel := "stage", "unstage"
-	if batch {
-		stageLabel, unstageLabel = "batch.stage", "batch.unstage"
-	}
 	native.Column(c).FillWidth().Padding(controlSpacing).Gap(detailSpacing).Radius(6).Background(c.Theme().Surface).Children(func() {
-		if batch {
-			native.Textf(c, d.text("batch.count"), count).Bold()
-		}
+		native.Row(c).FillWidth().Gap(detailSpacing).AlignItems(native.Center).Children(func() {
+			native.Textf(c, d.text("batch.count"), count).Bold().Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			if native.Button(c, d.text("batch.selectAll")).Disabled(d.busy || count == len(files)).Clicked() {
+				d.tools.batch = make(map[string]bool, len(files))
+				for _, file := range files {
+					d.tools.batch[file.Path] = true
+				}
+			}
+			if native.Button(c, d.text("batch.clear")).Disabled(d.busy || count == 0).Clicked() {
+				clear(d.tools.batch)
+			}
+		})
 		native.Row(c).Gap(detailSpacing).Wrap().Children(func() {
-			if IconButton(c, d.text(stageLabel), "stage", false).Gap(3).Padding(0, 5).Disabled(d.busy || len(stage) == 0).Clicked() {
+			if IconButton(c, d.text("batch.stage"), "stage", false).Gap(3).Padding(0, 5).Disabled(d.busy || count == 0 || len(stage) == 0).Clicked() {
 				d.mutate("git.stage", ipc.Params{Paths: stage})
 			}
-			if IconButton(c, d.text(unstageLabel), "unstage", false).Gap(3).Padding(0, 5).Disabled(d.busy || len(unstage) == 0).Clicked() {
+			if IconButton(c, d.text("batch.unstage"), "unstage", false).Gap(3).Padding(0, 5).Disabled(d.busy || count == 0 || len(unstage) == 0).Clicked() {
 				d.mutate("git.unstage", ipc.Params{Paths: unstage})
-			}
-			if batch && IconButton(c, d.text("batch.clear"), "clear", false).Gap(3).Padding(0, 5).Disabled(d.busy).Clicked() {
-				clear(d.tools.batch)
 			}
 		})
 	})

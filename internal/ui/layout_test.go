@@ -293,6 +293,18 @@ func TestProjectPreviewStaysVisibleDuringSelection(t *testing.T) {
 	}
 }
 
+func TestClosingFailedProjectTabClearsRetry(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.projectShownPath = "demo", "open.txt"
+	failed := &projectTab{path: "failed.txt"}
+	d.projectTabs = map[string][]*projectTab{"demo": {{path: d.projectShownPath}, failed}}
+	d.projectLoadError, d.projectFailedPath = "read failed", failed.path
+	d.closeProjectTab(failed)
+	if d.projectLoadError != "" || d.projectFailedPath != "" || d.projectShownPath != "open.txt" {
+		t.Fatal("closing a failed tab left its retry action or disrupted the open file")
+	}
+}
+
 func TestProjectFileDividerRemembersWidth(t *testing.T) {
 	d := New(nil, "", "")
 	d.selected, d.page = "demo", projectFilesPage
@@ -354,6 +366,29 @@ func TestStashPreviewSelectsIndividualPatch(t *testing.T) {
 	saveLayoutPreview(t, tt, "stash-file-preview.png")
 }
 
+func TestWorkspaceKeepsControlsWithLimitedPreview(t *testing.T) {
+	d := New(nil, "", "")
+	d.selected, d.row = "demo", 0
+	d.changes = []git.FileStatus{{Path: "huge.txt", Index: git.Clean, Worktree: git.Modified, State: git.Modified}}
+	d.applyComparison("huge.txt", app.Comparison{Limited: true})
+	tt := native.NewTester(d.view, 960, 680)
+	for _, label := range []string{"全部暂存", "恢复文件", d.text("diff.previewLimited")} {
+		if !tt.HasText(label) {
+			t.Errorf("missing %q with an oversized preview", label)
+		}
+	}
+	stage := d.text("batch.stage")
+	before, ok := tt.Find(stage)
+	if !ok {
+		t.Fatal("missing batch action")
+	}
+	d.tools.batch = map[string]bool{"huge.txt": true}
+	tt.Frame()
+	if after, ok := tt.Find(stage); !ok || after != before {
+		t.Fatalf("batch action moved: %v -> %v", before, after)
+	}
+}
+
 func TestWorkspaceAtNarrow150Percent(t *testing.T) {
 	d := New(nil, "", "")
 	d.selected = "demo"
@@ -395,7 +430,7 @@ func TestWorkspaceAtNarrow150Percent(t *testing.T) {
 	if d.comparison.Layout != editor.DiffUnified || tt.Image().Bounds().Dx() != 1440 {
 		t.Fatalf("narrow DPI layout not applied: layout=%v size=%v", d.comparison.Layout, tt.Image().Bounds())
 	}
-	for _, label := range []string{"已选 2 项", "暂存所选", "取消暂存所选", "清空选择"} {
+	for _, label := range []string{"已选 2 项", "暂存所选", "取消暂存所选", "全选", "取消全选"} {
 		bounds, ok := tt.Find(label)
 		if !ok || bounds.X < 0 || bounds.X+bounds.W > 960 || bounds.Y+bounds.H > 680 {
 			t.Fatalf("not fully visible at 150%%: %s %v", label, bounds)
@@ -403,12 +438,13 @@ func TestWorkspaceAtNarrow150Percent(t *testing.T) {
 	}
 	stage, _ := tt.Find("暂存所选")
 	unstage, _ := tt.Find("取消暂存所选")
-	clearButton, _ := tt.Find("清空选择")
-	if stage.Y != unstage.Y || stage.Y != clearButton.Y {
-		t.Fatal("batch buttons should share a baseline at the tested width")
+	selectButton, _ := tt.Find("全选")
+	clearButton, _ := tt.Find("取消全选")
+	if stage.Y != unstage.Y || selectButton.Y != clearButton.Y {
+		t.Fatal("selection and staging button pairs should align at the tested width")
 	}
 	saveLayoutPreview(t, tt, "workspace-960-150.png")
-	if err := tt.Click("清空选择"); err != nil {
+	if err := tt.Click("取消全选"); err != nil {
 		t.Fatal(err)
 	}
 	if len(d.tools.batch) != 0 {
@@ -907,6 +943,26 @@ func TestFileHistoryShowsPatchAndBlameInColumns(t *testing.T) {
 	}
 	if !tt.HasText("代码") || !tt.HasText("Alex") || !tt.HasText(expected) || tt.HasText("Update release") {
 		t.Fatal("expected structured line annotations")
+	}
+}
+
+func TestStandaloneHistoryShowsCherryPickConflictControls(t *testing.T) {
+	for _, language := range []string{"zh-CN", "en"} {
+		d := New(nil, "D:/Projects/MyGittu", "log")
+		d.prefs.Language = language
+		d.selected, d.page = "demo", 0
+		d.applyWorkspaceStatus(status.Snapshot{CherryPicking: true, Files: []git.FileStatus{
+			{Path: "conflict.txt", Index: git.Conflicted, Worktree: git.Conflicted, State: git.Conflicted},
+		}})
+		tt := native.NewTester(d.view, 960, 680)
+		if !tt.HasText("conflict.txt") {
+			t.Error("the conflict file should be visible without expanding a group")
+		}
+		for _, key := range []string{"cherry.conflict", "cherry.continue", "cherry.skip", "cherry.abort"} {
+			if !tt.HasText(d.text(key)) {
+				t.Errorf("%s: missing %q in standalone window", language, d.text(key))
+			}
+		}
 	}
 }
 

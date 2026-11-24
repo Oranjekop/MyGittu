@@ -108,6 +108,8 @@ type Desktop struct {
 	repositorySearch                   string
 	comparison                         *editor.DiffState
 	comparisonPath                     string
+	comparisonLimited                  bool
+	comparisonError                    string
 	comparisonStaged                   bool
 	diffLayout                         int
 	diffWrap, diffExpand               bool
@@ -255,7 +257,7 @@ func (d *Desktop) Run() error {
 				}
 			})
 		}
-		if d.action != "clone" && d.action != "log" {
+		if d.action != "clone" {
 			go d.watchWorkspace(updateContext)
 		}
 		if d.action != "" {
@@ -530,8 +532,9 @@ func (d *Desktop) visible() []git.FileStatus {
 }
 func (d *Desktop) diff(path string) {
 	d.rememberChangeTab(path)
-	if d.comparisonPath != path || d.comparisonStaged != d.staged {
+	if d.comparisonPath != path || d.comparisonStaged != d.staged || d.comparisonError != "" {
 		d.detail, d.comparison, d.binary = "", nil, false
+		d.comparisonLimited, d.comparisonError = false, ""
 	}
 	if d.Client == nil {
 		return
@@ -548,13 +551,23 @@ func (d *Desktop) diff(path string) {
 		var comparison app.Comparison
 		e := d.Client.Call(ctx, "git.comparison", ipc.Params{RepoID: id, Path: path, OriginalPath: original, Staged: staged}, &comparison)
 		return func() {
+			if e != nil {
+				d.detail, d.comparison, d.binary, d.comparisonLimited, d.comparisonError = "", nil, false, false, e.Error()
+				return
+			}
 			d.applyComparison(path, comparison)
-		}, e
+		}, nil
 	})
 }
 func (d *Desktop) applyComparison(path string, comparison app.Comparison) bool {
-	changed := d.binary != comparison.Binary
+	changed := d.binary != comparison.Binary || d.comparisonLimited != comparison.Limited || d.comparisonError != ""
 	d.binary = comparison.Binary
+	d.comparisonLimited, d.comparisonError = comparison.Limited, ""
+	if comparison.Limited {
+		d.comparisonPath, d.comparisonStaged = path, d.staged
+		d.comparison = nil
+		return changed
+	}
 	if d.comparison == nil || d.comparisonPath != path || d.comparisonStaged != d.staged {
 		d.comparisonPath, d.comparisonStaged = path, d.staged
 		old, next := editor.NewBuffer(comparison.Old), editor.NewBuffer(comparison.New)
@@ -587,16 +600,10 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 		native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Background).Radius(8).Children(func() {
 			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Hidden(len(files) == 0).Children(func() {
 				native.Textf(c, d.text("changes"), len(files)).Grow(1)
-				if native.Button(c, d.copy("全选", "Select all")).Disabled(d.busy || len(files) == 0).Clicked() {
-					d.tools.batch = make(map[string]bool, len(files))
-					for _, file := range files {
-						d.tools.batch[file.Path] = true
-					}
-				}
 				canStage := slices.ContainsFunc(files, func(file git.FileStatus) bool {
 					return file.State != git.Conflicted && file.Worktree != git.Clean && file.Worktree != ""
 				})
-				if len(d.tools.batch) == 0 && IconButton(c, d.text("stage.all"), "stage", false).Disabled(d.busy || !canStage).Clicked() {
+				if IconButton(c, d.text("stage.all"), "stage", false).Disabled(d.busy || !canStage).Clicked() {
 					var paths []string
 					for _, file := range files {
 						paths = stagingPaths(paths, file, true)
@@ -612,7 +619,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 					d.confirmRecovery("merge.continue", "")
 				}
 			}
-			if len(d.tools.batch) > 0 {
+			if len(files) > 0 {
 				d.showStagingActions(c, files)
 			}
 			d.workspaceChangeList(c, files)
@@ -653,7 +660,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 					}
 					native.Text(c, commitLabel).SingleLine()
 				})
-				commit.Group.Height(controlHeight(c)).Disabled(d.busy || !canCommit || strings.TrimSpace(d.message) == "")
+				commit.Group.Height(controlHeight(c)).Disabled(d.busy || d.snapshot.CherryPicking || !canCommit || strings.TrimSpace(d.message) == "")
 				commit.Arrow.Label(d.text("commit.actions")).PopoverMenuButton(func(menu *native.Menu) {
 					if menu.Item(d.text("commit.push")).Chosen() {
 						d.commitChanges(true)
@@ -670,7 +677,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			noDiff := d.comparison == nil && (d.detail == "" || d.detail == d.text("diff.empty"))
 			hasSelectedFile := d.row >= 0 && d.row < len(files)
 			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Hidden(noDiff && !hasSelectedFile && !d.binary).Children(func() {
-				if d.binary || noDiff {
+				if !hasSelectedFile && (d.binary || noDiff) {
 					native.Box(c).Grow(1)
 				} else {
 					native.Text(c, func() string {
@@ -678,7 +685,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 							return files[d.row].Path
 						}
 						return d.text("diff.all")
-					}()).Grow(1)
+					}()).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				}
 				if d.row >= 0 && d.row < len(files) {
 					file := files[d.row]
@@ -707,7 +714,11 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 					}
 				}
 			})
-			if d.binary {
+			if hasSelectedFile && d.comparisonLimited {
+				emptyState(c, emptyDiffArt, 128, d.text("diff.previewLimited")).Grow(1)
+			} else if hasSelectedFile && d.comparisonError != "" {
+				emptyState(c, emptyDiffArt, 128, d.text("diff.previewFailed")).Tooltip(d.comparisonError).Grow(1)
+			} else if d.binary {
 				emptyState(c, emptyDiffArt, 128, d.text("diff.binary")).Grow(1)
 			} else if d.comparison != nil {
 				d.showCodeDiff(c, d.comparison, available-fileWidth, true)

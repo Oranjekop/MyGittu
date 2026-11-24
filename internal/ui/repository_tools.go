@@ -125,7 +125,7 @@ func (d *Desktop) showRepositoryTools(c *native.Context) {
 				native.Text(c, w.detail).FillWidth()
 			}
 			native.Row(c).Gap(controlSpacing).Children(func() {
-				if IconButton(c, d.copy("确认", "Confirm"), "commit", true).Disabled(d.busy).Clicked() {
+				if IconButton(c, d.text("confirm"), "commit", true).Disabled(d.busy).Clicked() {
 					w.confirmOpen = false
 					apply := w.confirm
 					w.confirm = nil
@@ -280,29 +280,62 @@ func (d *Desktop) prepareAmend() {
 	})
 }
 func (d *Desktop) cherryControls(c *native.Context, files []git.FileStatus) {
+	conflict := slices.ContainsFunc(files, func(f git.FileStatus) bool { return f.State == git.Conflicted })
+	message := "cherry.pending"
+	if conflict {
+		message = "cherry.conflict"
+	}
+	native.Text(c, d.text(message)).FillWidth().TextColor(c.Theme().TextMuted)
 	native.Row(c).Gap(controlSpacing).Wrap().Children(func() {
-		conflict := slices.ContainsFunc(files, func(f git.FileStatus) bool { return f.State == git.Conflicted })
-		if IconButton(c, d.copy("继续拣选", "Continue cherry-pick"), "right", true).Disabled(d.busy || conflict).Clicked() {
-			d.runCherry("continue", "")
+		if IconButton(c, d.text("cherry.continue"), "right", true).Disabled(d.busy || conflict).Clicked() {
+			d.runCherry("continue", "", 0)
 		}
-		if IconButton(c, d.copy("中止拣选", "Abort cherry-pick"), "close", false).Disabled(d.busy).Clicked() {
-			d.askAction(d.copy("中止拣选并恢复到操作前的状态？", "Abort cherry-pick and restore its starting state?"), "", func() { d.runCherry("abort", "") })
+		if IconButton(c, d.text("cherry.skip"), "right", false).Disabled(d.busy).Clicked() {
+			d.askAction(d.text("cherry.confirmSkip"), "", func() { d.runCherry("skip", "", 0) })
+		}
+		if IconButton(c, d.text("cherry.abort"), "close", false).Disabled(d.busy).Clicked() {
+			d.askAction(d.text("cherry.confirmAbort"), "", func() { d.runCherry("abort", "", 0) })
 		}
 	})
 }
-func (d *Desktop) runCherry(action, hash string) {
+func (d *Desktop) runCherry(action, hash string, mainline int) {
 	id := d.selected
+	d.remoteNotice = ""
 	d.task(func(ctx context.Context) (func(), error) {
-		err := d.Client.Call(ctx, "git.cherry-pick", ipc.Params{RepoID: id, Action: action, Hash: hash}, nil)
+		err := d.Client.Call(ctx, "git.cherry-pick", ipc.Params{RepoID: id, Action: action, Hash: hash, Mainline: mainline}, nil)
 		var snapshot status.Snapshot
 		statusErr := d.Client.Call(ctx, "status.refresh", ipc.Params{RepoID: id}, &snapshot)
 		return func() {
+			if id != d.selected {
+				return
+			}
 			if statusErr == nil && (err == nil || snapshot.CherryPicking) {
 				d.page = 0
 				d.applyWorkspaceStatus(snapshot)
 			}
-			if err != nil && (action != "start" || !snapshot.CherryPicking) {
-				d.err = err.Error()
+			if err != nil {
+				if action != "start" || !snapshot.CherryPicking {
+					d.err = d.text("cherry.failed") + " — " + err.Error()
+				}
+				return
+			}
+			if statusErr != nil {
+				d.err = d.text("cherry.refreshFailed") + " — " + statusErr.Error()
+				return
+			}
+			if !snapshot.CherryPicking {
+				key := "cherry.done"
+				switch action {
+				case "abort":
+					key = "cherry.aborted"
+				case "skip":
+					key = "cherry.skipped"
+				}
+				d.remoteNotice = d.text(key)
+				if d.action == "log" {
+					d.page = 1
+					d.refresh()
+				}
 			}
 		}, nil
 	})

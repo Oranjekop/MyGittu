@@ -4,8 +4,33 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestLargeChangeCanBeRestoredWithoutPreview(t *testing.T) {
+	s, id, dir := setup(t)
+	ctx := context.Background()
+	file := filepath.Join(dir, "large.txt")
+	write(t, file, "original\n")
+	command(t, dir, "add", "large.txt")
+	command(t, dir, "commit", "-m", "original")
+	write(t, file, strings.Repeat("0123456789\n", 800000))
+	comparison, err := s.Comparison(ctx, id, "large.txt", "", false)
+	if err != nil || !comparison.Limited {
+		t.Fatalf("expected a limited preview, got limited=%t, error=%v", comparison.Limited, err)
+	}
+	token, err := s.RestoreToken(ctx, id, "large.txt", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RestoreFile(ctx, id, "large.txt", token, false); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(file); err != nil || strings.ReplaceAll(string(data), "\r\n", "\n") != "original\n" {
+		t.Fatalf("large file was not restored: %v", err)
+	}
+}
 
 func TestFileComparison(t *testing.T) {
 	s, id, dir := setup(t)

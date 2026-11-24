@@ -62,12 +62,23 @@ func TestSelectAllChangesIncludesCollapsedGroups(t *testing.T) {
 		{Path: "working.go", Index: git.Clean, Worktree: git.Modified},
 	}
 	tt := native.NewTester(d.view, 960, 680)
+	selectBefore, selectOK := tt.Find(d.text("batch.selectAll"))
+	clearBefore, clearOK := tt.Find(d.text("batch.clear"))
+	if !selectOK || !clearOK {
+		t.Fatal("selection buttons must be present before selecting files")
+	}
 	if err := tt.Click("全选"); err != nil {
 		t.Fatal(err)
 	}
 	stage, unstage, count := d.stagingSelection(d.changes)
 	if count != 2 || !slices.Equal(stage, []string{"working.go"}) || !slices.Equal(unstage, []string{"staged.go"}) {
 		t.Fatal("select all did not feed staged and unstaged files into the existing batch actions")
+	}
+	if bounds, ok := tt.Find(d.text("batch.selectAll")); !ok || bounds != selectBefore {
+		t.Fatalf("select all moved: %v -> %v", selectBefore, bounds)
+	}
+	if bounds, ok := tt.Find(d.text("batch.clear")); !ok || bounds != clearBefore {
+		t.Fatalf("clear selection moved: %v -> %v", clearBefore, bounds)
 	}
 	if err := tt.Click(d.text("batch.clear")); err != nil {
 		t.Fatal(err)

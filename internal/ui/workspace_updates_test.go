@@ -45,6 +45,19 @@ func TestUpdatedDiffKeepsView(t *testing.T) {
 	}
 }
 
+func TestWorkspaceStatusClearsPreviewWhenDiffSideChanges(t *testing.T) {
+	d := New(nil, "", "")
+	d.row = 0
+	d.changes = []git.FileStatus{{Path: "notes.txt", Index: git.Clean, Worktree: git.Modified, State: git.Modified}}
+	d.applyComparison("notes.txt", app.Comparison{Limited: true})
+	d.applyWorkspaceStatus(status.Snapshot{Files: []git.FileStatus{
+		{Path: "notes.txt", Index: git.Modified, Worktree: git.Clean, State: git.Modified},
+	}})
+	if d.row != 0 || !d.staged || d.comparisonLimited || d.comparisonPath != "" {
+		t.Fatal("staging the file retained its worktree preview")
+	}
+}
+
 func TestProjectTreeSearchWithTenThousandFiles(t *testing.T) {
 	d := New(nil, "", "")
 	for i := range 10000 {

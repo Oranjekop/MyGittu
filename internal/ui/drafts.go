@@ -27,6 +27,7 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.stagedCollapsed, d.changesCollapsed = true, true
 		d.files = native.ListState{}
 		d.detail, d.comparison, d.binary = "", nil, false
+		d.comparisonPath, d.comparisonLimited, d.comparisonError = "", false, ""
 		d.logs, d.logRow, d.historySummary, d.historyShown = nil, -1, nil, app.Commit{}
 		d.historyGraph, d.historyGraphWidth = nil, 0
 		d.historyGraphBuilder = commitGraphBuilder{}

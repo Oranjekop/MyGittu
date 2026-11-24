@@ -97,9 +97,12 @@ func TestCherryPickConflictContinueAndAbort(t *testing.T) {
 	command(t, dir, "switch", "main")
 	write(t, file, "main\n")
 	command(t, dir, "commit", "-am", "main")
-	for _, action := range []string{"abort", "continue"} {
-		if err := s.CherryPick(ctx, id, "start", hash); err == nil {
+	for _, action := range []string{"abort", "skip", "continue"} {
+		if err := s.CherryPick(ctx, id, "start", hash, 0); err == nil {
 			t.Fatal("expected conflict")
+		}
+		if err := s.CherryPick(ctx, id, "start", hash, 0); err == nil || !strings.Contains(err.Error(), "already in progress") {
+			t.Fatalf("expected the active cherry-pick to block another start, got %v", err)
 		}
 		cache := status.New(s)
 		if err := cache.Refresh(ctx, id); err != nil {
@@ -113,7 +116,7 @@ func TestCherryPickConflictContinueAndAbort(t *testing.T) {
 			write(t, file, "resolved\n")
 			command(t, dir, "add", "conflict.txt")
 		}
-		if err := s.CherryPick(ctx, id, action, ""); err != nil {
+		if err := s.CherryPick(ctx, id, action, "", 0); err != nil {
 			t.Fatal(err)
 		}
 		if s.GitStateExists(ctx, id, "CHERRY_PICK_HEAD") {
@@ -121,6 +124,26 @@ func TestCherryPickConflictContinueAndAbort(t *testing.T) {
 		}
 	}
 	if got := strings.TrimSpace(command(t, dir, "show", "HEAD:conflict.txt")); got != "resolved" {
+		t.Fatal(got)
+	}
+}
+
+func TestCherryPickMergeRelativeToFirstParent(t *testing.T) {
+	s, id, dir := setup(t)
+	command(t, dir, "commit", "--allow-empty", "-m", "base")
+	command(t, dir, "branch", "target")
+	command(t, dir, "switch", "-c", "feature")
+	write(t, filepath.Join(dir, "feature.txt"), "feature\n")
+	command(t, dir, "add", "feature.txt")
+	command(t, dir, "commit", "-m", "feature")
+	command(t, dir, "switch", "main")
+	command(t, dir, "merge", "--no-ff", "-m", "merge feature", "feature")
+	hash := strings.TrimSpace(command(t, dir, "rev-parse", "HEAD"))
+	command(t, dir, "switch", "target")
+	if err := s.CherryPick(context.Background(), id, "start", hash, 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(command(t, dir, "show", "HEAD:feature.txt")); got != "feature" {
 		t.Fatal(got)
 	}
 }

@@ -226,9 +226,13 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 					if IconButton(c, d.text("recover.revert"), "revert", false).Disabled(d.busy || !valid).Clicked() && valid {
 						d.confirmRecovery("revert", d.logs[d.logRow].Hash)
 					}
-					if IconButton(c, d.copy("拣选提交", "Cherry-pick"), "branch", false).Disabled(d.busy || !valid).Clicked() && valid {
-						hash := d.logs[d.logRow].Hash
-						d.askAction(d.copy("将该提交应用到当前分支？", "Apply this commit to the current branch?"), hash, func() { d.runCherry("start", hash) })
+					if IconButton(c, d.text("cherry.start"), "branch", false).Disabled(d.busy || !valid || d.snapshot.CherryPicking).Clicked() && valid {
+						commit := d.logs[d.logRow]
+						question, mainline := "cherry.confirm", 0
+						if len(commit.Parents) > 1 {
+							question, mainline = "cherry.confirmMerge", 1
+						}
+						d.askAction(d.text(question), commit.Hash, func() { d.runCherry("start", commit.Hash, mainline) })
 					}
 				})
 			})

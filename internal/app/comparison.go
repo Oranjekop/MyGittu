@@ -3,8 +3,9 @@ package app
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"errors"
 	"io"
+	git "mygittu/internal/git"
 	"mygittu/internal/repository"
 	"os"
 	"strings"
@@ -12,12 +13,18 @@ import (
 )
 
 type Comparison struct {
-	Old    string `json:"old"`
-	New    string `json:"new"`
-	Binary bool   `json:"binary"`
+	Old     string `json:"old"`
+	New     string `json:"new"`
+	Binary  bool   `json:"binary"`
+	Limited bool   `json:"limited,omitempty"`
 }
 
-func (s *Service) Comparison(ctx context.Context, id, path, original string, staged bool) (Comparison, error) {
+func (s *Service) Comparison(ctx context.Context, id, path, original string, staged bool) (comparison Comparison, err error) {
+	defer func() {
+		if errors.Is(err, git.ErrOutputLimit) {
+			comparison, err = Comparison{Limited: true}, nil
+		}
+	}()
 	repo, err := s.Registry.Get(id)
 	if err != nil {
 		return Comparison{}, err
@@ -93,7 +100,7 @@ func (s *Service) Comparison(ctx context.Context, id, path, original string, sta
 		}
 	}
 	if len(oldText) > 256<<10 || len(newText) > 256<<10 || bytes.Count(oldText, []byte{'\n'}) > 8000 || bytes.Count(newText, []byte{'\n'}) > 8000 {
-		return Comparison{}, fmt.Errorf("file preview is limited to 256 KiB and 8000 lines per side")
+		return Comparison{Limited: true}, nil
 	}
 	if bytes.ContainsRune(oldText, 0) || bytes.ContainsRune(newText, 0) || !utf8.Valid(oldText) || !utf8.Valid(newText) {
 		return Comparison{Binary: true}, nil

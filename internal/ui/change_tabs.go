@@ -89,11 +89,13 @@ func (d *Desktop) showChangeTabs(c *native.Context) {
 	if closeAll {
 		d.changeTabs = nil
 		d.row, d.detail, d.comparison, d.binary = -1, "", nil, false
+		d.comparisonPath, d.comparisonLimited, d.comparisonError = "", false, ""
 		d.workspacePatch = nil
 	} else if closing >= 0 {
 		d.changeTabs = slices.Delete(tabs, closing, closing+1)
 		if closing == active {
 			d.row, d.detail, d.comparison, d.binary = -1, "", nil, false
+			d.comparisonPath, d.comparisonLimited, d.comparisonError = "", false, ""
 			if len(d.changeTabs) > 0 {
 				d.activateChangeTab(d.changeTabs[min(closing, len(d.changeTabs)-1)])
 			}

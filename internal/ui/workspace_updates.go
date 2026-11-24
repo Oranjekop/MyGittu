@@ -66,7 +66,14 @@ func (d *Desktop) pollWorkspace(ctx context.Context) {
 				return
 			}
 			sameSide := d.staged == staged
+			wasCherryPicking := d.snapshot.CherryPicking
 			changed := d.applyWorkspaceStatus(snapshot)
+			if d.action == "log" && wasCherryPicking && !snapshot.CherryPicking {
+				d.page = 1
+				d.refresh()
+				d.win.Invalidate()
+				return
+			}
 			if comparisonOK && sameSide && d.staged == comparisonStaged && d.row >= 0 && d.row < len(d.changes) && d.changes[d.row].Path == selected.Path {
 				changed = d.applyComparison(selected.Path, comparison) || changed
 			}
@@ -102,6 +109,11 @@ func (d *Desktop) applyWorkspaceStatus(snapshot status.Snapshot) bool {
 		return strings.Compare(a.Path, b.Path)
 	})
 	branchChanged := d.snapshot.Branch != snapshot.Branch || d.snapshot.Tracking != snapshot.Tracking || d.snapshot.Merging != snapshot.Merging || d.snapshot.CherryPicking != snapshot.CherryPicking
+	if snapshot.CherryPicking && !d.snapshot.CherryPicking && slices.ContainsFunc(changes, func(file git.FileStatus) bool {
+		return file.State == git.Conflicted
+	}) {
+		d.changesCollapsed = false
+	}
 	d.snapshot = snapshot
 	if slices.Equal(d.changes, changes) {
 		return branchChanged
@@ -123,8 +135,13 @@ func (d *Desktop) applyWorkspaceStatus(snapshot status.Snapshot) bool {
 	d.row = slices.IndexFunc(changes, func(file git.FileStatus) bool { return file.Path == selected.Path })
 	if d.row < 0 {
 		d.comparison, d.binary = nil, false
+		d.comparisonPath, d.comparisonLimited, d.comparisonError = "", false, ""
 	} else {
 		d.staged = workspaceDiffSide(changes[d.row], d.staged)
+		if d.comparisonPath != changes[d.row].Path || d.comparisonStaged != d.staged {
+			d.detail, d.comparison, d.binary = "", nil, false
+			d.comparisonPath, d.comparisonLimited, d.comparisonError = "", false, ""
+		}
 	}
 	return true
 }

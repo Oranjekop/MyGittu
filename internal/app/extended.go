@@ -128,23 +128,33 @@ func (s *Service) Amend(ctx context.Context, id, head, message string) error {
 	return err
 }
 
-func (s *Service) CherryPick(ctx context.Context, id, action, hash string) error {
+func (s *Service) CherryPick(ctx context.Context, id, action, hash string, mainline int) error {
 	var args []string
 	switch action {
 	case "start":
 		if !commitHash.MatchString(hash) {
 			return fmt.Errorf("invalid commit hash")
 		}
-		args = []string{"cherry-pick", "--", hash}
-	case "continue", "abort":
-		if !s.GitStateExists(ctx, id, "CHERRY_PICK_HEAD") {
-			return fmt.Errorf("no cherry-pick in progress")
+		args = []string{"cherry-pick"}
+		if mainline > 0 {
+			args = append(args, fmt.Sprintf("--mainline=%d", mainline))
 		}
+		args = append(args, "--", hash)
+	case "continue", "abort", "skip":
 		args = []string{"-c", "core.editor=true", "cherry-pick", "--" + action}
 	default:
 		return fmt.Errorf("invalid cherry-pick action")
 	}
-	_, err := s.Write(ctx, id, args...)
+	_, err := s.writeLocked(ctx, id, func() (git.Result, error) {
+		inProgress := s.GitStateExists(ctx, id, "CHERRY_PICK_HEAD")
+		if action == "start" && inProgress {
+			return git.Result{}, fmt.Errorf("a cherry-pick is already in progress")
+		}
+		if action != "start" && !inProgress {
+			return git.Result{}, fmt.Errorf("no cherry-pick in progress")
+		}
+		return s.Read(ctx, id, args...)
+	})
 	return err
 }
 
@@ -240,14 +250,16 @@ func (s *Service) RestoreToken(ctx context.Context, id, path string, untracked b
 	if untracked {
 		args = []string{"hash-object", "--no-filters", "--", path}
 	}
-	result, err := s.Read(ctx, id, args...)
-	if err != nil {
+	digest := sha256.New()
+	if err := s.Runner.RunTo(ctx, repo.Root, digest, args...); err != nil {
 		return "", err
 	}
-	if len(result.Stdout) == 0 {
+	sum := digest.Sum(nil)
+	empty := sha256.Sum256(nil)
+	if bytes.Equal(sum, empty[:]) {
 		return "", fmt.Errorf("file no longer has eligible changes")
 	}
-	return fmt.Sprintf("%x", sha256.Sum256(result.Stdout)), nil
+	return fmt.Sprintf("%x", sum), nil
 }
 
 func (s *Service) RestoreFile(ctx context.Context, id, path, token string, untracked bool) error {

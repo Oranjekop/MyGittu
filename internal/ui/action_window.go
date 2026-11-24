@@ -11,6 +11,7 @@ import (
 	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
+	"mygittu/internal/status"
 )
 
 func (d *Desktop) actionTitle() string {
@@ -60,9 +61,15 @@ func (d *Desktop) loadAction() {
 			return nil, err
 		}
 		var repo repository.Info
+		var snapshot status.Snapshot
 		var registerErr error
 		if action != "clone" {
 			registerErr = d.Client.Call(ctx, "repo.register", ipc.Params{Path: path}, &repo)
+		}
+		if action == "log" && registerErr == nil {
+			if err := d.Client.Call(ctx, "status.get", ipc.Params{RepoID: repo.ID}, &snapshot); err != nil {
+				_ = d.Client.Call(ctx, "status.refresh", ipc.Params{RepoID: repo.ID}, &snapshot)
+			}
 		}
 		return func() {
 			d.applyPrefs(prefs)
@@ -75,6 +82,10 @@ func (d *Desktop) loadAction() {
 					d.initialDiffPath = repositoryRelativePath(repo, path)
 				}
 				d.selectRepository(repo.ID, repo.Root)
+				if snapshot.CherryPicking {
+					d.page = 0
+					d.applyWorkspaceStatus(snapshot)
+				}
 				d.refresh()
 			}
 		}, nil
@@ -128,6 +139,9 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 			})
 		}
 		d.showCommitPushFailure(c)
+		if d.action == "log" && d.remoteNotice != "" {
+			native.Text(c, d.remoteNotice).FillWidth().TextColor(t.TextMuted)
+		}
 		if d.err != "" && !d.settingsOpen {
 			scrollAtPanelEdge(native.Scroll(c)).MinHeight(34).MaxHeight(132).Children(func() {
 				native.Text(c, d.text("error")+": "+d.err).FillWidth().TextColor(t.Danger)
@@ -153,7 +167,11 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 		case "commit", "diff":
 			d.workspace(c, t)
 		case "log":
-			d.showHistory(c, t)
+			if d.page == 0 {
+				d.workspace(c, t)
+			} else {
+				d.showHistory(c, t)
+			}
 		}
 	})
 }

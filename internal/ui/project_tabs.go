@@ -172,6 +172,9 @@ func (d *Desktop) closeProjectTab(tab *projectTab) {
 	if d.projectLoad != nil && d.projectLoad.path == tab.path {
 		d.cancelProjectPreview()
 	}
+	if d.projectFailedPath == tab.path {
+		d.projectLoadError, d.projectFailedPath = "", ""
+	}
 	if tab.path != d.projectShownPath {
 		return
 	}
@@ -200,15 +203,15 @@ func (d *Desktop) saveProjectTab() {
 	}
 	d.cancelProjectPreview()
 	code := d.projectCode
-	bufferVersion := code.Buffer.Version()
-	if code.Buffer.Len() > app.MaxEditableFileBytes {
+	snapshot := code.Buffer.Snapshot()
+	if snapshot.Len() > app.MaxEditableFileBytes {
 		d.err = d.copy("文件超过 5 MiB，无法保存。", "The file exceeds the 5 MiB save limit.")
 		return
 	}
 	params := ipc.Params{RepoID: d.selected, Path: d.projectShownPath, PreviewVersion: d.projectPreview.Version}
 	d.task(func(ctx context.Context) (func(), error) {
 		var data bytes.Buffer
-		if _, err := code.Buffer.WriteTo(&data); err != nil {
+		if _, err := snapshot.WriteTo(&data); err != nil {
 			return nil, err
 		}
 		if data.Len() > app.MaxEditableFileBytes {
@@ -223,7 +226,7 @@ func (d *Desktop) saveProjectTab() {
 			if !d.projectLargeText {
 				d.projectPreview.New = data.String()
 			}
-			if code.Buffer.Version() == bufferVersion {
+			if code.Buffer.Version() == snapshot.Version() {
 				code.Buffer.MarkSaved()
 			}
 			d.rememberProjectTab()

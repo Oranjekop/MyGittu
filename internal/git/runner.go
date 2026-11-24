@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -59,6 +60,15 @@ func (r *Runner) run(ctx context.Context, repo string, env []string, args ...str
 }
 
 func (r *Runner) runInput(ctx context.Context, repo string, env []string, input string, args ...string) (Result, error) {
+	return r.runOutput(ctx, repo, env, input, nil, args...)
+}
+
+func (r *Runner) RunTo(ctx context.Context, repo string, output io.Writer, args ...string) error {
+	_, err := r.runOutput(ctx, repo, nil, "", output, args...)
+	return err
+}
+
+func (r *Runner) runOutput(ctx context.Context, repo string, env []string, input string, output io.Writer, args ...string) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
 	defer cancel()
 	// Disable interactive prompts; use installed credential helpers for remote operations.
@@ -73,6 +83,9 @@ func (r *Runner) runInput(ctx context.Context, repo string, env []string, input 
 	cmd.Env = append(cmd.Env, env...)
 	out, errout := &limitedBuffer{max: 8 << 20}, &limitedBuffer{max: 64 << 10}
 	cmd.Stdout = out
+	if output != nil {
+		cmd.Stdout = output
+	}
 	cmd.Stderr = errout
 	err := cmd.Run()
 	res := Result{out.buffer.Bytes(), errout.buffer.Bytes(), 0}
