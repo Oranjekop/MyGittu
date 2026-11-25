@@ -255,6 +255,18 @@ func (c *Cache) takeScheduled() map[string]struct{} {
 	return queued
 }
 
+func (c *Cache) MenuFile(id, target string) (git.FileStatus, bool, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	snapshot, ready := c.snapshots[id]
+	for _, file := range snapshot.Files {
+		if repository.Key(filepath.FromSlash(file.Path)) == target {
+			return file, true, ready
+		}
+	}
+	return git.FileStatus{}, false, ready
+}
+
 func (c *Cache) Get(id string) (Snapshot, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

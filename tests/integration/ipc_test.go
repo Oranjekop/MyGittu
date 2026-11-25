@@ -75,6 +75,23 @@ func TestFramedAgentWorkflow(t *testing.T) {
 	}
 	var snap status.Snapshot
 	call("status.refresh", ipc.Params{RepoID: id}, &snap)
+	var fileMenu map[string]bool
+	call("menu.file", ipc.Params{Path: filepath.Join(dir, "new.txt")}, &fileMenu)
+	if !fileMenu["ready"] || !fileMenu["stage"] || !fileMenu["diff"] || fileMenu["restore"] || fileMenu["history"] || fileMenu["unstage"] {
+		t.Fatalf("unexpected menu for untracked file: %v", fileMenu)
+	}
+	write(t, filepath.Join(dir, "ipc.txt"), "modified")
+	call("status.refresh", ipc.Params{RepoID: id}, &snap)
+	call("menu.file", ipc.Params{Path: filepath.Join(dir, "ipc.txt")}, &fileMenu)
+	if !fileMenu["ready"] || !fileMenu["stage"] || !fileMenu["diff"] || !fileMenu["restore"] || !fileMenu["history"] || fileMenu["unstage"] {
+		t.Fatalf("unexpected menu for modified file: %v", fileMenu)
+	}
+	call("git.stage", ipc.Params{RepoID: id, Paths: []string{"ipc.txt"}}, nil)
+	call("status.refresh", ipc.Params{RepoID: id}, &snap)
+	call("menu.file", ipc.Params{Path: filepath.Join(dir, "ipc.txt")}, &fileMenu)
+	if !fileMenu["ready"] || fileMenu["stage"] || fileMenu["restore"] || !fileMenu["unstage"] || !fileMenu["blame"] {
+		t.Fatalf("unexpected menu for staged file: %v", fileMenu)
+	}
 	var overlay status.Overlay
 	call("overlay.lookup", ipc.Params{Path: dir}, &overlay)
 	if !overlay.Cached || overlay.Generation == 0 {

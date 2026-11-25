@@ -13,6 +13,11 @@ const icons = {
   history: ['#e0f4ff', '#12657e', '<path d="M5.2 9.5a7.1 7.1 0 1 1 .9 7.3M5.1 5.7v4.4h4.4M12 8v4l2.5 1.6"/>'],
   diff: ['#ffeedc', '#98431a', '<rect x="4.8" y="5.8" width="14.4" height="12.4" rx="1.5"/><path d="M12 6v12m-5-6h2.7m4.6 0h2.8m-1.4-1.4v2.8"/>'],
   clone: ['#daf5f3', '#006d68', '<path d="M12 5H7a2 2 0 0 0-2 2v5"/><rect x="8.5" y="8.5" width="10.5" height="10.5" rx="2"/><path d="M11.5 13.75H16m-2.25-2.25V16"/>'],
+  blame: ['#e0f4ff', '#12657e', '<path d="M5 6h9M5 11h6M5 16h5m6-.8 2.5 3"/><circle cx="15" cy="13" r="3"/>'],
+  stage: ['#d9f5e7', '#08704b', '<path d="M5 13h4l1 2h4l1-2h4v6H5zM12 5v7M9 8l3 4 3-4"/>'],
+  unstage: ['#e6eaff', '#373d9e', '<path d="M5 13h4l1 2h4l1-2h4v6H5zM12 11V5M9 8l3-3 3 3"/>'],
+  restore: ['#ffeedc', '#98431a', '<path d="M7 10h7a4 4 0 0 1 0 8h-3M10 6l-4 4 4 4"/>'],
+  conflict: ['#ffe5e6', '#a32b39', '<path d="M12 5 4 18h16zM12 10v3m0 2.5h.01"/>'],
 };
 
 function iconSVG(name) {
@@ -54,7 +59,7 @@ async function main() {
     const layers = await Promise.all(Object.keys(icons).map(async (name, index) => ({
       input: await raster(name, 48), left: 12 + index * 62, top: 12,
     })));
-    await sharp({ create: { width: 448, height: 72, channels: 4, background: '#f4f4f4' } })
+    await sharp({ create: { width: 14 + Object.keys(icons).length * 62, height: 72, channels: 4, background: '#f4f4f4' } })
       .composite(layers).png().toFile(process.argv[2]);
   }
 }

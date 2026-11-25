@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo"
 	native "github.com/egoist/mygo/ui"
+	git "mygittu/internal/git"
 	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
@@ -15,6 +16,9 @@ import (
 )
 
 func (d *Desktop) actionTitle() string {
+	if strings.HasPrefix(d.action, "file-") {
+		return d.text(d.action)
+	}
 	switch d.action {
 	case "commit":
 		return d.text("nav.commit")
@@ -50,6 +54,11 @@ func (d *Desktop) windowOptions() mygo.WindowOptions {
 		options.Width, options.Height = 960, 680
 		options.MinWidth, options.MinHeight = 800, 560
 	}
+	if strings.HasPrefix(d.action, "file-") {
+		options.StateKey = d.action
+		options.Width, options.Height = 960, 680
+		options.MinWidth, options.MinHeight = 800, 560
+	}
 	return options
 }
 
@@ -66,7 +75,9 @@ func (d *Desktop) loadAction() {
 		if action != "clone" {
 			registerErr = d.Client.Call(ctx, "repo.register", ipc.Params{Path: path}, &repo)
 		}
-		if action == "log" && registerErr == nil {
+		if strings.HasPrefix(action, "file-") && action != "file-log" && action != "file-blame" && registerErr == nil {
+			registerErr = d.Client.Call(ctx, "status.refresh", ipc.Params{RepoID: repo.ID}, &snapshot)
+		} else if action == "log" && registerErr == nil {
 			if err := d.Client.Call(ctx, "status.get", ipc.Params{RepoID: repo.ID}, &snapshot); err != nil {
 				_ = d.Client.Call(ctx, "status.refresh", ipc.Params{RepoID: repo.ID}, &snapshot)
 			}
@@ -82,6 +93,10 @@ func (d *Desktop) loadAction() {
 					d.initialDiffPath = repositoryRelativePath(repo, path)
 				}
 				d.selectRepository(repo.ID, repo.Root)
+				if strings.HasPrefix(action, "file-") {
+					d.openFileAction(path, repo, snapshot)
+					return
+				}
 				if snapshot.CherryPicking {
 					d.page = 0
 					d.applyWorkspaceStatus(snapshot)
@@ -89,6 +104,65 @@ func (d *Desktop) loadAction() {
 				d.refresh()
 			}
 		}, nil
+	})
+}
+
+func (d *Desktop) openFileAction(path string, repo repository.Info, snapshot status.Snapshot) {
+	target := repositoryRelativePath(repo, path)
+	if target == "" {
+		d.err = d.text("file.actionUnavailable")
+		return
+	}
+	switch d.action {
+	case "file-log":
+		d.openFileHistory(target)
+		return
+	case "file-blame":
+		d.tools.filePath, d.tools.fileMode, d.tools.fileOpen = target, 1, true
+		return
+	}
+	d.applyWorkspaceStatus(snapshot)
+	for i, file := range d.changes {
+		if repository.Key(file.Path) != target {
+			continue
+		}
+		d.row, d.staged = i, file.Worktree == git.Clean
+		switch d.action {
+		case "file-diff":
+			d.diff(file.Path)
+			return
+		case "file-conflict":
+			if file.State == git.Conflicted {
+				d.loadConflict(file.Path)
+				return
+			}
+		case "file-stage", "file-unstage":
+			if paths := stagingPaths(nil, file, d.action == "file-stage"); len(paths) > 0 {
+				method := "git.stage"
+				if d.action == "file-unstage" {
+					method = "git.unstage"
+				}
+				d.completeFileAction(ipc.Params{Paths: paths}, method, file.Path)
+				return
+			}
+		case "file-restore":
+			if file.Worktree != git.Clean && file.Worktree != git.Untracked && file.State != git.Conflicted && file.Index != git.Deleted {
+				d.confirmFileRestore(file.Path, "tracked", d.text("file.restoreConfirm"))
+				return
+			}
+		}
+		break
+	}
+	d.err = d.text("file.actionUnavailable")
+}
+
+func (d *Desktop) completeFileAction(params ipc.Params, method, path string) {
+	params.RepoID = d.selected
+	d.task(func(ctx context.Context) (func(), error) {
+		err := d.Client.Call(ctx, method, params, nil)
+		return func() {
+			d.path, d.result = path, d.text("file.actionDone")
+		}, err
 	})
 }
 
@@ -164,7 +238,7 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 			return
 		}
 		switch d.action {
-		case "commit", "diff":
+		case "commit", "diff", "file-diff":
 			d.workspace(c, t)
 		case "log":
 			if d.page == 0 {

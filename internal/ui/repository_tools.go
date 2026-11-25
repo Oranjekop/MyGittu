@@ -350,14 +350,24 @@ func (d *Desktop) restoreFileButton(c *native.Context, file git.FileStatus) {
 		label, question, action = d.copy("删除未跟踪文件", "Delete untracked file"), d.copy("永久删除此未跟踪文件？", "Permanently delete this untracked file?"), "untracked"
 	}
 	if IconButton(c, label, "undo", false).Disabled(d.busy).Clicked() {
-		params := ipc.Params{RepoID: d.selected, Path: file.Path, Action: action}
-		d.task(func(ctx context.Context) (func(), error) {
-			var token string
-			err := d.Client.Call(ctx, "git.restore.preview", params, &token)
-			return func() {
-				params.Hash = token
-				d.askAction(question, file.Path, func() { d.mutate("git.restore", params) })
-			}, err
-		})
+		d.confirmFileRestore(file.Path, action, question)
 	}
+}
+
+func (d *Desktop) confirmFileRestore(path, action, question string) {
+	params := ipc.Params{RepoID: d.selected, Path: path, Action: action}
+	d.task(func(ctx context.Context) (func(), error) {
+		var token string
+		err := d.Client.Call(ctx, "git.restore.preview", params, &token)
+		return func() {
+			params.Hash = token
+			d.askAction(question, path, func() {
+				if d.action == "file-restore" {
+					d.completeFileAction(params, "git.restore", path)
+					return
+				}
+				d.mutate("git.restore", params)
+			})
+		}, err
+	})
 }

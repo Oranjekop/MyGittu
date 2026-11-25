@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <iterator>
@@ -278,25 +279,57 @@ static bool repositoryPath(const std::wstring &path) {
   return result;
 }
 static const wchar_t *actions[] = {L"status", L"commit", L"log",  L"diff",
-                                   L"pull",   L"push",   L"clone"};
+                                   L"pull", L"push", L"clone", L"file-diff", L"file-log", L"file-blame", L"file-stage", L"file-unstage", L"file-restore", L"file-conflict"};
 static constexpr int menuIconIDs[] = {
     IDI_MENU_CHANGES, IDI_MENU_COMMIT, IDI_MENU_HISTORY, IDI_MENU_DIFF,
-    IDI_MENU_PULL, IDI_MENU_PUSH, IDI_MENU_CLONE};
+    IDI_MENU_PULL, IDI_MENU_PUSH, IDI_MENU_CLONE, IDI_MENU_DIFF, IDI_MENU_HISTORY, IDI_MENU_BLAME, IDI_MENU_STAGE, IDI_MENU_UNSTAGE, IDI_MENU_RESTORE, IDI_MENU_CONFLICT};
 static_assert(std::size(actions) == std::size(menuIconIDs));
 static int menuIconResource(int action) {
   return action < 0 ? IDI_MENU_ROOT : menuIconIDs[action];
 }
 static constexpr int repositoryCommands[] = {4, 0, 1, 5, 2, 3};
 static constexpr int cloneCommand = 6;
+static constexpr int fileCommands[] = {7, 8, 9, 10, 11, 12, 13};
+static std::vector<int> commandsFor(const std::wstring &path) {
+  const auto attributes = GetFileAttributesW(path.c_str());
+  if (attributes == INVALID_FILE_ATTRIBUTES)
+    return {};
+  const bool repo = repositoryPath(path);
+  if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+    return repo ? std::vector<int>(std::begin(repositoryCommands), std::end(repositoryCommands))
+                : std::vector<int>{cloneCommand};
+  if (!repo)
+    return {};
+  // Explorer asks each modern menu child separately on the same apartment.
+  static thread_local std::wstring cachedPath;
+  static thread_local std::string cachedReply;
+  static thread_local ULONGLONG expires = 0;
+  const auto now = GetTickCount64();
+  if (cachedPath != path || now >= expires) {
+    cachedReply = rpc("menu.file", "{\"path\":\"" + jsonPath(path) + "\"}");
+    cachedPath = path;
+    expires = now + 250;
+  }
+  const auto &reply = cachedReply;
+  if (reply.empty() || reply.find("\"ready\":false") != std::string::npos)
+    return {7, 8, 9};
+  std::vector<int> result;
+  constexpr const char *keys[]{"diff", "history", "blame", "stage", "unstage",
+                                "restore", "conflict"};
+  for (size_t i = 0; i < std::size(keys); ++i)
+    if (reply.find(std::string("\"") + keys[i] + "\":true") != std::string::npos)
+      result.push_back(fileCommands[i]);
+  return result;
+}
 static const wchar_t *commandTitle(int action) {
   const wchar_t *en[] = {L"Changes", L"Commit", L"History", L"Diff",
-                         L"Pull",   L"Push",   L"Clone"};
+                         L"Pull",   L"Push",   L"Clone", L"File diff", L"File history", L"Blame", L"Stage file", L"Unstage file", L"Restore file", L"Resolve conflict"};
   const wchar_t *zh[] = {L"变更",  L"提交", L"历史", L"差异",
-                         L"拉取", L"推送", L"克隆"};
+                         L"拉取", L"推送", L"克隆", L"文件差异", L"文件历史", L"逐行追溯", L"暂存此文件", L"取消暂存此文件", L"恢复此文件", L"解决冲突"};
   return english() ? en[action] : zh[action];
 }
 static HRESULT launch(const std::wstring &path, int action) {
-  if (path.empty() || action < 0 || action > 6)
+  if (path.empty() || action < 0 || static_cast<size_t>(action) >= std::size(actions))
     return E_INVALIDARG;
   auto dll = modulePath();
   auto slash = dll.find_last_of(L"\\/");
@@ -425,7 +458,7 @@ public:
         auto drop = reinterpret_cast<HDROP>(m.locked);
         if (drop) {
           UINT n = DragQueryFileW(drop, 0, nullptr, 0);
-          if (n) {
+          if (n && DragQueryFileW(drop, 0xffffffff, nullptr, 0) == 1) {
             std::vector<wchar_t> b(n + 1);
             DragQueryFileW(drop, 0, b.data(), n + 1);
             path = b.data();
@@ -446,8 +479,9 @@ public:
       try {
     if ((flags & CMF_DEFAULTONLY) || path.empty() || last < first)
       return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
-    commands = repositoryPath(path) ? std::vector<int>(std::begin(repositoryCommands), std::end(repositoryCommands))
-                                    : std::vector<int>{cloneCommand};
+    commands = commandsFor(path);
+    if (commands.empty())
+      return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
     if (last - first + 1 < commands.size())
       return MAKE_HRESULT(SEVERITY_SUCCESS, 0, 0);
     const int size = menuIconSize();

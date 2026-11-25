@@ -56,6 +56,10 @@ function Test-InstalledOverlays($Root,$ShellSmoke) {
             if (!$slot -or $slot -in $slots) { throw "Missing or repeated Shell slot for state ${expected}: $output" }
             $slots += $slot
             Write-Host "Installed overlay state $expected matched at $slot after $($timer.ElapsedMilliseconds) ms"
+            if ($expected -eq 2) {
+                & $ShellSmoke (Join-Path $Root 'MyGittuShell.dll') $file 2
+                if ($LASTEXITCODE) { throw "File context menu smoke test failed: $LASTEXITCODE" }
+            }
         }
         & git -C $fixture merge --abort
         if ($LASTEXITCODE) { throw 'Could not restore the overlay fixture' }

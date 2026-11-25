@@ -162,7 +162,7 @@ func New(client *ipc.Client, path, action string) *Desktop {
 	case "log":
 		d.action = action
 		d.page = 1
-	case "diff":
+	case "diff", "file-diff":
 		d.action = action
 		d.page = 2
 	case "clone":
@@ -173,7 +173,7 @@ func New(client *ipc.Client, path, action string) *Desktop {
 	case "pull", "push":
 		d.page = 6
 		d.branch = action
-	case "commit":
+	case "commit", "file-log", "file-blame", "file-stage", "file-unstage", "file-restore", "file-conflict":
 		d.action = action
 	case "status", "":
 	default:
@@ -610,7 +610,7 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 				}
 			}
 			d.workspaceChangeList(c, files)
-			if d.action == "diff" {
+			if d.action == "diff" || d.action == "file-diff" {
 				return
 			}
 			if d.aiError != "" {

@@ -5,6 +5,16 @@ package i18n
 type Message struct{ ZH, EN string }
 
 var Catalog = map[string]Message{
+	"file-diff":                   {"文件差异", "File diff"},
+	"file-log":                    {"文件历史", "File history"},
+	"file-blame":                  {"逐行追溯", "Blame"},
+	"file-stage":                  {"暂存此文件", "Stage file"},
+	"file-unstage":                {"取消暂存此文件", "Unstage file"},
+	"file-restore":                {"恢复此文件", "Restore file"},
+	"file-conflict":               {"解决冲突", "Resolve conflict"},
+	"file.actionUnavailable":      {"该文件当前无法执行此操作。", "This action is unavailable for the file's current status."},
+	"file.actionDone":             {"文件操作已完成", "File action completed"},
+	"file.restoreConfirm":         {"将文件恢复为暂存区版本并丢弃未暂存改动？", "Restore the index version and discard unstaged changes?"},
 	"confirm":                     {"确认", "Confirm"},
 	"diff.previewLimited":         {"文件过大，无法显示差异预览", "This file is too large to preview its diff"},
 	"diff.previewFailed":          {"无法显示差异预览", "Could not load the diff preview"},

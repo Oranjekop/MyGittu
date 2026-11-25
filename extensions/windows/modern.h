@@ -226,8 +226,9 @@ public:
       *state = ECS_DISABLED;
       return E_PENDING;
     }
-    bool repo = repositoryPath(location);
-    *state = ((action == cloneCommand) != repo) ? ECS_ENABLED : ECS_HIDDEN;
+    auto available = commandsFor(location);
+    *state = std::find(available.begin(), available.end(), action) != available.end()
+                 ? ECS_ENABLED : ECS_HIDDEN;
     return S_OK;
   } catch (...) {
     return E_FAIL;
@@ -256,6 +257,8 @@ public:
       for (int value : repositoryCommands)
         commands.push_back(new Modern(value, path));
       commands.push_back(new Modern(cloneCommand, path));
+      for (int value : fileCommands)
+        commands.push_back(new Modern(value, path));
       *out = new CommandEnum(std::move(commands));
       return S_OK;
     } catch (...) {

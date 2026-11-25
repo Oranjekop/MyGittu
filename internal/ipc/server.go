@@ -130,6 +130,43 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 	case "repo.contains":
 		ok := filepath.IsAbs(p.Path) && s.ensureRepository(p.Path)
 		result = map[string]any{"repository": ok}
+	case "menu.file":
+		menu := struct {
+			Ready    bool `json:"ready"`
+			Diff     bool `json:"diff"`
+			History  bool `json:"history"`
+			Blame    bool `json:"blame"`
+			Stage    bool `json:"stage"`
+			Unstage  bool `json:"unstage"`
+			Restore  bool `json:"restore"`
+			Conflict bool `json:"conflict"`
+		}{}
+		if s.Cache != nil && filepath.IsAbs(p.Path) {
+			overlay := s.Cache.Lookup(p.Path)
+			if repo, ok := s.Service.Registry.FindPath(p.Path); ok && overlay.Cached {
+				target := ""
+				for _, root := range append([]string{repo.Root}, repo.Aliases...) {
+					if rel, err := filepath.Rel(root, p.Path); err == nil && filepath.IsLocal(rel) {
+						target = repository.Key(rel)
+						break
+					}
+				}
+				file, changed, ready := s.Cache.MenuFile(repo.ID, target)
+				menu.Ready = ready
+				menu.History = overlay.State == git.Clean || overlay.State == git.Modified || overlay.State == git.Conflicted
+				menu.Blame = menu.History
+				if changed && file.State != git.Ignored {
+					menu.Diff = true
+					menu.Conflict = file.State == git.Conflicted
+					menu.Stage = !menu.Conflict && file.Worktree != git.Clean && file.Worktree != ""
+					menu.Unstage = !menu.Conflict && file.Index != git.Clean && file.Index != ""
+					menu.Restore = menu.Stage && file.Worktree != git.Untracked && file.Index != git.Deleted
+				}
+			} else {
+				s.ensureRepository(p.Path)
+			}
+		}
+		result = menu
 	case "repo.unregister":
 		e = s.Service.Registry.Unregister(p.RepoID)
 		s.Cache.Invalidate(p.RepoID)
@@ -317,7 +354,7 @@ func (s *Server) Serve(ctx context.Context, l net.Listener) error {
 					return
 				}
 				timeout := 2 * time.Minute
-				if req.Method == "overlay.lookup" {
+				if req.Method == "overlay.lookup" || req.Method == "menu.file" {
 					timeout = 40 * time.Millisecond
 				} else if req.Method == "git.files.search" {
 					timeout = 15 * time.Second
