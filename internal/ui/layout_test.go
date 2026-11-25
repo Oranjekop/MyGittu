@@ -27,6 +27,31 @@ import (
 	"mygittu/internal/status"
 )
 
+func TestAdvancedEmptyPanels(t *testing.T) {
+	for _, scenario := range []struct{ mode, message string }{
+		{"reflog", "emptyReflog"},
+		{"rebase", "emptyPlan"},
+		{"bisect", "emptyBisect"},
+		{"patch", "emptyPatch"},
+	} {
+		t.Run(scenario.mode, func(t *testing.T) {
+			d := New(nil, "", "")
+			d.prefs.Theme = "light"
+			if scenario.mode == "patch" {
+				d.action = "file-patch"
+			}
+			d.advanced = advancedPanel{open: true, mode: scenario.mode}
+			tt := native.NewTester(d.view, 640, 440)
+			tt.SetScale(1.5)
+			tt.Frame()
+			if !tt.HasText(d.text("advanced." + scenario.message)) {
+				t.Fatal("missing empty state")
+			}
+			saveLayoutPreview(t, tt, "advanced-"+scenario.mode+".png")
+		})
+	}
+}
+
 func TestProjectTabsKeepUnsavedText(t *testing.T) {
 	d := New(nil, "", "")
 	d.selected, d.page = "demo", projectFilesPage

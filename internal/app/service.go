@@ -8,6 +8,7 @@ import (
 	"mygittu/internal/repository"
 	"mygittu/internal/settings"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -91,6 +92,85 @@ func (s *Service) WorkspaceStatus(ctx context.Context, id string) ([]git.FileSta
 	files, e := git.ParseStatus(r.Stdout)
 	return files, branch, e
 }
+func (s *Service) EditSingleFile(ctx context.Context, id, file, action string) error {
+	repo, err := s.Registry.Get(id)
+	if err != nil {
+		return err
+	}
+	file, err = repository.Relative(repo.Root, file)
+	if err != nil {
+		return err
+	}
+	_, err = s.writeLocked(ctx, id, func() (git.Result, error) {
+		root, err := os.OpenRoot(repo.Root)
+		if err != nil {
+			return git.Result{}, err
+		}
+		defer root.Close()
+		info, err := root.Lstat(file)
+		if err != nil {
+			return git.Result{}, err
+		}
+		if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+			return git.Result{}, fmt.Errorf("only individual files can be staged")
+		}
+		switch action {
+		case "stage-ignored":
+			files, err := s.Status(ctx, id)
+			if err != nil {
+				return git.Result{}, err
+			}
+			target := repository.Key(file)
+			for _, entry := range files {
+				ignored := repository.Key(entry.Path)
+				if entry.State == git.Ignored && (target == ignored || strings.HasPrefix(target, ignored+string(filepath.Separator))) {
+					return s.Read(ctx, id, "add", "--force", "--", file)
+				}
+			}
+			return git.Result{}, fmt.Errorf("file is no longer ignored")
+		case "untrack":
+			return s.Read(ctx, id, "rm", "--cached", "--", file)
+		case "ignore":
+			files, err := s.Status(ctx, id)
+			if err != nil {
+				return git.Result{}, err
+			}
+			for _, status := range files {
+				if status.Path == file && status.State == git.Untracked {
+					return git.Result{}, ignoreLocalFile(root, file)
+				}
+			}
+			return git.Result{}, fmt.Errorf("only untracked files can be ignored")
+		}
+		return git.Result{}, fmt.Errorf("unknown file action")
+	})
+	return err
+}
+
+func ignoreLocalFile(root *os.Root, file string) error {
+	if strings.ContainsAny(file, "\r\n") || path.Base(file) == ".gitignore" {
+		return fmt.Errorf("unsupported path for an ignore rule")
+	}
+	pattern := strings.NewReplacer("\\", "\\\\", "*", "\\*", "?", "\\?", "[", "\\[", " ", "\\ ").Replace(file)
+	if info, err := root.Lstat(".gitignore"); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf(".gitignore must be a regular file")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	ignore, err := root.OpenFile(".gitignore", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = ignore.WriteString("\n/" + pattern + "\n")
+	closeErr := ignore.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}
+
 func (s *Service) Paths(ctx context.Context, id string, paths []string, stage bool) error {
 	if len(paths) == 0 {
 		return fmt.Errorf("select at least one file")

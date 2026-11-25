@@ -105,7 +105,7 @@ int wmain(int argc, wchar_t **argv) {
   const bool isFile = attributes != INVALID_FILE_ATTRIBUTES &&
                       !(attributes & FILE_ATTRIBUTE_DIRECTORY);
   auto submenu = GetSubMenu(hmenu, 0);
-  if (FAILED(result) || (isFile ? count < 1 || count > 7 : count != 1 && count != 6) ||
+  if (FAILED(result) || (isFile ? count < 1 || count > 11 : count != 1 && count != 9) ||
       GetMenuItemCount(hmenu) != 1 || !submenu ||
       GetMenuItemCount(submenu) != count)
     return 15;
@@ -114,7 +114,7 @@ int wmain(int argc, wchar_t **argv) {
   item.fMask = MIIM_BITMAP;
   if (!GetMenuItemInfoW(hmenu, 0, TRUE, &item) || !item.hbmpItem)
     return 17;
-  HBITMAP usedBitmaps[8]{item.hbmpItem};
+  HBITMAP usedBitmaps[12]{item.hbmpItem};
   for (int i = 0; i < count; ++i) {
     if (!GetMenuItemInfoW(submenu, i, TRUE, &item) || !item.hbmpItem)
       return 30;
@@ -162,11 +162,11 @@ int wmain(int argc, wchar_t **argv) {
     return 24;
   int enabled = 0;
   int childIndex = 0;
-  const int commandIcons[]{IDI_MENU_PULL, IDI_MENU_CHANGES, IDI_MENU_COMMIT,
+  const int commandIcons[]{IDI_MENU_FETCH, IDI_MENU_PULL, IDI_MENU_CHANGES, IDI_MENU_COMMIT,
                            IDI_MENU_PUSH, IDI_MENU_HISTORY, IDI_MENU_DIFF,
-                           IDI_MENU_CLONE, IDI_MENU_DIFF, IDI_MENU_HISTORY,
+                           IDI_MENU_SWITCH, IDI_MENU_STASH, IDI_MENU_CLONE, IDI_MENU_DIFF, IDI_MENU_HISTORY,
                            IDI_MENU_BLAME, IDI_MENU_STAGE, IDI_MENU_UNSTAGE,
-                           IDI_MENU_RESTORE, IDI_MENU_CONFLICT};
+                           IDI_MENU_RESTORE, IDI_MENU_CONFLICT, IDI_MENU_IGNORE_FILE, IDI_MENU_UNTRACK_FILE, IDI_MENU_PREVIOUS, IDI_MENU_PATCH};
   IExplorerCommand *child = nullptr;
   while (enumerator->Next(1, &child, nullptr) == S_OK) {
     LPWSTR icon = nullptr;
@@ -192,7 +192,7 @@ int wmain(int argc, wchar_t **argv) {
     if (FAILED(child->GetState(items, TRUE, &state)))
       return 26;
     if (state == ECS_ENABLED) {
-      const bool fileCommand = childIndex > 7;
+      const bool fileCommand = childIndex > 10;
       if (isFile != fileCommand || (!isFile && (count == 1) != (resource == IDI_MENU_CLONE)))
         return 34;
       enabled++;

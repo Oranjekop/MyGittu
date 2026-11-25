@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo"
 	native "github.com/egoist/mygo/ui"
+	"mygittu/internal/app"
 	git "mygittu/internal/git"
 	"mygittu/internal/ipc"
 	"mygittu/internal/repository"
@@ -20,6 +21,10 @@ func (d *Desktop) actionTitle() string {
 		return d.text(d.action)
 	}
 	switch d.action {
+	case "switch":
+		return d.text("branch.switch")
+	case "stash":
+		return d.text("stash.title")
 	case "commit":
 		return d.text("nav.commit")
 	case "log":
@@ -53,7 +58,7 @@ func (d *Desktop) windowOptions() mygo.WindowOptions {
 		options.StateKey = d.action
 		options.Width, options.Height = 720, 520
 		options.MinWidth, options.MinHeight = 600, 480
-	case "commit", "log", "diff":
+	case "commit", "log", "diff", "switch", "stash":
 		options.StateKey = d.action
 		options.Width, options.Height = 960, 680
 		options.MinWidth, options.MinHeight = 800, 560
@@ -77,9 +82,22 @@ func (d *Desktop) loadAction() {
 		var snapshot status.Snapshot
 		var registerErr error
 		if action != "clone" {
-			registerErr = d.Client.Call(ctx, "repo.register", ipc.Params{Path: path}, &repo)
+			repoPath := path
+			if action == "file-patch" {
+				if _, inRepo := repository.FindGitRoot(path); !inRepo {
+					folders, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: d.win, Directory: true, Title: d.text("repo.dialog")})
+					if err != nil {
+						return nil, err
+					}
+					if len(folders) == 0 {
+						return func() { d.win.Close() }, nil
+					}
+					repoPath = folders[0]
+				}
+			}
+			registerErr = d.Client.Call(ctx, "repo.register", ipc.Params{Path: repoPath}, &repo)
 		}
-		if strings.HasPrefix(action, "file-") && action != "file-log" && action != "file-blame" && registerErr == nil {
+		if strings.HasPrefix(action, "file-") && action != "file-patch" && !d.isStandaloneFileHistory() && registerErr == nil {
 			registerErr = d.Client.Call(ctx, "status.refresh", ipc.Params{RepoID: repo.ID}, &snapshot)
 		} else if action == "log" && registerErr == nil {
 			if err := d.Client.Call(ctx, "status.get", ipc.Params{RepoID: repo.ID}, &snapshot); err != nil {
@@ -99,6 +117,11 @@ func (d *Desktop) loadAction() {
 					}
 				}
 				d.selectRepository(repo.ID, repo.Root)
+				if action == "file-patch" {
+					d.advancedAction("patch", app.Commit{})
+					d.previewPatch(path)
+					return
+				}
 				if strings.HasPrefix(action, "file-") {
 					d.openFileAction(path, repo, snapshot)
 					return
@@ -120,12 +143,31 @@ func (d *Desktop) openFileAction(path string, repo repository.Info, snapshot sta
 		return
 	}
 	switch d.action {
-	case "file-log":
+	case "file-log", "file-previous":
 		d.tools.filePath, d.tools.fileMode = target, 0
 		return
 	case "file-blame":
 		d.tools.filePath, d.tools.fileMode = target, 1
 		return
+	case "file-ignore", "file-untrack":
+		operation := strings.TrimPrefix(d.action, "file-")
+		d.askAction(d.text(d.action+".confirm"), target, func() {
+			d.completeFileAction(ipc.Params{Path: target}, "git.file."+operation, target)
+		})
+		return
+	}
+	if d.action == "file-stage" {
+		key := repository.Key(target)
+		for _, file := range snapshot.Files {
+			ignored := repository.Key(file.Path)
+			if file.State == git.Ignored && (key == ignored ||
+				strings.HasPrefix(key, ignored+string(filepath.Separator))) {
+				d.askAction(d.text("file.stageIgnoredConfirm"), target, func() {
+					d.completeFileAction(ipc.Params{Path: target}, "git.stage.ignored", target)
+				})
+				return
+			}
+		}
 	}
 	d.applyWorkspaceStatus(snapshot)
 	for i, file := range d.changes {
@@ -184,7 +226,16 @@ func repositoryRelativePath(repo repository.Info, path string) string {
 }
 
 func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
-	native.Column(c).Fill().Padding(panelSpacing).Gap(controlSpacing).Background(t.Surface).Children(func() {
+	native.Column(c).Fill().Padding(panelSpacing).Background(t.Surface).Children(func() {
+		native.Column(c).Fill().MinHeight(0).Padding(panelSpacing).Gap(controlSpacing).
+			Background(t.Background).Radius(8).Clip().Children(func() {
+			d.actionContent(c, t)
+		})
+	})
+}
+
+func (d *Desktop) actionContent(c *native.Context, t *native.Theme) {
+	native.Column(c).Fill().MinHeight(0).Gap(controlSpacing).Children(func() {
 		if d.result != "" {
 			if d.action == "clone" && d.clonedRepo != nil {
 				d.cloneResult(c)
@@ -210,6 +261,10 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 		if d.isStandaloneFileHistory() && d.tools.filePath != "" {
 			_, height := c.Size()
 			d.fileHistoryContent(c, height, true)
+			return
+		}
+		if d.advanced.open {
+			d.advancedContent(c)
 			return
 		}
 		if d.isStandaloneFileAction() && d.tools.conflictOpen {
@@ -262,10 +317,18 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 			return
 		}
 		switch d.action {
+		case "switch":
+			d.showBranches(c)
+		case "stash":
+			d.showReferences(c, t)
 		case "commit", "diff", "file-diff":
 			d.workspace(c, t)
 		case "log":
 			if d.page == 0 {
+				if d.advanced.mode == "rebase" && IconButton(c, d.text("advanced.rebase"), "branch", false).Disabled(d.busy).Clicked() {
+					d.page = 1
+					d.advancedAction("rebase", app.Commit{})
+				}
 				d.workspace(c, t)
 			} else {
 				d.showHistory(c, t)

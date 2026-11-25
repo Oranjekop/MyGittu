@@ -22,6 +22,8 @@ import (
 )
 
 type Desktop struct {
+	advanced                           advancedPanel
+	compareCommit                      string
 	Client                             *ipc.Client
 	win                                *mygo.Window
 	tray                               *mygo.Tray
@@ -159,6 +161,10 @@ func New(client *ipc.Client, path, action string) *Desktop {
 		projectPane: defaultProjectPaneWidth, prefs: settings.Values{Language: "zh-CN", Theme: "system"}}
 	d.stagedCollapsed, d.changesCollapsed = true, true
 	switch action {
+	case "switch":
+		d.action, d.page = action, 3
+	case "stash":
+		d.action, d.page = action, referencesPage
 	case "log":
 		d.action = action
 		d.page = 1
@@ -173,7 +179,7 @@ func New(client *ipc.Client, path, action string) *Desktop {
 	case "pull", "push":
 		d.page = 6
 		d.branch = action
-	case "commit", "file-log", "file-blame", "file-stage", "file-unstage", "file-restore", "file-conflict":
+	case "commit", "file-log", "file-blame", "file-stage", "file-unstage", "file-restore", "file-conflict", "file-ignore", "file-untrack", "file-previous", "file-patch":
 		d.action = action
 	case "status", "":
 	default:
@@ -601,6 +607,9 @@ func (d *Desktop) workspace(c *native.Context, t *native.Theme) {
 			if len(files) > 0 {
 				d.showStagingActions(c, files)
 			}
+			if d.action == "" && d.selected != "" && IconButton(c, d.text("advanced.patch"), "diff", false).Disabled(d.busy).Clicked() {
+				d.advancedAction("patch", app.Commit{})
+			}
 			if d.snapshot.CherryPicking {
 				d.cherryControls(c, files)
 			}
@@ -902,6 +911,7 @@ func (d *Desktop) windowContent(c *native.Context, t *native.Theme) {
 }
 
 func (d *Desktop) dialogs(c *native.Context) {
+	d.showAdvancedDialog(c)
 	d.showProjectContentSearch(c)
 	d.showStashPreview(c)
 	d.cloneDialog(c)

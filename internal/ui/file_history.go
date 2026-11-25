@@ -28,7 +28,7 @@ func (d *Desktop) openFileHistory(path string) {
 }
 
 func (d *Desktop) isStandaloneFileHistory() bool {
-	return d.action == "file-log" || d.action == "file-blame"
+	return d.action == "file-log" || d.action == "file-blame" || d.action == "file-previous"
 }
 
 func (d *Desktop) loadFileHistoryList() {
@@ -67,7 +67,9 @@ func (d *Desktop) fileHistoryContent(c *native.Context, height float32, standalo
 		}
 	})
 	before := w.fileMode
-	native.Segmented(c, &w.fileMode, d.text("file.history"), d.text("file.blame")).Disabled(d.busy)
+	if d.action != "file-previous" {
+		native.Segmented(c, &w.fileMode, d.text("file.history"), d.text("file.blame")).Disabled(d.busy)
+	}
 	if before != w.fileMode {
 		d.err = ""
 	}
@@ -96,21 +98,26 @@ func (d *Desktop) fileHistoryContent(c *native.Context, height float32, standalo
 	}
 	if len(w.fileCommits) == 0 {
 		if !d.busy && d.err == "" {
-			emptyState(c, emptyPreviewArt, 72, d.text("history.empty"))
+			state := emptyState(c, emptyPreviewArt, 72, d.text("history.empty"))
+			if standalone {
+				state.Grow(1)
+			}
 		}
 		return
 	}
-	w.fileList.Selected = &w.fileRow
-	roundedTable(c, &w.fileList, []native.TableColumn{
-		{Title: d.text("subject")}, {Title: d.text("author"), Width: 120}, {Title: d.text("date"), Width: dateColumnWidth},
-	}, len(w.fileCommits), func(row, col int) {
-		commit := w.fileCommits[row]
-		text := []string{commit.Subject, commit.Author, commit.Date}[col]
-		if col == 2 {
-			text = displayDateTime(text)
-		}
-		native.Text(c, text).SingleLine().Ellipsis("…").Tooltip(text)
-	}).Height(min(150, height*.23, 28*float32(len(w.fileCommits)+1)+2*controlSpacing)).Disabled(d.busy)
+	if d.action != "file-previous" {
+		w.fileList.Selected = &w.fileRow
+		roundedTable(c, &w.fileList, []native.TableColumn{
+			{Title: d.text("subject")}, {Title: d.text("author"), Width: 120}, {Title: d.text("date"), Width: dateColumnWidth},
+		}, len(w.fileCommits), func(row, col int) {
+			commit := w.fileCommits[row]
+			text := []string{commit.Subject, commit.Author, commit.Date}[col]
+			if col == 2 {
+				text = displayDateTime(text)
+			}
+			native.Text(c, text).SingleLine().Ellipsis("…").Tooltip(text)
+		}).Height(min(150, height*.23, 28*float32(len(w.fileCommits)+1)+2*controlSpacing)).Disabled(d.busy)
+	}
 	if w.fileRow < 0 || w.fileRow >= len(w.fileCommits) {
 		return
 	}
@@ -124,11 +131,19 @@ func (d *Desktop) fileHistoryContent(c *native.Context, height float32, standalo
 	}
 	if len(w.filePatch.lines) > 0 {
 		native.Text(c, shown).SingleLine().Tooltip(shown).TextColor(c.Theme().TextMuted)
-		d.showPatch(c, &w.filePatch).Height(min(280, height*.43))
+		patch := d.showPatch(c, &w.filePatch)
+		if standalone {
+			patch.Grow(1).MinHeight(0)
+		} else {
+			patch.Height(min(280, height*.43))
+		}
 	} else if d.busy && w.fileShown == "" {
 		native.Text(c, d.text("busy")).TextColor(c.Theme().TextMuted)
 	} else if d.err == "" {
-		emptyState(c, emptyDiffArt, 72, d.copy("没有文件差异", "No file differences"))
+		state := emptyState(c, emptyDiffArt, 72, d.copy("没有文件差异", "No file differences"))
+		if standalone {
+			state.Grow(1)
+		}
 	}
 }
 

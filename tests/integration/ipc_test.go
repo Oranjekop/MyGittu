@@ -24,6 +24,7 @@ import (
 
 func TestFramedAgentWorkflow(t *testing.T) {
 	s, id, dir := setup(t)
+	command(t, dir, "config", "core.autocrlf", "false")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	listener, e := net.Listen("tcp", "127.0.0.1:0")
@@ -62,6 +63,31 @@ func TestFramedAgentWorkflow(t *testing.T) {
 	if len(hash) != 40 {
 		t.Fatal("commit missing")
 	}
+	ipcFile := filepath.Join(dir, "ipc.txt")
+	original := command(t, dir, "show", "HEAD:ipc.txt")
+	legacyText := "changed \xff\n"
+	write(t, ipcFile, legacyText)
+	var patch []byte
+	call("git.patch.export", ipc.Params{RepoID: id}, &patch)
+	if !bytes.Contains(patch, []byte(legacyText)) {
+		t.Fatalf("patch bytes changed in transit: %q", patch)
+	}
+	write(t, ipcFile, original)
+	var check app.PatchCheck
+	call("git.patch.apply", ipc.Params{RepoID: id, FileContent: patch}, &check)
+	call("git.patch.apply", ipc.Params{RepoID: id, FileContent: patch, Hash: check.Token}, nil)
+	if got, err := os.ReadFile(ipcFile); err != nil || string(got) != legacyText {
+		t.Fatalf("applied bytes: %q, %v", got, err)
+	}
+	call("git.stage", ipc.Params{RepoID: id, Paths: []string{"ipc.txt"}}, nil)
+	var secondHash string
+	call("git.commit", ipc.Params{RepoID: id, Message: "Compare commits"}, &secondHash)
+	var comparison app.BranchComparisonSummary
+	call("git.compare.commits", ipc.Params{RepoID: id, Name: hash, Query: secondHash}, &comparison)
+	if comparison.Left != hash || comparison.Right != secondHash || !slices.Equal(comparison.Paths, []string{"ipc.txt"}) {
+		t.Fatalf("unexpected commit comparison: %+v", comparison)
+	}
+	command(t, dir, "reset", "--hard", hash)
 	write(t, filepath.Join(dir, "new.txt"), "new file")
 	var files []string
 	call("git.files", ipc.Params{RepoID: id}, &files)
@@ -91,6 +117,32 @@ func TestFramedAgentWorkflow(t *testing.T) {
 	call("menu.file", ipc.Params{Path: filepath.Join(dir, "ipc.txt")}, &fileMenu)
 	if !fileMenu["ready"] || fileMenu["stage"] || fileMenu["restore"] || !fileMenu["unstage"] || !fileMenu["blame"] {
 		t.Fatalf("unexpected menu for staged file: %v", fileMenu)
+	}
+	write(t, filepath.Join(dir, ".gitignore"), "local/\n")
+	if err := os.Mkdir(filepath.Join(dir, "local"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(dir, "local", "notes.txt"), "ignored file")
+	write(t, filepath.Join(dir, "local", "other.txt"), "still ignored")
+	call("status.refresh", ipc.Params{RepoID: id}, &snap)
+	call("menu.file", ipc.Params{Path: filepath.Join(dir, "local", "notes.txt")}, &fileMenu)
+	if !fileMenu["ready"] || !fileMenu["stage"] || fileMenu["diff"] || fileMenu["restore"] {
+		t.Fatalf("unexpected menu for ignored file: %v", fileMenu)
+	}
+	call("git.stage.ignored", ipc.Params{RepoID: id, Path: "local/notes.txt"}, nil)
+	staged := strings.Fields(command(t, dir, "diff", "--cached", "--name-only"))
+	if !slices.Equal(staged, []string{"ipc.txt", "local/notes.txt"}) {
+		t.Fatalf("force staging affected unexpected files: %v", staged)
+	}
+	write(t, filepath.Join(dir, "notes [draft].txt"), "untracked")
+	call("git.file.ignore", ipc.Params{RepoID: id, Path: "notes [draft].txt"}, nil)
+	command(t, dir, "check-ignore", "--", "notes [draft].txt")
+	call("git.file.untrack", ipc.Params{RepoID: id, Path: "local/notes.txt"}, nil)
+	if _, err := os.Stat(filepath.Join(dir, "local", "notes.txt")); err != nil {
+		t.Fatalf("stopping tracking removed the local file: %v", err)
+	}
+	if staged := strings.Fields(command(t, dir, "diff", "--cached", "--name-only")); !slices.Equal(staged, []string{"ipc.txt"}) {
+		t.Fatalf("unexpected index after stopping tracking: %v", staged)
 	}
 	var overlay status.Overlay
 	call("overlay.lookup", ipc.Params{Path: dir}, &overlay)

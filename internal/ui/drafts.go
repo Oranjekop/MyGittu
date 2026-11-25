@@ -18,6 +18,7 @@ func (d *Desktop) selectRepository(id, root string) {
 		d.savedMessage = d.message
 		d.snapshot = status.Snapshot{}
 		d.remoteNotice = ""
+		d.advanced, d.compareCommit = advancedPanel{}, ""
 		d.remoteDiverged = false
 		d.fileSearch.cancelRequest()
 		d.fileSearch = projectContentSearch{}

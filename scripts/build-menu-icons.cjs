@@ -18,6 +18,13 @@ const icons = {
   unstage: ['#e6eaff', '#373d9e', '<path d="M5 13h4l1 2h4l1-2h4v6H5zM12 11V5M9 8l3-3 3 3"/>'],
   restore: ['#ffeedc', '#98431a', '<path d="M7 10h7a4 4 0 0 1 0 8h-3M10 6l-4 4 4 4"/>'],
   conflict: ['#ffe5e6', '#a32b39', '<path d="M12 5 4 18h16zM12 10v3m0 2.5h.01"/>'],
+  'ignore-file': ['#e9edf2', '#4b5767', '<circle cx="12" cy="12" r="7"/><path d="m7 17 10-10"/>'],
+  'untrack-file': ['#ffe5e6', '#a32b39', '<path d="M6 5h7l4 4v10H6zM13 5v4h4m-8 5h5"/>'],
+  fetch: ['#e0f4ff', '#12657e', '<path d="M6 15a4 4 0 0 1 1-7 5 5 0 0 1 9 1 3 3 0 0 1 1 6m-5-3v7m-3-3 3 3 3-3"/>'],
+  switch: ['#eee5ff', '#6437a0', '<path d="M5 8h14m-4-4 4 4-4 4m4 4H5m4-4-4 4 4 4"/>'],
+  stash: ['#d9f5e7', '#08704b', '<path d="M5 6h14v4H5zM6 10v8h12v-8m-8 3h4"/>'],
+  previous: ['#ffeedc', '#98431a', '<path d="M6 5h8l4 4v10H6zM14 5v4h4m-3 5H9m2-2-2 2 2 2"/>'],
+  patch: ['#daf5f3', '#006d68', '<path d="M6 5h8l4 4v10H6zM14 5v4h4m-9 5h6m-3-3v6"/>'],
 };
 
 function iconSVG(name) {

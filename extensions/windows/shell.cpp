@@ -279,17 +279,25 @@ static bool repositoryPath(const std::wstring &path) {
   return result;
 }
 static const wchar_t *actions[] = {L"status", L"commit", L"log",  L"diff",
-                                   L"pull", L"push", L"clone", L"file-diff", L"file-log", L"file-blame", L"file-stage", L"file-unstage", L"file-restore", L"file-conflict"};
+                                   L"pull", L"push", L"clone", L"file-diff", L"file-log", L"file-blame", L"file-stage", L"file-unstage", L"file-restore", L"file-conflict", L"file-ignore", L"file-untrack", L"fetch", L"switch", L"stash", L"file-previous", L"file-patch"};
 static constexpr int menuIconIDs[] = {
     IDI_MENU_CHANGES, IDI_MENU_COMMIT, IDI_MENU_HISTORY, IDI_MENU_DIFF,
-    IDI_MENU_PULL, IDI_MENU_PUSH, IDI_MENU_CLONE, IDI_MENU_DIFF, IDI_MENU_HISTORY, IDI_MENU_BLAME, IDI_MENU_STAGE, IDI_MENU_UNSTAGE, IDI_MENU_RESTORE, IDI_MENU_CONFLICT};
+    IDI_MENU_PULL, IDI_MENU_PUSH, IDI_MENU_CLONE, IDI_MENU_DIFF, IDI_MENU_HISTORY, IDI_MENU_BLAME, IDI_MENU_STAGE, IDI_MENU_UNSTAGE, IDI_MENU_RESTORE, IDI_MENU_CONFLICT, IDI_MENU_IGNORE_FILE, IDI_MENU_UNTRACK_FILE, IDI_MENU_FETCH, IDI_MENU_SWITCH, IDI_MENU_STASH, IDI_MENU_PREVIOUS, IDI_MENU_PATCH};
 static_assert(std::size(actions) == std::size(menuIconIDs));
 static int menuIconResource(int action) {
   return action < 0 ? IDI_MENU_ROOT : menuIconIDs[action];
 }
-static constexpr int repositoryCommands[] = {4, 0, 1, 5, 2, 3};
+static constexpr int repositoryCommands[] = {16, 4, 0, 1, 5, 2, 3, 17, 18};
 static constexpr int cloneCommand = 6;
-static constexpr int fileCommands[] = {7, 8, 9, 10, 11, 12, 13};
+static constexpr int fileCommands[] = {7, 8, 9, 10, 11, 12, 13, 14, 15, 19};
+static constexpr int patchCommand = 20;
+static bool patchPath(const std::wstring &path) {
+  const auto dot = path.find_last_of(L'.');
+  if (dot == std::wstring::npos)
+    return false;
+  const auto extension = path.c_str() + dot;
+  return _wcsicmp(extension, L".patch") == 0 || _wcsicmp(extension, L".diff") == 0;
+}
 static std::vector<int> commandsFor(const std::wstring &path) {
   const auto attributes = GetFileAttributesW(path.c_str());
   if (attributes == INVALID_FILE_ATTRIBUTES)
@@ -299,7 +307,7 @@ static std::vector<int> commandsFor(const std::wstring &path) {
     return repo ? std::vector<int>(std::begin(repositoryCommands), std::end(repositoryCommands))
                 : std::vector<int>{cloneCommand};
   if (!repo)
-    return {};
+    return patchPath(path) ? std::vector<int>{patchCommand} : std::vector<int>{};
   // Explorer asks each modern menu child separately on the same apartment.
   static thread_local std::wstring cachedPath;
   static thread_local std::string cachedReply;
@@ -312,20 +320,26 @@ static std::vector<int> commandsFor(const std::wstring &path) {
   }
   const auto &reply = cachedReply;
   if (reply.empty() || reply.find("\"ready\":false") != std::string::npos)
-    return {7, 8, 9};
+  {
+    if (patchPath(path))
+      return {7, 8, 9, 10, patchCommand};
+    return {7, 8, 9, 10};
+  }
   std::vector<int> result;
   constexpr const char *keys[]{"diff", "history", "blame", "stage", "unstage",
-                                "restore", "conflict"};
+                                "restore", "conflict", "ignore", "untrack", "history"};
   for (size_t i = 0; i < std::size(keys); ++i)
     if (reply.find(std::string("\"") + keys[i] + "\":true") != std::string::npos)
       result.push_back(fileCommands[i]);
+  if (patchPath(path))
+    result.push_back(patchCommand);
   return result;
 }
 static const wchar_t *commandTitle(int action) {
   const wchar_t *en[] = {L"Changes", L"Commit", L"History", L"Diff",
-                         L"Pull",   L"Push",   L"Clone", L"File diff", L"File history", L"Blame", L"Stage file", L"Unstage file", L"Restore file", L"Resolve conflict"};
+                         L"Pull",   L"Push",   L"Clone", L"File diff", L"File history", L"Blame", L"Stage file", L"Unstage file", L"Restore file", L"Resolve conflict", L"Add to ignore list", L"Stop tracking (keep file)", L"Fetch", L"Switch branch", L"Stash changes", L"Compare with previous version", L"Review and apply patch"};
   const wchar_t *zh[] = {L"变更",  L"提交", L"历史", L"差异",
-                         L"拉取", L"推送", L"克隆", L"文件差异", L"文件历史", L"逐行追溯", L"暂存此文件", L"取消暂存此文件", L"恢复此文件", L"解决冲突"};
+                         L"拉取", L"推送", L"克隆", L"文件差异", L"文件历史", L"逐行追溯", L"暂存此文件", L"取消暂存此文件", L"恢复此文件", L"解决冲突", L"加入忽略列表", L"停止跟踪（保留文件）", L"获取", L"切换分支", L"储藏改动", L"与上一版本比较", L"预览并应用补丁"};
   return english() ? en[action] : zh[action];
 }
 static HRESULT launch(const std::wstring &path, int action) {

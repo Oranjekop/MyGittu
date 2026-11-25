@@ -220,6 +220,27 @@ func (d *Desktop) showHistory(c *native.Context, t *native.Theme) {
 				}
 				native.Row(c).Gap(controlSpacing).Children(func() {
 					valid := d.logRow >= 0 && d.logRow < len(d.logs)
+					IconButton(c, d.text("advanced.history"), "history", false).Disabled(d.busy).PopoverMenuButton(func(menu *native.Menu) {
+						var entry app.Commit
+						if valid {
+							entry = d.logs[d.logRow]
+						}
+						label := "advanced.markCompare"
+						if d.compareCommit != "" {
+							label = "advanced.compare"
+						}
+						if menu.Item(d.text(label)).Disabled(!valid || entry.Hash == d.compareCommit).Chosen() {
+							d.advancedAction("compare", entry)
+						}
+						if menu.Item(d.text("advanced.clearCompare")).Disabled(d.compareCommit == "").Chosen() {
+							d.compareCommit = ""
+						}
+						for _, mode := range []string{"reflog", "rebase", "bisect"} {
+							if menu.Item(d.text("advanced." + mode)).Chosen() {
+								d.advancedAction(mode, entry)
+							}
+						}
+					})
 					if IconButton(c, d.text("recover.undo"), "undo", false).Disabled(d.busy || !valid || d.historyQuery != "" || !d.isHistoryHead()).Clicked() && valid {
 						d.confirmRecovery("undo", d.logs[d.logRow].Hash)
 					}

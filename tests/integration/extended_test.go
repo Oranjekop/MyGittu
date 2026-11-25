@@ -8,8 +8,74 @@ import (
 	"strings"
 	"testing"
 
+	"mygittu/internal/app"
 	"mygittu/internal/status"
 )
+
+func TestAdvancedRepositoryOperations(t *testing.T) {
+	s, id, dir := setup(t)
+	ctx := context.Background()
+	if entries, err := s.Reflog(ctx, id); err != nil || len(entries) != 0 {
+		t.Fatalf("empty reflog: %+v, %v", entries, err)
+	}
+	path := filepath.Join(dir, "a.txt")
+	write(t, path, "base\n")
+	command(t, dir, "add", ".")
+	command(t, dir, "commit", "-m", "base")
+	base := strings.TrimSpace(command(t, dir, "rev-parse", "HEAD"))
+	write(t, path, "fixed\n")
+	patch, err := s.ExportPatch(ctx, id, false)
+	if err != nil || patch == "" {
+		t.Fatalf("export: %v", err)
+	}
+	command(t, dir, "restore", "a.txt")
+	check, err := s.ApplyPatch(ctx, id, patch, "")
+	if err != nil || check.Token == "" || check.Summary == "" {
+		t.Fatalf("check: %+v, %v", check, err)
+	}
+	if _, err := s.ApplyPatch(ctx, id, patch, "wrong"); err == nil {
+		t.Fatal("applied patch with wrong token")
+	}
+	if _, err := s.ApplyPatch(ctx, id, patch, check.Token); err != nil {
+		t.Fatal(err)
+	}
+	command(t, dir, "commit", "-am", "fixed")
+	fixed := strings.TrimSpace(command(t, dir, "rev-parse", "HEAD"))
+	write(t, filepath.Join(dir, "b.txt"), "independent\n")
+	command(t, dir, "add", "b.txt")
+	command(t, dir, "commit", "-m", "independent")
+	head := strings.TrimSpace(command(t, dir, "rev-parse", "HEAD"))
+	entries, err := s.Reflog(ctx, id)
+	if err != nil || len(entries) < 3 || entries[0].Hash != head {
+		t.Fatalf("reflog: %+v, %v", entries, err)
+	}
+	if err := s.BranchAt(ctx, id, "recovered", entries[1].Hash); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := s.Bisect(ctx, id, "start", head, base); err != nil || output == "" {
+		t.Fatalf("bisect start: %q, %v", output, err)
+	}
+	if output, err := s.Bisect(ctx, id, "bad", "", ""); err != nil || !strings.Contains(output, fixed) {
+		t.Fatalf("bisect bad: %q, %v", output, err)
+	}
+	if _, err := s.Bisect(ctx, id, "reset", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	steps, err := s.RebasePlan(ctx, id, base)
+	if err != nil || len(steps) != 2 {
+		t.Fatalf("plan: %+v, %v", steps, err)
+	}
+	reordered := []app.RebaseStep{steps[1], {Hash: steps[0].Hash, Action: "fixup"}}
+	if err := s.Rebase(ctx, id, "start", base, reordered); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(command(t, dir, "log", "--format=%s", base+"..HEAD")); got != "independent" {
+		t.Fatalf("unexpected rewritten log: %q", got)
+	}
+	if got := strings.TrimSpace(command(t, dir, "show", "HEAD:a.txt")); got != "fixed" {
+		t.Fatalf("fixup lost file change: %q", got)
+	}
+}
 
 func TestRemotesAndFirstPush(t *testing.T) {
 	s, id, dir := setup(t)

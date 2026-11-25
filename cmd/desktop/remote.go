@@ -118,6 +118,14 @@ func (d *remoteWindow) view(c *native.Context) {
 }
 
 func (d *remoteWindow) content(c *native.Context, t *native.Theme) {
+	native.Column(c).Fill().Padding(8).Background(t.Surface).Children(func() {
+		native.Column(c).Fill().MinHeight(0).Background(t.Background).Radius(8).Clip().Children(func() {
+			d.cardContent(c, t)
+		})
+	})
+}
+
+func (d *remoteWindow) cardContent(c *native.Context, t *native.Theme) {
 	if d.err == "" {
 		message := d.status
 		if message == "" {

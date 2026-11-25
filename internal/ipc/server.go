@@ -20,30 +20,31 @@ import (
 )
 
 type Params struct {
-	Mainline       int             `json:"mainline,omitempty"`
-	AllBranches    bool            `json:"all_branches,omitempty"`
-	FileContent    []byte          `json:"file_content,omitempty"`
-	PreviewOffset  int64           `json:"preview_offset,omitempty"`
-	PreviewVersion string          `json:"preview_version,omitempty"`
-	CloneAuth      git.CloneAuth   `json:"clone_auth,omitempty"`
-	RepoID         string          `json:"repo_id"`
-	Path           string          `json:"path"`
-	Paths          []string        `json:"paths"`
-	Message        string          `json:"message"`
-	Action         string          `json:"action"`
-	Name           string          `json:"name"`
-	Staged         bool            `json:"staged"`
-	Limit          int             `json:"limit"`
-	Offset         int             `json:"offset"`
-	Query          string          `json:"query"`
-	Hash           string          `json:"hash"`
-	URL            string          `json:"url"`
-	Destination    string          `json:"destination"`
-	OriginalPath   string          `json:"original_path"`
-	StatusUpdated  time.Time       `json:"status_updated,omitempty"`
-	Settings       settings.Values `json:"settings"`
-	Identity       app.Identity    `json:"identity"`
-	Scope          string          `json:"scope"`
+	RebaseSteps    []app.RebaseStep `json:"rebase_steps,omitempty"`
+	Mainline       int              `json:"mainline,omitempty"`
+	AllBranches    bool             `json:"all_branches,omitempty"`
+	FileContent    []byte           `json:"file_content,omitempty"`
+	PreviewOffset  int64            `json:"preview_offset,omitempty"`
+	PreviewVersion string           `json:"preview_version,omitempty"`
+	CloneAuth      git.CloneAuth    `json:"clone_auth,omitempty"`
+	RepoID         string           `json:"repo_id"`
+	Path           string           `json:"path"`
+	Paths          []string         `json:"paths"`
+	Message        string           `json:"message"`
+	Action         string           `json:"action"`
+	Name           string           `json:"name"`
+	Staged         bool             `json:"staged"`
+	Limit          int              `json:"limit"`
+	Offset         int              `json:"offset"`
+	Query          string           `json:"query"`
+	Hash           string           `json:"hash"`
+	URL            string           `json:"url"`
+	Destination    string           `json:"destination"`
+	OriginalPath   string           `json:"original_path"`
+	StatusUpdated  time.Time        `json:"status_updated,omitempty"`
+	Settings       settings.Values  `json:"settings"`
+	Identity       app.Identity     `json:"identity"`
+	Scope          string           `json:"scope"`
 }
 type Server struct {
 	Service   *app.Service
@@ -140,6 +141,8 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 			Unstage  bool `json:"unstage"`
 			Restore  bool `json:"restore"`
 			Conflict bool `json:"conflict"`
+			Ignore   bool `json:"ignore"`
+			Untrack  bool `json:"untrack"`
 		}{}
 		if s.Cache != nil && filepath.IsAbs(p.Path) {
 			overlay := s.Cache.Lookup(p.Path)
@@ -155,9 +158,14 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 				menu.Ready = ready
 				menu.History = overlay.State == git.Clean || overlay.State == git.Modified || overlay.State == git.Conflicted
 				menu.Blame = menu.History
+				menu.Untrack = overlay.State == git.Clean || overlay.State == git.Modified || overlay.State == git.Added
+				if overlay.State == git.Ignored {
+					menu.Stage = true
+				}
 				if changed && file.State != git.Ignored {
 					menu.Diff = true
 					menu.Conflict = file.State == git.Conflicted
+					menu.Ignore = file.State == git.Untracked
 					menu.Stage = !menu.Conflict && file.Worktree != git.Clean && file.Worktree != ""
 					menu.Unstage = !menu.Conflict && file.Index != git.Clean && file.Index != ""
 					menu.Restore = menu.Stage && file.Worktree != git.Untracked && file.Index != git.Deleted
@@ -207,6 +215,10 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		result = s.Cache.GetSince(p.RepoID, p.StatusUpdated)
 	case "git.stage", "git.unstage":
 		e = s.Service.Paths(ctx, p.RepoID, p.Paths, r.Method == "git.stage")
+	case "git.stage.ignored":
+		e = s.Service.EditSingleFile(ctx, p.RepoID, p.Path, "stage-ignored")
+	case "git.file.ignore", "git.file.untrack":
+		e = s.Service.EditSingleFile(ctx, p.RepoID, p.Path, r.Method[len("git.file."):])
 	case "git.commit":
 		result, e = s.Service.Commit(ctx, p.RepoID, p.Message)
 	case "git.log":
@@ -224,6 +236,26 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		e = s.Service.StageSelectedHunk(ctx, p.RepoID, p.Path, p.Hash, p.Offset)
 	case "git.references":
 		result, e = s.Service.References(ctx, p.RepoID)
+	case "git.reflog":
+		result, e = s.Service.Reflog(ctx, p.RepoID)
+	case "git.branch.at":
+		e = s.Service.BranchAt(ctx, p.RepoID, p.Name, p.Hash)
+	case "git.patch.export":
+		var patch string
+		patch, e = s.Service.ExportPatch(ctx, p.RepoID, p.Staged)
+		result = []byte(patch)
+	case "git.patch.apply":
+		result, e = s.Service.ApplyPatch(ctx, p.RepoID, string(p.FileContent), p.Hash)
+	case "git.compare.commits":
+		result, e = s.Service.CompareCommitsSummary(ctx, p.RepoID, p.Name, p.Query)
+	case "git.advanced.state":
+		result = s.Service.AdvancedState(ctx, p.RepoID)
+	case "git.rebase.plan":
+		result, e = s.Service.RebasePlan(ctx, p.RepoID, p.Hash)
+	case "git.rebase":
+		e = s.Service.Rebase(ctx, p.RepoID, p.Action, p.Hash, p.RebaseSteps)
+	case "git.bisect":
+		result, e = s.Service.Bisect(ctx, p.RepoID, p.Action, p.Hash, p.Name)
 	case "git.stash.patch":
 		result, e = s.Service.StashPatch(ctx, p.RepoID, p.Hash)
 	case "git.conflict":
@@ -307,7 +339,11 @@ func (s *Server) Handle(ctx context.Context, r Request) Response {
 		return fail("method", "unsupported method")
 	}
 	switch r.Method {
-	case "git.stage", "git.unstage", "git.commit", "git.branch", "git.remote", "git.amend", "git.cherry-pick", "git.remote.configure", "git.restore", "git.hunk.restore", "git.hunk.stage", "git.recover", "git.resolve", "git.worktree.edit":
+	case "git.patch.apply":
+		if s.Cache != nil && p.Hash != "" {
+			s.Cache.ScheduleRefresh(p.RepoID)
+		}
+	case "git.branch.at", "git.rebase", "git.bisect", "git.stage", "git.stage.ignored", "git.file.ignore", "git.file.untrack", "git.unstage", "git.commit", "git.branch", "git.remote", "git.amend", "git.cherry-pick", "git.remote.configure", "git.restore", "git.hunk.restore", "git.hunk.stage", "git.recover", "git.resolve", "git.worktree.edit":
 		if s.Cache != nil {
 			s.Cache.ScheduleRefresh(p.RepoID)
 		}

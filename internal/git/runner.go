@@ -68,6 +68,14 @@ func (r *Runner) RunTo(ctx context.Context, repo string, output io.Writer, args 
 	return err
 }
 
+func (r *Runner) RunWithInput(ctx context.Context, repo, input string, args ...string) (Result, error) {
+	return r.runInput(ctx, repo, nil, input, args...)
+}
+
+func (r *Runner) RunWithEnv(ctx context.Context, repo string, env []string, args ...string) (Result, error) {
+	return r.run(ctx, repo, env, args...)
+}
+
 func (r *Runner) runOutput(ctx context.Context, repo string, env []string, input string, output io.Writer, args ...string) (Result, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
 	defer cancel()

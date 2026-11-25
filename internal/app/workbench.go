@@ -381,10 +381,15 @@ func (s *Service) CompareBranches(ctx context.Context, id, left, right string) (
 
 func (s *Service) CompareBranchesSummary(ctx context.Context, id, left, right string) (BranchComparisonSummary, error) {
 	a, b, err := s.comparisonHashes(ctx, id, left, right)
-	summary := BranchComparisonSummary{Left: a, Right: b}
 	if err != nil {
-		return summary, err
+		return BranchComparisonSummary{}, err
 	}
+	return s.CompareCommitsSummary(ctx, id, a, b)
+}
+
+func (s *Service) CompareCommitsSummary(ctx context.Context, id, a, b string) (BranchComparisonSummary, error) {
+	summary := BranchComparisonSummary{Left: a, Right: b}
+	var err error
 	summary.BranchComparisonPage, err = s.CompareBranchesPage(ctx, id, a, b, 0)
 	if err != nil {
 		return summary, err

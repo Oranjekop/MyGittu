@@ -213,7 +213,12 @@ func (d *Desktop) showBranches(c *native.Context) {
 	paneWidth := 2*buttonWidth + 2*panelSpacing + controlSpacing
 	native.Row(c).Grow(1).FillWidth().Gap(panelSpacing).Children(func() {
 		native.Column(c).Width(paneWidth).FillHeight().Padding(panelSpacing).Gap(controlSpacing).Radius(8).Background(c.Theme().Background).Children(func() {
-			native.Text(c, d.text("nav.branches")).Bold().TextColor(c.Theme().TextMuted).PaddingStart(controlSpacing)
+			native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+				native.Text(c, d.text("nav.branches")).Bold().TextColor(c.Theme().TextMuted).Grow(1)
+				if d.action == "" && IconButton(c, d.text("advanced.rebase"), "branch", false).Disabled(d.busy || d.selected == "").Clicked() {
+					d.advancedAction("rebase", app.Commit{})
+				}
+			})
 			native.Divider(c)
 			row := -1
 			var selected app.BranchEntry
@@ -398,6 +403,12 @@ func (d *Desktop) showComparisonFiles(c *native.Context) {
 		}
 		if len(w.comparisonPatch.lines) > 0 {
 			d.showPatch(c, &w.comparisonPatch).Grow(1).FillHeight()
+		} else if !d.busy {
+			message := d.copy("选择文件以查看差异", "Choose a file to view its diff")
+			if w.comparisonFile != "" {
+				message = d.copy("没有可显示的文本差异", "No text diff to display")
+			}
+			emptyState(c, emptyDiffArt, 128, message).Grow(1).FillHeight()
 		}
 	})
 }

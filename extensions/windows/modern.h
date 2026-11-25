@@ -219,7 +219,7 @@ public:
     }
     path = location;
     if (action < 0) {
-      *state = ECS_ENABLED;
+      *state = slow && commandsFor(location).empty() ? ECS_HIDDEN : ECS_ENABLED;
       return S_OK;
     }
     if (!slow) {
@@ -259,6 +259,7 @@ public:
       commands.push_back(new Modern(cloneCommand, path));
       for (int value : fileCommands)
         commands.push_back(new Modern(value, path));
+      commands.push_back(new Modern(patchCommand, path));
       *out = new CommandEnum(std::move(commands));
       return S_OK;
     } catch (...) {
