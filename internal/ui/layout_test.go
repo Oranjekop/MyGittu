@@ -47,8 +47,54 @@ func TestAdvancedEmptyPanels(t *testing.T) {
 			if !tt.HasText(d.text("advanced." + scenario.message)) {
 				t.Fatal("missing empty state")
 			}
+			if (d.action == "") != tt.HasText(d.text("close")) {
+				t.Fatal("only an in-app modal should offer an extra close button")
+			}
 			saveLayoutPreview(t, tt, "advanced-"+scenario.mode+".png")
 		})
+	}
+}
+
+func TestPatchCheckFailureKeepsComparison(t *testing.T) {
+	files, err := editor.ParsePatch("diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old text\n+new text\n")
+	if err != nil || len(files) != 1 {
+		t.Fatalf("patch fixture: %v", err)
+	}
+	d := New(nil, "", "")
+	d.action = "file-patch"
+	d.advanced = advancedPanel{
+		open: true, mode: "patch", patchRoot: "target-repository",
+		patchPath: "example.patch", patchFiles: files, patchFile: patchFileName(files[0]),
+		err: d.text("advanced.patchCheckFailed"),
+	}
+	tt := native.NewTester(d.view, 940, 650)
+	tt.SetScale(1.5)
+	tt.Frame()
+	if !tt.HasText(d.text("advanced.patchTarget")) || tt.HasText(d.text("advanced.apply")) {
+		t.Fatal("failed check must offer another target and block applying")
+	}
+	diff := &d.advanced.patchDiff
+	if diff.Old == nil || diff.New == nil || diff.Layout != editor.DiffSplit || !diff.KeepScrollbars {
+		t.Fatal("failed check lost the scrollable side-by-side preview")
+	}
+	saveLayoutPreview(t, tt, "patch-target-check-failed.png")
+	if err := tt.Click(d.copy("统一", "Unified")); err != nil {
+		t.Fatal(err)
+	}
+	if diff.Layout != editor.DiffUnified {
+		t.Fatal("patch preview did not switch layout")
+	}
+}
+
+func TestComparisonShowsLoadErrorInsidePanel(t *testing.T) {
+	d := New(nil, "", "")
+	d.tools.setComparison(app.BranchComparisonSummary{Paths: []string{"a.txt"}})
+	d.tools.comparisonFileRow, d.tools.comparisonFile = 0, "a.txt"
+	d.tools.comparisonError = "could not read comparison"
+	tt := native.NewTester(d.showComparisonFiles, 920, 600)
+	tt.Frame()
+	if !tt.HasText(d.tools.comparisonError) || !tt.HasText("a.txt") {
+		t.Fatal("file comparison should show its error and keep the file list")
 	}
 }
 
@@ -1111,7 +1157,7 @@ func TestShellActionWindowsAt150Percent(t *testing.T) {
 					button = d.text("repo.open")
 				}
 				tt.Frame()
-				if !tt.HasText(d.result) || !tt.HasText(d.text("close")) || !tt.HasText(button) || tt.HasText(tc.control) {
+				if !tt.HasText(d.result) || tt.HasText(d.text("close")) || !tt.HasText(button) || tt.HasText(tc.control) {
 					t.Fatal("successful action did not stay in its own result window")
 				}
 				saveLayoutPreview(t, tt, tc.action+"-completed.png")

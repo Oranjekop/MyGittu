@@ -210,12 +210,8 @@ func (d *Desktop) cloneResult(c *native.Context) {
 			native.Text(c, d.err).FillWidth().TextAlign(native.Center).TextColor(c.Theme().Danger)
 		}
 		native.Row(c).Gap(controlSpacing).Children(func() {
-			if IconButton(c, d.text("close"), "close", false).Disabled(d.busy).Clicked() {
-				if d.action == "clone" && d.win != nil {
-					d.win.Close()
-				} else {
-					d.cloneOpen, d.clonedRepo = false, nil
-				}
+			if d.action == "" && IconButton(c, d.text("close"), "close", false).Disabled(d.busy).Clicked() {
+				d.cloneOpen, d.clonedRepo = false, nil
 			}
 			if IconButton(c, d.text("repo.open"), "open", true).Disabled(d.busy).Clicked() {
 				if d.action == "clone" {

@@ -19,6 +19,7 @@ func (d *Desktop) openFileHistory(path string) {
 			w := &d.tools
 			w.filePath, w.fileCommits, w.fileRow, w.fileLoaded, w.fileOpen = path, list, 0, "", true
 			w.filePatch, w.fileMode = patchView{}, 0
+			w.fileDiff = editor.DiffState{}
 			w.fileShown = ""
 			w.fileHistoryLoaded = true
 			w.blameRows, w.blameLoaded = nil, false
@@ -58,11 +59,7 @@ func (d *Desktop) fileHistoryContent(c *native.Context, height float32, standalo
 	w := &d.tools
 	native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 		native.Text(c, w.filePath).Bold().SingleLine().Grow(1).Tooltip(w.filePath)
-		if standalone {
-			if IconButton(c, d.text("close"), "close", false).Clicked() && d.win != nil {
-				d.win.Close()
-			}
-		} else {
+		if !standalone {
 			d.toolClose(c, &w.fileOpen)
 		}
 	})
@@ -129,7 +126,11 @@ func (d *Desktop) fileHistoryContent(c *native.Context, height float32, standalo
 	if shown == "" {
 		shown = commit.Hash
 	}
-	if len(w.filePatch.lines) > 0 {
+	if w.fileDiff.Old != nil {
+		native.Text(c, shown).SingleLine().Tooltip(shown).TextColor(c.Theme().TextMuted)
+		width, _ := c.Size()
+		d.showCodeDiff(c, &w.fileDiff, width-2*panelSpacing, false)
+	} else if len(w.filePatch.lines) > 0 {
 		native.Text(c, shown).SingleLine().Tooltip(shown).TextColor(c.Theme().TextMuted)
 		patch := d.showPatch(c, &w.filePatch)
 		if standalone {
@@ -160,7 +161,12 @@ func (d *Desktop) loadFilePatch(hash string) {
 		}
 		return func() {
 			w.fileShown = hash
-			w.filePatch = patchView{lines: d.patchRows(files, false)}
+			w.filePatch, w.fileDiff = patchView{}, editor.DiffState{}
+			if len(files) == 1 && !files[0].Binary && len(files[0].Hunks) > 0 {
+				w.fileDiff.SetPatch(files[0])
+			} else {
+				w.filePatch.lines = d.patchRows(files, false)
+			}
 		}, err
 	})
 }

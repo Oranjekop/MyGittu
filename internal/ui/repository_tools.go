@@ -143,13 +143,7 @@ func (d *Desktop) actionConfirmation(c *native.Context, standalone bool) {
 					apply()
 				}
 			}
-			if d.action == "file-restore" {
-				if IconButton(c, d.text("close"), "close", false).Disabled(d.busy).Clicked() && d.win != nil {
-					d.win.Close()
-				}
-			} else {
-				d.toolClose(c, &w.confirmOpen)
-			}
+			d.toolClose(c, &w.confirmOpen)
 		})
 	})
 }
@@ -279,7 +273,7 @@ func (d *Desktop) toolError(c *native.Context, w *repositoryTools) {
 	}
 }
 func (d *Desktop) toolClose(c *native.Context, open *bool) {
-	if IconButton(c, d.text("close"), "close", false).Clicked() {
+	if !d.isStandaloneFileAction() && IconButton(c, d.text("close"), "close", false).Clicked() {
 		*open = false
 	}
 }

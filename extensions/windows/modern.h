@@ -206,6 +206,10 @@ public:
       return E_POINTER;
     *out = baseID;
     out->Data4[7] = static_cast<BYTE>(action + 16);
+    // Refresh Explorer's cached command icons after the menu artwork changes.
+    const int icon = menuIconResource(action);
+    if (icon >= IDI_MENU_UNTRACK_FILE && icon <= IDI_MENU_PATCH)
+      out->Data4[6] ^= 1;
     return S_OK;
   }
   HRESULT STDMETHODCALLTYPE GetState(IShellItemArray *items, BOOL slow,

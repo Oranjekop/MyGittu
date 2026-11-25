@@ -181,6 +181,11 @@ int wmain(int argc, wchar_t **argv) {
     if (childIndex >= static_cast<int>(std::size(commandIcons)) ||
         resource != commandIcons[childIndex])
       return 32;
+    HICON extracted = nullptr;
+    if (ExtractIconExW(location.substr(0, comma).c_str(), -resource, nullptr,
+                       &extracted, 1) != 1 || !extracted)
+      return 38;
+    DestroyIcon(extracted);
     ++childIndex;
     for (int size : {16, 24, 32, 48, 96, 256}) {
       const auto loaded = static_cast<HICON>(LoadImageW(

@@ -246,14 +246,9 @@ func (d *Desktop) actionContent(c *native.Context, t *native.Theme) {
 						native.Text(c, d.copy("推送本次提交？", "Push this commit?"))
 						d.showCommitPushFailure(c)
 					}
-					native.Row(c).Gap(controlSpacing).Children(func() {
-						if IconButton(c, d.text("close"), "close", !d.offerCommitPush).Disabled(d.busy).Clicked() && d.win != nil {
-							d.win.Close()
-						}
-						if d.offerCommitPush && d.pushFailure == "" && activityButton(c, d.text("remote.push"), "push", true, d.remoteRunning == "push").Disabled(d.busy).Clicked() {
-							d.remoteAction("push")
-						}
-					})
+					if d.offerCommitPush && d.pushFailure == "" && activityButton(c, d.text("remote.push"), "push", true, d.remoteRunning == "push").Disabled(d.busy).Clicked() {
+						d.remoteAction("push")
+					}
 				})
 			}
 			return

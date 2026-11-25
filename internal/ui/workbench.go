@@ -18,6 +18,7 @@ type workbench struct {
 	conflictPath, resolution            string
 	filePath, fileLoaded, fileShown     string
 	filePatch                           patchView
+	fileDiff                            editor.DiffState
 	fileCommits                         []app.Commit
 	fileHistoryLoaded                   bool
 	fileRow                             int
@@ -35,11 +36,12 @@ type workbench struct {
 	compareTab                          int
 	compared                            bool
 	comparison                          app.BranchComparisonSummary
-	comparisonPatch                     patchView
+	comparisonPatch                     editor.DiffState
 	comparisonCommits                   native.ListState
 	comparisonFiles                     native.ListState
 	comparisonFileRow                   int
 	comparisonFile                      string
+	comparisonError                     string
 	batch                               map[string]bool
 }
 
@@ -163,12 +165,8 @@ func (d *Desktop) conflictContent(c *native.Context) {
 				}, err
 			})
 		}
-		if IconButton(c, d.text("close"), "close", false).Clicked() {
-			if d.action == "file-conflict" && d.win != nil {
-				d.win.Close()
-			} else {
-				w.conflictOpen = false
-			}
+		if !d.isStandaloneFileAction() && IconButton(c, d.text("close"), "close", false).Clicked() {
+			w.conflictOpen = false
 		}
 	})
 	if d.err != "" {
@@ -347,7 +345,8 @@ func (d *Desktop) showBranchComparison(c *native.Context) {
 func (w *workbench) setComparison(result app.BranchComparisonSummary) {
 	w.comparison, w.compared = result, true
 	w.comparisonCommits, w.comparisonFiles = native.ListState{}, native.ListState{}
-	w.comparisonFileRow, w.comparisonFile, w.comparisonPatch = -1, "", patchView{}
+	w.comparisonFileRow, w.comparisonFile, w.comparisonPatch = -1, "", editor.DiffState{}
+	w.comparisonError = ""
 }
 
 func (d *Desktop) loadMoreComparisonCommits() {
@@ -379,30 +378,38 @@ func (d *Desktop) showComparisonFiles(c *native.Context) {
 			name := w.comparison.Paths[w.comparisonFileRow]
 			if name != w.comparisonFile && !d.busy {
 				params := ipc.Params{RepoID: d.selected, Name: w.comparison.Left, Query: w.comparison.Right, Path: name}
-				w.comparisonFile, w.comparisonPatch = name, patchView{}
+				w.comparisonFile, w.comparisonPatch = name, editor.DiffState{}
+				w.comparisonError = ""
 				d.task(func(ctx context.Context) (func(), error) {
 					var patch string
 					err := d.Client.Call(ctx, "git.compare.file", params, &patch)
 					if err != nil {
 						return func() {
-							w.comparisonFileRow, w.comparisonFile = -1, ""
-							d.err = err.Error()
+							w.comparisonError = err.Error()
 						}, nil
 					}
 					files, err := editor.ParsePatch(patch)
 					return func() {
 						if err != nil {
-							w.comparisonFileRow, w.comparisonFile = -1, ""
-							d.err = err.Error()
+							w.comparisonError = err.Error()
 							return
 						}
-						w.comparisonPatch = patchView{lines: d.patchRows(files, false)}
+						if len(files) > 0 && !files[0].Binary {
+							w.comparisonPatch.SetPatch(files[0])
+						}
 					}, nil
 				})
 			}
 		}
-		if len(w.comparisonPatch.lines) > 0 {
-			d.showPatch(c, &w.comparisonPatch).Grow(1).FillHeight()
+		if w.comparisonError != "" {
+			native.Column(c).Grow(1).MinWidth(0).Gap(controlSpacing).Children(func() {
+				native.Text(c, w.comparisonError).FillWidth().TextColor(c.Theme().Danger)
+				if d.refreshButton(c).Disabled(d.busy).Clicked() {
+					w.comparisonFile, w.comparisonError = "", ""
+				}
+			})
+		} else if w.comparisonPatch.Old != nil {
+			native.Column(c).Grow(1).MinWidth(0).FillHeight().Gap(controlSpacing).Children(func() { width, _ := c.Size(); d.showCodeDiff(c, &w.comparisonPatch, width-280, false) })
 		} else if !d.busy {
 			message := d.copy("选择文件以查看差异", "Choose a file to view its diff")
 			if w.comparisonFile != "" {

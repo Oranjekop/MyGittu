@@ -32,6 +32,8 @@ var Catalog = map[string]Message{
 	"advanced.export":             {"导出补丁", "Export patch"},
 	"advanced.openPatch":          {"选择补丁", "Choose patch"},
 	"advanced.apply":              {"应用补丁", "Apply patch"},
+	"advanced.patchTarget":        {"选择目标仓库", "Choose target repository"},
+	"advanced.patchCheckFailed":   {"补丁无法应用到当前工作区。请核对目标仓库、分支和文件是否匹配。", "The patch does not apply to this working tree. Check the target repository, branch, and files."},
 	"advanced.emptyReflog":        {"暂无本地引用日志", "No reflog entries"},
 	"advanced.emptyPlan":          {"加载提交以预览变基计划", "Load commits to preview the rebase plan"},
 	"advanced.emptyBisect":        {"选择已知正常和异常的提交", "Choose known good and bad commits"},

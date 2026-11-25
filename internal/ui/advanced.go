@@ -12,19 +12,23 @@ import (
 	"github.com/egoist/mygo/ui/editor"
 	"mygittu/internal/app"
 	"mygittu/internal/ipc"
+	"mygittu/internal/repository"
 )
 
 type advancedPanel struct {
-	open, staged                  bool
-	mode, base, good, bad, branch string
-	patch, output, err            string
-	check                         app.PatchCheck
-	preview                       patchView
-	state                         app.AdvancedState
-	steps                         []app.RebaseStep
-	logs                          []app.ReflogEntry
-	row                           int
-	list                          native.ListState
+	open, staged                    bool
+	mode, base, good, bad, branch   string
+	patch, output, err              string
+	patchPath, patchRepo, patchRoot string
+	check                           app.PatchCheck
+	patchFiles                      []editor.FilePatch
+	patchFile                       string
+	patchDiff                       editor.DiffState
+	state                           app.AdvancedState
+	steps                           []app.RebaseStep
+	logs                            []app.ReflogEntry
+	row                             int
+	list                            native.ListState
 }
 
 func (d *Desktop) advancedAction(mode string, selected app.Commit) {
@@ -82,12 +86,8 @@ func (d *Desktop) advancedContent(c *native.Context) {
 	p := &d.advanced
 	native.Row(c).FillWidth().Gap(controlSpacing).Children(func() {
 		native.Text(c, d.text("advanced."+p.mode)).Bold().Grow(1)
-		if IconButton(c, d.text("close"), "close", false).Disabled(d.busy).Clicked() {
-			if d.action == "file-patch" && d.win != nil {
-				d.win.Close()
-			} else {
-				p.open = false
-			}
+		if d.action == "" && IconButton(c, d.text("close"), "close", false).Disabled(d.busy).Clicked() {
+			p.open = false
 		}
 	})
 	if p.err != "" {
@@ -119,14 +119,49 @@ func (d *Desktop) advancedContent(c *native.Context) {
 	case "bisect":
 		d.bisectControls(c)
 	}
-	if len(p.preview.lines) > 0 {
-		native.Text(c, p.output).TextColor(c.Theme().TextMuted).SingleLine().Ellipsis("…").Tooltip(p.output)
-		d.showPatch(c, &p.preview).Grow(1).FillWidth()
+	if len(p.patchFiles) > 0 {
+		d.patchDiffPreview(c)
 	} else if p.output != "" {
 		scrollAtPanelEdge(native.Scroll(c)).Grow(1).MinHeight(0).FillWidth().Children(func() {
 			native.Text(c, p.output).FillWidth()
 		})
 	}
+}
+
+func (d *Desktop) patchDiffPreview(c *native.Context) {
+	p := &d.advanced
+	names := make([]string, len(p.patchFiles))
+	for i, file := range p.patchFiles {
+		names[i] = patchFileName(file)
+	}
+	before := p.patchFile
+	if len(names) > 1 {
+		native.Select(c, &p.patchFile, names).FillWidth()
+	} else {
+		native.Text(c, names[0]).SingleLine().Ellipsis("…").Tooltip(names[0])
+	}
+	if before != p.patchFile || p.patchDiff.Old == nil {
+		p.patchDiff = editor.DiffState{}
+		for i, name := range names {
+			if name == p.patchFile && !p.patchFiles[i].Binary && len(p.patchFiles[i].Hunks) != 0 {
+				p.patchDiff.SetPatch(p.patchFiles[i])
+				break
+			}
+		}
+	}
+	if p.patchDiff.Old == nil {
+		message := d.copy("没有可显示的文本差异", "No text diff to display")
+		for i, name := range names {
+			if name == p.patchFile && p.patchFiles[i].Binary {
+				message = d.text("diff.binary")
+				break
+			}
+		}
+		emptyState(c, emptyDiffArt, 128, message).Grow(1)
+		return
+	}
+	width, _ := c.Size()
+	d.showCodeDiff(c, &p.patchDiff, width-2*panelSpacing, false)
 }
 
 func (d *Desktop) runAdvanced(method string, params ipc.Params) {
@@ -296,17 +331,29 @@ func (d *Desktop) patchControls(c *native.Context) {
 			}
 		})
 	}
+	native.Row(c).Gap(controlSpacing).Children(func() {
+		root := p.patchRoot
+		if root == "" {
+			root = d.path
+		}
+		native.Text(c, root).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(root)
+		if IconButton(c, d.text("advanced.patchTarget"), "open", false).Disabled(d.busy || p.patchPath == "").Clicked() {
+			d.reviewPatch(p.patchPath, true)
+		}
+	})
 	if p.check.Token != "" {
 		if IconButton(c, d.text("advanced.apply"), "commit", true).Disabled(d.busy).Clicked() {
-			params := ipc.Params{RepoID: d.selected, FileContent: []byte(p.patch), Hash: p.check.Token}
+			params := ipc.Params{RepoID: p.patchRepo, FileContent: []byte(p.patch), Hash: p.check.Token}
 			d.task(func(ctx context.Context) (func(), error) {
 				err := d.Client.Call(ctx, "git.patch.apply", params, nil)
 				return func() {
 					if err != nil {
+						p.check = app.PatchCheck{}
 						p.err = err.Error()
 						return
 					}
-					p.check, p.patch, p.err, p.preview = app.PatchCheck{}, "", "", patchView{}
+					p.check, p.patch, p.err = app.PatchCheck{}, "", ""
+					p.patchFiles, p.patchFile, p.patchDiff = nil, "", editor.DiffState{}
 					p.output = d.text("file.actionDone")
 					d.refresh()
 				}, nil
@@ -319,16 +366,36 @@ func (d *Desktop) patchControls(c *native.Context) {
 }
 
 func (d *Desktop) previewPatch(path string) {
+	d.reviewPatch(path, false)
+}
+
+func (d *Desktop) reviewPatch(path string, chooseTarget bool) {
 	p := &d.advanced
-	id := d.selected
-	p.err, p.output, p.patch, p.check, p.preview = "", "", "", app.PatchCheck{}, patchView{}
+	id, root := d.selected, d.path
+	if p.patchRepo != "" {
+		id, root = p.patchRepo, p.patchRoot
+	}
 	d.task(func(ctx context.Context) (func(), error) {
 		var patch string
 		var check app.PatchCheck
+		cancelled := false
 		err := func() error {
+			if chooseTarget {
+				folders, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: d.win, Directory: true, Title: d.text("advanced.patchTarget")})
+				if err != nil || len(folders) == 0 {
+					cancelled = err == nil
+					return err
+				}
+				var repo repository.Info
+				if err := d.Client.Call(ctx, "repo.register", ipc.Params{Path: folders[0]}, &repo); err != nil {
+					return err
+				}
+				id, root = repo.ID, repo.Root
+			}
 			if path == "" {
 				paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: d.win, Title: d.text("advanced.openPatch")})
 				if err != nil || len(paths) == 0 {
+					cancelled = err == nil
 					return err
 				}
 				path = paths[0]
@@ -350,12 +417,27 @@ func (d *Desktop) previewPatch(path string) {
 		}()
 		files, _ := editor.ParsePatch(patch)
 		return func() {
-			if err != nil {
-				p.err = err.Error()
+			if cancelled {
 				return
 			}
-			p.patch, p.check, p.output = patch, check, check.Summary
-			p.preview = patchView{lines: d.patchRows(files, true)}
+			if err != nil && patch == "" {
+				p.check = app.PatchCheck{}
+				p.err = err.Error()
+				if p.patchPath == "" {
+					p.patchPath = path
+				}
+				return
+			}
+			p.patchPath, p.patchRepo, p.patchRoot = path, id, root
+			p.patch, p.check, p.output, p.err = patch, check, check.Summary, ""
+			p.patchFiles, p.patchFile, p.patchDiff = files, "", editor.DiffState{}
+			if len(files) != 0 {
+				p.patchFile = patchFileName(files[0])
+			}
+			if err != nil {
+				p.check = app.PatchCheck{}
+				p.err = d.text("advanced.patchCheckFailed") + "\n" + err.Error()
+			}
 		}, nil
 	})
 }
