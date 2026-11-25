@@ -19,6 +19,7 @@ type workbench struct {
 	filePath, fileLoaded, fileShown     string
 	filePatch                           patchView
 	fileCommits                         []app.Commit
+	fileHistoryLoaded                   bool
 	fileRow                             int
 	fileList                            native.ListState
 	blameList                           native.ListState
@@ -120,41 +121,59 @@ func (d *Desktop) loadConflict(path string) {
 }
 
 func (d *Desktop) showConflict(c *native.Context) {
-	w := &d.tools
-	native.Modal(c, &w.conflictOpen, func() {
+	if d.isStandaloneFileAction() {
+		return
+	}
+	native.Modal(c, &d.tools.conflictOpen, func() {
 		native.Column(c).Width(730).Gap(controlSpacing).Children(func() {
-			native.Text(c, w.conflictPath).Bold()
-			native.Row(c).FillWidth().Gap(controlSpacing).Children(func() {
-				for _, side := range []struct{ label, text, icon string }{
-					{"conflict.ours", w.conflict.Ours, "left"}, {"conflict.theirs", w.conflict.Theirs, "right"},
-				} {
-					native.Column(c).Grow(1).MinWidth(0).Gap(controlSpacing).Children(func() {
-						native.TextArea(c, &side.text).ReadOnly(true).Height(135).FillWidth()
-						if IconButton(c, d.text(side.label), side.icon, false).Clicked() {
-							w.resolution = side.text
-						}
-					})
-				}
-			})
-			native.Text(c, d.text("conflict.result")).Bold()
-			native.TextArea(c, &w.resolution).Height(140).FillWidth()
-			native.Row(c).Gap(controlSpacing).Children(func() {
-				if IconButton(c, d.text("conflict.save"), "save", true).Disabled(d.busy).Clicked() {
-					id, path, token, content := d.selected, w.conflictPath, w.conflict.Token, w.resolution
-					d.task(func(ctx context.Context) (func(), error) {
-						err := d.Client.Call(ctx, "git.resolve", ipc.Params{RepoID: id, Path: path, Hash: token, Message: content}, nil)
-						return func() { w.conflictOpen = false; d.refresh() }, err
-					})
-				}
-				if IconButton(c, d.text("close"), "close", false).Clicked() {
-					w.conflictOpen = false
-				}
-			})
-			if d.err != "" {
-				native.Text(c, d.err).TextColor(c.Theme().Danger)
-			}
+			d.conflictContent(c)
 		})
 	})
+}
+
+func (d *Desktop) conflictContent(c *native.Context) {
+	w := &d.tools
+	native.Text(c, w.conflictPath).Bold()
+	native.Row(c).FillWidth().Gap(controlSpacing).Children(func() {
+		for _, side := range []struct{ label, text, icon string }{
+			{"conflict.ours", w.conflict.Ours, "left"}, {"conflict.theirs", w.conflict.Theirs, "right"},
+		} {
+			native.Column(c).Grow(1).MinWidth(0).Gap(controlSpacing).Children(func() {
+				native.TextArea(c, &side.text).ReadOnly(true).Height(135).FillWidth()
+				if IconButton(c, d.text(side.label), side.icon, false).Clicked() {
+					w.resolution = side.text
+				}
+			})
+		}
+	})
+	native.Text(c, d.text("conflict.result")).Bold()
+	native.TextArea(c, &w.resolution).Height(140).FillWidth()
+	native.Row(c).Gap(controlSpacing).Children(func() {
+		if IconButton(c, d.text("conflict.save"), "save", true).Disabled(d.busy).Clicked() {
+			id, path, token, content := d.selected, w.conflictPath, w.conflict.Token, w.resolution
+			d.task(func(ctx context.Context) (func(), error) {
+				err := d.Client.Call(ctx, "git.resolve", ipc.Params{RepoID: id, Path: path, Hash: token, Message: content}, nil)
+				return func() {
+					w.conflictOpen = false
+					if d.action == "file-conflict" {
+						d.path, d.result = path, d.text("file.actionDone")
+					} else {
+						d.refresh()
+					}
+				}, err
+			})
+		}
+		if IconButton(c, d.text("close"), "close", false).Clicked() {
+			if d.action == "file-conflict" && d.win != nil {
+				d.win.Close()
+			} else {
+				w.conflictOpen = false
+			}
+		}
+	})
+	if d.err != "" {
+		native.Text(c, d.err).TextColor(c.Theme().Danger)
+	}
 }
 
 func (d *Desktop) confirmRecovery(action, hash string) {

@@ -118,23 +118,38 @@ func (d *Desktop) showRepositoryTools(c *native.Context) {
 			})
 		})
 	})
-	native.Modal(c, &w.confirmOpen, func() {
-		native.Column(c).Width(450).Gap(panelSpacing).Children(func() {
-			native.Text(c, w.question).Bold().FillWidth()
-			if w.detail != "" {
-				native.Text(c, w.detail).FillWidth()
-			}
-			native.Row(c).Gap(controlSpacing).Children(func() {
-				if IconButton(c, d.text("confirm"), "commit", true).Disabled(d.busy).Clicked() {
-					w.confirmOpen = false
-					apply := w.confirm
-					w.confirm = nil
-					if apply != nil {
-						apply()
-					}
+	if !d.isStandaloneFileAction() {
+		native.Modal(c, &w.confirmOpen, func() { d.actionConfirmation(c, false) })
+	}
+}
+
+func (d *Desktop) actionConfirmation(c *native.Context, standalone bool) {
+	w := &d.repositoryTools
+	panel := native.Column(c).Width(450).Gap(panelSpacing)
+	if standalone {
+		panel.AlignSelf(native.Center).Grow(1).Center()
+	}
+	panel.Children(func() {
+		native.Text(c, w.question).Bold().FillWidth()
+		if w.detail != "" {
+			native.Text(c, w.detail).FillWidth()
+		}
+		native.Row(c).Gap(controlSpacing).Children(func() {
+			if IconButton(c, d.text("confirm"), "commit", true).Disabled(d.busy).Clicked() {
+				w.confirmOpen = false
+				apply := w.confirm
+				w.confirm = nil
+				if apply != nil {
+					apply()
 				}
+			}
+			if d.action == "file-restore" {
+				if IconButton(c, d.text("close"), "close", false).Disabled(d.busy).Clicked() && d.win != nil {
+					d.win.Close()
+				}
+			} else {
 				d.toolClose(c, &w.confirmOpen)
-			})
+			}
 		})
 	})
 }

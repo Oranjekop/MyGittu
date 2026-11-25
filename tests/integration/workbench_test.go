@@ -86,42 +86,42 @@ func TestWorkbenchConflictAndGraph(t *testing.T) {
 func TestWorkbenchFileHistoryRecoveryAndBatch(t *testing.T) {
 	s, id, dir := setup(t)
 	ctx := context.Background()
-	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+	for _, name := range []string{"README.md", "b.txt", "c.txt"} {
 		write(t, filepath.Join(dir, name), "base\n")
 	}
 	command(t, dir, "add", ".")
 	command(t, dir, "commit", "-m", "base")
-	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+	for _, name := range []string{"README.md", "b.txt", "c.txt"} {
 		write(t, filepath.Join(dir, name), "change\n")
 	}
-	if err := s.Paths(ctx, id, []string{"a.txt", "b.txt"}, true); err != nil {
+	if err := s.Paths(ctx, id, []string{"README.md", "b.txt"}, true); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Fields(command(t, dir, "diff", "--cached", "--name-only")); strings.Join(got, ",") != "a.txt,b.txt" {
+	if got := strings.Fields(command(t, dir, "diff", "--cached", "--name-only")); strings.Join(got, ",") != "README.md,b.txt" {
 		t.Fatalf("unexpected stage: %v", got)
 	}
-	if err := s.Paths(ctx, id, []string{"a.txt", "b.txt"}, false); err != nil {
+	if err := s.Paths(ctx, id, []string{"README.md", "b.txt"}, false); err != nil {
 		t.Fatal(err)
 	}
 	if got := command(t, dir, "diff", "--cached", "--name-only"); got != "" {
 		t.Fatalf("unexpected index: %s", got)
 	}
-	command(t, dir, "add", "a.txt")
+	command(t, dir, "add", "README.md")
 	command(t, dir, "commit", "-m", "change a")
-	log, err := s.FileLog(ctx, id, "a.txt", 100, 0)
+	log, err := s.FileLog(ctx, id, "README.md", 100, 0)
 	if err != nil || len(log) != 2 {
 		t.Fatalf("file history: %+v %v", log, err)
 	}
 	hash := log[0].Hash
-	patch, err := s.FileInsight(ctx, id, "a.txt", "patch", hash)
+	patch, err := s.FileInsight(ctx, id, "README.md", "patch", hash)
 	if err != nil || !strings.Contains(patch, "+change") {
 		t.Fatalf("patch: %s %v", patch, err)
 	}
-	blame, err := s.FileInsight(ctx, id, "a.txt", "blame", "")
+	blame, err := s.FileInsight(ctx, id, "README.md", "blame", "")
 	if err != nil || !strings.Contains(blame, "Test") || !strings.Contains(blame, "change") {
 		t.Fatalf("blame: %s %v", blame, err)
 	}
-	lines, err := s.FileBlame(ctx, id, "a.txt")
+	lines, err := s.FileBlame(ctx, id, "README.md")
 	if err != nil || len(lines) != 1 || lines[0].Number != 1 || lines[0].Hash != hash || lines[0].Author != "Test" || lines[0].Text != "change" || lines[0].Date == "" {
 		t.Fatalf("structured blame: %+v %v", lines, err)
 	}
@@ -134,7 +134,7 @@ func TestWorkbenchFileHistoryRecoveryAndBatch(t *testing.T) {
 	if err := s.RecoverCommit(ctx, id, "undo", hash); err != nil {
 		t.Fatal(err)
 	}
-	if staged := command(t, dir, "diff", "--cached", "--name-only"); strings.TrimSpace(staged) != "a.txt" {
+	if staged := command(t, dir, "diff", "--cached", "--name-only"); strings.TrimSpace(staged) != "README.md" {
 		t.Fatalf("undo lost staged content: %s", staged)
 	}
 	command(t, dir, "commit", "-m", "change a again")
@@ -146,10 +146,10 @@ func TestWorkbenchFileHistoryRecoveryAndBatch(t *testing.T) {
 	if err := s.RecoverCommit(ctx, id, "revert", head); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(command(t, dir, "show", "HEAD:a.txt")); got != "base" {
+	if got := strings.TrimSpace(command(t, dir, "show", "HEAD:README.md")); got != "base" {
 		t.Fatalf("revert content: %s", got)
 	}
-	command(t, dir, "mv", "a.txt", "renamed.txt")
+	command(t, dir, "mv", "README.md", "renamed.txt")
 	command(t, dir, "commit", "-m", "rename file")
 	history, err := s.FileLog(ctx, id, "renamed.txt", 100, 0)
 	if err != nil || len(history) < 2 {

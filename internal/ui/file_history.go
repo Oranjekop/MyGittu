@@ -20,81 +20,116 @@ func (d *Desktop) openFileHistory(path string) {
 			w.filePath, w.fileCommits, w.fileRow, w.fileLoaded, w.fileOpen = path, list, 0, "", true
 			w.filePatch, w.fileMode = patchView{}, 0
 			w.fileShown = ""
+			w.fileHistoryLoaded = true
 			w.blameRows, w.blameLoaded = nil, false
 			w.fileList, w.blameList = native.ListState{}, native.ListState{}
 		}, err
 	})
 }
 
+func (d *Desktop) isStandaloneFileHistory() bool {
+	return d.action == "file-log" || d.action == "file-blame"
+}
+
+func (d *Desktop) loadFileHistoryList() {
+	params := ipc.Params{RepoID: d.selected, Path: d.tools.filePath, Limit: 100}
+	d.task(func(ctx context.Context) (func(), error) {
+		var list []app.Commit
+		err := d.Client.Call(ctx, "git.file.log", params, &list)
+		return func() {
+			d.tools.fileHistoryLoaded, d.tools.fileCommits, d.tools.fileRow = true, list, 0
+		}, err
+	})
+}
+
 func (d *Desktop) showFileHistory(c *native.Context) {
-	w := &d.tools
+	if d.isStandaloneFileHistory() {
+		return
+	}
 	width, height := c.Size()
-	native.Modal(c, &w.fileOpen, func() {
+	native.Modal(c, &d.tools.fileOpen, func() {
 		native.Column(c).Width(min(880, width-72)).Gap(panelSpacing).Children(func() {
-			native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
-				native.Text(c, w.filePath).Bold().SingleLine().Grow(1).Tooltip(w.filePath)
-				d.toolClose(c, &w.fileOpen)
-			})
-			before := w.fileMode
-			native.Segmented(c, &w.fileMode, d.text("file.history"), d.text("file.blame")).Disabled(d.busy)
-			if before != w.fileMode {
-				d.err = ""
-			}
-			if d.err != "" {
-				native.Row(c).Gap(controlSpacing).Children(func() {
-					native.Text(c, d.err).Grow(1).TextColor(c.Theme().Danger)
-					if native.Button(c, d.copy("重试", "Retry")).Disabled(d.busy).Clicked() {
-						if w.fileMode == 1 {
-							w.blameLoaded = false
-						} else {
-							w.fileLoaded = ""
-						}
-						d.err = ""
-					}
-				})
-			}
-			if w.fileMode == 1 {
-				d.showFileBlame(c, min(425, height-175))
-				return
-			}
-			if len(w.fileCommits) == 0 {
-				if !d.busy && d.err == "" {
-					emptyState(c, emptyPreviewArt, 72, d.text("history.empty"))
-				}
-				return
-			}
-			w.fileList.Selected = &w.fileRow
-			roundedTable(c, &w.fileList, []native.TableColumn{
-				{Title: d.text("subject")}, {Title: d.text("author"), Width: 120}, {Title: d.text("date"), Width: dateColumnWidth},
-			}, len(w.fileCommits), func(row, col int) {
-				commit := w.fileCommits[row]
-				text := []string{commit.Subject, commit.Author, commit.Date}[col]
-				if col == 2 {
-					text = displayDateTime(text)
-				}
-				native.Text(c, text).SingleLine().Ellipsis("…").Tooltip(text)
-			}).Height(min(150, height*.23, 28*float32(len(w.fileCommits)+1)+2*controlSpacing)).Disabled(d.busy)
-			if w.fileRow < 0 || w.fileRow >= len(w.fileCommits) {
-				return
-			}
-			commit := w.fileCommits[w.fileRow]
-			if w.fileLoaded != commit.Hash && d.Client != nil && !d.busy {
-				d.loadFilePatch(commit.Hash)
-			}
-			shown := w.fileShown
-			if shown == "" {
-				shown = commit.Hash
-			}
-			if len(w.filePatch.lines) > 0 {
-				native.Text(c, shown).SingleLine().Tooltip(shown).TextColor(c.Theme().TextMuted)
-				d.showPatch(c, &w.filePatch).Height(min(280, height*.43))
-			} else if d.busy && w.fileShown == "" {
-				native.Text(c, d.text("busy")).TextColor(c.Theme().TextMuted)
-			} else if d.err == "" {
-				emptyState(c, emptyDiffArt, 72, d.copy("没有文件差异", "No file differences"))
-			}
+			d.fileHistoryContent(c, height, false)
 		})
 	})
+}
+
+func (d *Desktop) fileHistoryContent(c *native.Context, height float32, standalone bool) {
+	w := &d.tools
+	native.Row(c).Gap(controlSpacing).AlignItems(native.Center).Children(func() {
+		native.Text(c, w.filePath).Bold().SingleLine().Grow(1).Tooltip(w.filePath)
+		if standalone {
+			if IconButton(c, d.text("close"), "close", false).Clicked() && d.win != nil {
+				d.win.Close()
+			}
+		} else {
+			d.toolClose(c, &w.fileOpen)
+		}
+	})
+	before := w.fileMode
+	native.Segmented(c, &w.fileMode, d.text("file.history"), d.text("file.blame")).Disabled(d.busy)
+	if before != w.fileMode {
+		d.err = ""
+	}
+	if d.err != "" {
+		native.Row(c).Gap(controlSpacing).Children(func() {
+			native.Text(c, d.err).Grow(1).TextColor(c.Theme().Danger)
+			if native.Button(c, d.copy("重试", "Retry")).Disabled(d.busy).Clicked() {
+				if w.fileMode == 1 {
+					w.blameLoaded = false
+				} else {
+					w.fileLoaded = ""
+					if !w.fileHistoryLoaded {
+						d.loadFileHistoryList()
+					}
+				}
+				d.err = ""
+			}
+		})
+	}
+	if w.fileMode == 1 {
+		d.showFileBlame(c, max(100, min(425, height-175)))
+		return
+	}
+	if !w.fileHistoryLoaded && !d.busy && d.err == "" && d.Client != nil {
+		d.loadFileHistoryList()
+	}
+	if len(w.fileCommits) == 0 {
+		if !d.busy && d.err == "" {
+			emptyState(c, emptyPreviewArt, 72, d.text("history.empty"))
+		}
+		return
+	}
+	w.fileList.Selected = &w.fileRow
+	roundedTable(c, &w.fileList, []native.TableColumn{
+		{Title: d.text("subject")}, {Title: d.text("author"), Width: 120}, {Title: d.text("date"), Width: dateColumnWidth},
+	}, len(w.fileCommits), func(row, col int) {
+		commit := w.fileCommits[row]
+		text := []string{commit.Subject, commit.Author, commit.Date}[col]
+		if col == 2 {
+			text = displayDateTime(text)
+		}
+		native.Text(c, text).SingleLine().Ellipsis("…").Tooltip(text)
+	}).Height(min(150, height*.23, 28*float32(len(w.fileCommits)+1)+2*controlSpacing)).Disabled(d.busy)
+	if w.fileRow < 0 || w.fileRow >= len(w.fileCommits) {
+		return
+	}
+	commit := w.fileCommits[w.fileRow]
+	if w.fileLoaded != commit.Hash && d.Client != nil && !d.busy {
+		d.loadFilePatch(commit.Hash)
+	}
+	shown := w.fileShown
+	if shown == "" {
+		shown = commit.Hash
+	}
+	if len(w.filePatch.lines) > 0 {
+		native.Text(c, shown).SingleLine().Tooltip(shown).TextColor(c.Theme().TextMuted)
+		d.showPatch(c, &w.filePatch).Height(min(280, height*.43))
+	} else if d.busy && w.fileShown == "" {
+		native.Text(c, d.text("busy")).TextColor(c.Theme().TextMuted)
+	} else if d.err == "" {
+		emptyState(c, emptyDiffArt, 72, d.copy("没有文件差异", "No file differences"))
+	}
 }
 
 func (d *Desktop) loadFilePatch(hash string) {

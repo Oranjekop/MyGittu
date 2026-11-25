@@ -966,6 +966,46 @@ func TestStandaloneHistoryShowsCherryPickConflictControls(t *testing.T) {
 	}
 }
 
+func TestFileBlameActionPreservesGitPathCase(t *testing.T) {
+	root := t.TempDir()
+	alias := t.TempDir()
+	d := New(nil, filepath.Join(alias, "Docs", "README.md"), "file-blame")
+	d.openFileAction(d.path, repository.Info{Root: root, Aliases: []string{alias}}, status.Snapshot{})
+	if d.tools.fileOpen || d.tools.fileMode != 1 || d.tools.filePath != "Docs/README.md" {
+		t.Fatalf("unexpected blame path: %q", d.tools.filePath)
+	}
+}
+
+func TestStandaloneFileActionsRenderDirectly(t *testing.T) {
+	for _, action := range []string{"file-log", "file-blame", "file-conflict", "file-restore", "file-diff"} {
+		t.Run(action, func(t *testing.T) {
+			d := New(nil, "repository-background-marker", action)
+			d.selected = "repo"
+			label := "Docs/README.md"
+			switch action {
+			case "file-log", "file-blame":
+				d.tools.filePath, d.tools.fileOpen = label, true
+			case "file-conflict":
+				d.tools.conflictPath, d.tools.conflictOpen = label, true
+			case "file-restore", "file-diff":
+				d.askAction(label, "", func() {})
+			}
+			tt := native.NewTester(d.view, 960, 680)
+			if !tt.HasText(label) || tt.HasText(d.path) {
+				t.Fatal("file action must replace the window contents rather than cover them with a modal")
+			}
+			if action == "file-diff" {
+				d.repositoryTools.confirmOpen = false
+				d.hunksOpen, d.hunkPath = true, label
+				tt.Frame()
+				if !tt.HasText(label) || tt.HasText(d.path) {
+					t.Fatal("hunk actions must also render directly in the window")
+				}
+			}
+		})
+	}
+}
+
 func TestShellActionWindowsAt150Percent(t *testing.T) {
 	for _, tc := range []struct{ action, control string }{
 		{"commit", "提交（1）"},

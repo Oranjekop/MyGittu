@@ -32,6 +32,10 @@ func (d *Desktop) actionTitle() string {
 	return "MyGittu"
 }
 
+func (d *Desktop) isStandaloneFileAction() bool {
+	return strings.HasPrefix(d.action, "file-")
+}
+
 func (d *Desktop) windowOptions() mygo.WindowOptions {
 	options := mygo.WindowOptions{
 		Title: d.actionTitle(), Width: 1280, Height: 820, MinWidth: 960, MinHeight: 680,
@@ -90,7 +94,9 @@ func (d *Desktop) loadAction() {
 			}
 			if action != "clone" {
 				if action == "diff" {
-					d.initialDiffPath = repositoryRelativePath(repo, path)
+					if relative := repositoryRelativePath(repo, path); relative != "" {
+						d.initialDiffPath = repository.Key(relative)
+					}
 				}
 				d.selectRepository(repo.ID, repo.Root)
 				if strings.HasPrefix(action, "file-") {
@@ -115,15 +121,15 @@ func (d *Desktop) openFileAction(path string, repo repository.Info, snapshot sta
 	}
 	switch d.action {
 	case "file-log":
-		d.openFileHistory(target)
+		d.tools.filePath, d.tools.fileMode = target, 0
 		return
 	case "file-blame":
-		d.tools.filePath, d.tools.fileMode, d.tools.fileOpen = target, 1, true
+		d.tools.filePath, d.tools.fileMode = target, 1
 		return
 	}
 	d.applyWorkspaceStatus(snapshot)
 	for i, file := range d.changes {
-		if repository.Key(file.Path) != target {
+		if repository.Key(file.Path) != repository.Key(target) {
 			continue
 		}
 		d.row, d.staged = i, file.Worktree == git.Clean
@@ -166,12 +172,12 @@ func (d *Desktop) completeFileAction(params ipc.Params, method, path string) {
 	})
 }
 
-// Use the spelling recorded by Git's repository discovery for aliased roots.
+// Keep the selected path's spelling. Git paths are case-sensitive even on Windows.
 func repositoryRelativePath(repo repository.Info, path string) string {
 	for _, root := range append([]string{repo.Root}, repo.Aliases...) {
 		rel, err := filepath.Rel(root, path)
 		if err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return repository.Key(rel)
+			return filepath.ToSlash(rel)
 		}
 	}
 	return ""
@@ -201,6 +207,24 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 			}
 			return
 		}
+		if d.isStandaloneFileHistory() && d.tools.filePath != "" {
+			_, height := c.Size()
+			d.fileHistoryContent(c, height, true)
+			return
+		}
+		if d.isStandaloneFileAction() && d.tools.conflictOpen {
+			d.conflictContent(c)
+			return
+		}
+		if d.isStandaloneFileAction() && d.repositoryTools.confirmOpen {
+			d.actionConfirmation(c, true)
+			return
+		}
+		if d.isStandaloneFileAction() && d.hunksOpen {
+			_, height := c.Size()
+			d.hunkContent(c, height)
+			return
+		}
 		if d.action != "clone" {
 			native.Row(c).FillWidth().Gap(controlSpacing).AlignItems(native.Center).Children(func() {
 				native.Text(c, d.path).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(d.path).TextColor(t.TextMuted)
@@ -216,7 +240,7 @@ func (d *Desktop) actionView(c *native.Context, t *native.Theme) {
 		if d.action == "log" && d.remoteNotice != "" {
 			native.Text(c, d.remoteNotice).FillWidth().TextColor(t.TextMuted)
 		}
-		if d.err != "" && !d.settingsOpen {
+		if d.err != "" && !d.settingsOpen && !d.tools.fileOpen {
 			scrollAtPanelEdge(native.Scroll(c)).MinHeight(34).MaxHeight(132).Children(func() {
 				native.Text(c, d.text("error")+": "+d.err).FillWidth().TextColor(t.Danger)
 			})
