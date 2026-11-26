@@ -100,8 +100,8 @@ func (d *remoteWindow) view(c *native.Context) {
 			d.captionStyled, d.captionDark = true, t.Dark
 		}
 	}
-	native.Box(c).Fill().Children(func() {
-		d.content(c, t)
+	native.Box(c).Fill().Background(t.Background).Children(func() {
+		d.cardContent(c, t)
 		if d.win != nil {
 			bar := c.TitleBar()
 			if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
@@ -114,14 +114,6 @@ func (d *remoteWindow) view(c *native.Context) {
 				}
 			}
 		}
-	})
-}
-
-func (d *remoteWindow) content(c *native.Context, t *native.Theme) {
-	native.Column(c).Fill().Padding(8).Background(t.Surface).Children(func() {
-		native.Column(c).Fill().MinHeight(0).Background(t.Background).Radius(8).Clip().Children(func() {
-			d.cardContent(c, t)
-		})
 	})
 }
 
