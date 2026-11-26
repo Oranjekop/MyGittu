@@ -18,6 +18,7 @@ import (
 // Watch count is capped; other repositories still reconcile every 30 seconds.
 func (c *Cache) Run(ctx context.Context) {
 	go c.watchUpstreams(ctx)
+	go c.restoreExplorerRepositories(ctx)
 	c.watch(ctx)
 	if ctx.Err() == nil {
 		c.poll(ctx)

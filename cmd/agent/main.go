@@ -38,6 +38,7 @@ func main() {
 	}
 	service := &app.Service{Runner: r, Registry: registry, Settings: prefs}
 	cache := status.New(service)
+	cache.EnableExplorerSnapshots(dir)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	listener, e := platform.Listen()

@@ -25,6 +25,35 @@ int wmain(int argc, wchar_t **argv) {
     return 4;
   const bool verifyShell = argc > 4 && std::wstring(argv[4]) == L"--explorer";
   const bool overlayOnly = argc > 4 && std::wstring(argv[4]) == L"--overlay-only";
+  if (argc > 4 && std::wstring(argv[4]) == L"--overlay-bulk") {
+    const CLSID modified = {0x29810e41, 0x632a, 0x4a9b,
+                            {0xa1, 0x90, 0x4d, 0x65, 0x93, 0x66, 0x81, 0x03}};
+    IClassFactory *factory = nullptr;
+    if (FAILED(get(modified, IID_IClassFactory, reinterpret_cast<void **>(&factory))))
+      return 39;
+    IShellIconOverlayIdentifier *overlay = nullptr;
+    const auto created = factory->CreateInstance(
+        nullptr, IID_IShellIconOverlayIdentifier, reinterpret_cast<void **>(&overlay));
+    factory->Release();
+    if (FAILED(created))
+      return 40;
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < 10000; ++i) {
+      const auto path = std::wstring(argv[2]) + L"\\file-" + std::to_wstring(i);
+      if (overlay->IsMemberOf(path.c_str(), 0) != S_OK) {
+        overlay->Release();
+        return 41;
+      }
+    }
+    std::cout << "10000 overlay lookups ms="
+              << std::chrono::duration<double, std::milli>(
+                     std::chrono::steady_clock::now() - start).count()
+              << "\n";
+    overlay->Release();
+    FreeLibrary(dll);
+    CoUninitialize();
+    return 0;
+  }
   if (verifyShell) {
     SHFILEINFOW info{};
     if (!SHGetFileInfoW(argv[2], 0, &info, sizeof(info),

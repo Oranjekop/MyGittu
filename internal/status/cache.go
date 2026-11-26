@@ -37,19 +37,29 @@ type Snapshot struct {
 	states        map[string]git.State
 }
 type Cache struct {
-	mu          sync.RWMutex
-	snapshots   map[string]Snapshot
-	refresh     sync.Map
-	Service     *app.Service
-	generation  uint64
-	epochs      map[string]uint64
-	queued      map[string]struct{}
-	overlayMu   sync.Mutex
-	overlayDirs map[string]time.Time
+	mu               sync.RWMutex
+	snapshots        map[string]Snapshot
+	refresh          sync.Map
+	Service          *app.Service
+	generation       uint64
+	epochs           map[string]uint64
+	queued           map[string]struct{}
+	overlayMu        sync.Mutex
+	overlayDirs      map[string]time.Time
+	overlayPublisher *overlayPublisher
 }
 
 // OverlayVisibilityChanged repaints recently queried Explorer directories without rerunning Git.
 func (c *Cache) OverlayVisibilityChanged() {
+	c.mu.Lock()
+	if c.overlayPublisher != nil {
+		for _, repo := range c.Service.Registry.List() {
+			if snapshot, ok := c.snapshots[repo.ID]; ok {
+				c.publishOverlay(repo, snapshot.states)
+			}
+		}
+	}
+	c.mu.Unlock()
 	time.AfterFunc(250*time.Millisecond, func() {
 		dirs := make(map[string]struct{})
 		for _, repo := range c.Service.Registry.List() {
@@ -173,8 +183,10 @@ func (c *Cache) Refresh(ctx context.Context, id string) error {
 	_, cherryErr := os.Stat(filepath.Join(repo.GitDir, "CHERRY_PICK_HEAD"))
 	cherryPicking := cherryErr == nil
 	c.snapshots[id] = Snapshot{Files: files, Generation: c.generation, Updated: time.Now(), Branch: branch.Name, Merging: mergeErr == nil, CherryPicking: cherryPicking, Tracking: branch, states: states}
+	published := c.publishOverlay(repo, states)
 	c.mu.Unlock()
 	changed, broad := overlayChanges(previousStates, states)
+	broad = broad || published && len(changed) == 0
 	if broad || len(changed) != 0 {
 		// Let Explorer's 200 ms native lookup cache expire before repainting.
 		time.AfterFunc(250*time.Millisecond, func() {
@@ -230,6 +242,9 @@ func (c *Cache) Invalidate(id string) {
 	c.epochs[id]++
 	delete(c.snapshots, id)
 	delete(c.queued, id)
+	if c.overlayPublisher != nil {
+		c.overlayPublisher.remove(id)
+	}
 	c.mu.Unlock()
 }
 

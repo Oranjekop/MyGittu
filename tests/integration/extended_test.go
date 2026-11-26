@@ -5,12 +5,60 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"mygittu/internal/app"
 	"mygittu/internal/status"
 )
+
+func TestExplorerSnapshotSurvivesAgentCacheRestart(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Explorer snapshots are Windows-only")
+	}
+	service, id, dir := setup(t)
+	ctx := context.Background()
+	config := t.TempDir()
+	path := filepath.Join(config, "explorer-overlays-v1", id+".overlay")
+	cache := status.New(service)
+	cache.EnableExplorerSnapshots(config)
+	write(t, filepath.Join(dir, "tracked.txt"), "original\n")
+	command(t, dir, "add", "--", "tracked.txt")
+	command(t, dir, "commit", "-m", "initial")
+	write(t, filepath.Join(dir, "tracked.txt"), "modified\n")
+	if err := cache.Refresh(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	read := func() string {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	previous := read()
+	if !strings.Contains(previous, "modified\ttracked.txt\n") {
+		t.Fatalf("missing file status: %q", previous)
+	}
+	cache = status.New(service)
+	cache.EnableExplorerSnapshots(config)
+	if got := read(); got != previous {
+		t.Fatal("starting a new agent cache removed the last published snapshot")
+	}
+	command(t, dir, "restore", "--", "tracked.txt")
+	if err := cache.Refresh(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); !strings.Contains(got, "clean\t.\n") || strings.Contains(got, "modified\ttracked.txt") {
+		t.Fatalf("snapshot did not reflect the refreshed state: %q", got)
+	}
+	cache.Invalidate(id)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("invalidated snapshot remains: %v", err)
+	}
+}
 
 func TestAdvancedRepositoryOperations(t *testing.T) {
 	s, id, dir := setup(t)

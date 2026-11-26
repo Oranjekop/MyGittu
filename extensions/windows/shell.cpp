@@ -82,6 +82,7 @@ struct Handle {
       CloseHandle(h);
   }
 };
+#include "overlay_snapshot.h"
 static bool transfer(HANDLE pipe, bool writing, void *buffer, DWORD size,
                      ULONGLONG deadline) {
   BYTE *p = static_cast<BYTE *>(buffer);
@@ -176,6 +177,8 @@ static std::optional<int> query(const std::wstring &path) {
   return 0;
 }
 static int cachedQuery(const std::wstring &path) {
+  if (auto state = overlay_snapshot::lookup(path))
+    return *state;
   struct Entry {
     int state;
     ULONGLONG until;
@@ -201,13 +204,9 @@ static int cachedQuery(const std::wstring &path) {
     }
     return 0;
   }
-  if (*state != 0) {
-    if (existing == cache.end() && cache.size() >= 2048)
-      cache.erase(cache.begin());
-    cache[path] = {*state, now + 200, now + 5000};
-  } else {
-    cache.erase(path);
-  }
+  if (existing == cache.end() && cache.size() >= 2048)
+    cache.erase(cache.begin());
+  cache[path] = {*state, now + 200, now + 5000};
   return *state;
 }
 // CommandLineToArgvW compatible quoting; the executable is never supplied by
